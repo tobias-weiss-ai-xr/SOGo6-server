@@ -12,6 +12,7 @@ from app.interface.mail.InterfaceApiMailMail import InterfaceApiMailMail
 from app.utils.logger.logger import logger_api
 from app.utils.api.paginate_sort_filter import collection_paginate, CustomPaginateResponse
 from .schemas.mail import (
+    BatchMailActionSchema,
     MailDetailResponseSchema,
     MailListResponseSchema,
     MailDeleteResponseSchema,
@@ -122,40 +123,20 @@ class ApiMailFolderIdMail(MethodView):
 class ApiMailFolderIdAction(MethodView):
     """API to batch perform actions on all mails in a specific folder.
     """
+    @blp.arguments(BatchMailActionSchema, error_status_code=400)
+    @blp.response(200)
     def post(self, batch_data: dict, account_id: str, folder_name: str) -> ResponseReturnValue:
-        """Action: Batch perform actions (tag, delete, move, spam, ham, zip, copy, forward) on selected mails in the specified folder. (NOT IMPLEMENTED)
+        """Action: Batch perform actions (tag, delete, move, spam, ham, copy) on selected mails in the specified folder.
         """
-        if batch_data.get("action") == "tag":
-            # Implement tagging logic here
-            pass
-        if batch_data.get("action") == "delete":
-            pass
-            # logger_api.debug("Calling ApiMailFolderIdMail: Deleting mails for account_id: %s, folder_name: %s, mail_uids: %s", account_id, folder_name, mail_data.get("mail_uids"))
-            # interface: InterfaceApiMailFolder = g.inter
-            # return interface.delete_mails(account_id, folder_name, mail_data["mail_uids"])
-        if batch_data.get("action") == "move":
-            # interface: InterfaceApiMailFolder = g.inter
-            # return interface.move_mails(account_id, folder_name, move_data["mail_uids"], move_data["to_folder_name"])
-            pass
-        if batch_data.get("action") == "spam":
-            # Implement spam logic here
-            pass
-        if batch_data.get("action") == "ham":
-            # Implement ham logic here
-            pass
-        if batch_data.get("action") == "zip":
-            # Implement zip logic here
-            pass
-        if batch_data.get("action") == "copy":
-            # Implement copy logic here
-            pass
-        if batch_data.get("action") == "forward":
-            # Implement forward logic here
-            pass
-        raise NotImplementedError("Batch action mails is not implemented yet.")
-        # logger_api.debug("Calling ApiMailFolderIdAction.post for account_id: %s, folder_name: %s with action: %s", account_id, folder_name, batch_data.get("action"))
-        # interface: InterfaceApiMailMail = g.inter
-        # return interface.batch_mail_action(account_id, folder_name, batch_data)
+        logger_api.debug(
+            "Calling ApiMailFolderIdAction.post for account_id: %s, folder_name: %s with action: %s, uids: %s",
+            account_id,
+            folder_name,
+            batch_data.get("action"),
+            batch_data.get("mail_uids"),
+        )
+        interface: InterfaceApiMailMail = g.inter
+        return interface.batch_mail_action(account_id, folder_name, batch_data)
 
 
 @blp.route("/<string:mail_uid>")

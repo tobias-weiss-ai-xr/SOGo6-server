@@ -401,3 +401,37 @@ class MailSearchResponseSchema(ApiBaseResponse):
         :rtype: dict
         """
         return MailListResponseSchema.example()
+
+
+class BatchMailActionSchema(Schema):
+    """Schema for performing batch actions on multiple mails."""
+
+    action = fields.String(
+        required=True,
+        validate=validate.OneOf(['tag', 'untag', 'move', 'spam', 'ham', 'copy', 'delete']),
+        metadata={"description": "Action to perform on all specified mails"},
+    )
+    mail_uids = fields.List(
+        fields.String(),
+        required=True,
+        validate=validate.Length(min=1),
+        metadata={"description": "List of mail UIDs to act on"},
+    )
+    data = fields.Raw(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Additional data for the action (e.g. tag names, target folder)"},
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        """Example data for batch mail action.
+
+        :return: Example batch action payload
+        :rtype: dict
+        """
+        return {
+            "action": "move",
+            "mail_uids": ["1234", "5678"],
+            "data": {"to_folder": "INBOX/Archive"},
+        }

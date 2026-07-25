@@ -1500,6 +1500,69 @@ class ModuleMail:
         else:
             raise RequestException(f"Invalid action: {action}", err.ERROR_INVALID_ACTION)
 
+    def batch_mail_action(self, account_id: str, folder_name: str, batch_data: dict) -> dict[str, Any]:
+        """Perform a batch action on multiple mails in a folder.
+
+        Opens a single IMAP connection and iterates over the mail UIDs,
+        applying the same action to each.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param folder_name: The name of the folder
+        :type folder_name: str
+        :param batch_data: Dict with 'action', 'mail_uids' (list), optional 'data'
+        :type batch_data: dict
+        :return: Summary dict with action result counts
+        :rtype: dict[str, Any]
+        :raises RequestException: If action is invalid
+        """
+        action: str = batch_data.get("action", "")
+        mail_uids: list = batch_data.get("mail_uids", [])
+        data = batch_data.get("data")
+
+        if not mail_uids:
+            raise RequestException("No mail UIDs provided", err.ERROR_MISSING_ACTION_DATA)
+
+        client = self._open_client_for(account_id)
+        results: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+
+        for mail_uid in mail_uids:
+            try:
+                if action == "tag":
+                    result = self._action_tag(client, folder_name, mail_uid, data)
+                elif action == "untag":
+                    result = self._action_untag(client, folder_name, mail_uid, data)
+                elif action == "move":
+                    result = self._action_move(client, folder_name, mail_uid, data)
+                elif action == "spam":
+                    result = self._action_spam(client, folder_name, mail_uid)
+                elif action == "ham":
+                    result = self._action_ham(client, folder_name, mail_uid)
+                elif action == "copy":
+                    result = self._action_copy(client, folder_name, mail_uid, data)
+                elif action == "delete":
+                    self.delete_mails(account_id, folder_name, mail_uid)
+                    result = {"action": "delete", "mail_uid": mail_uid}
+                else:
+                    raise RequestException(f"Invalid action: {action}", err.ERROR_INVALID_ACTION)
+                results.append(result)
+            except RequestException as ex:
+                logger_mail_server.warning(
+                    "Batch action '%s' failed for mail uid=%s: %s",
+                    action, mail_uid, str(ex),
+                )
+                errors.append({"mail_uid": mail_uid, "error": str(ex)})
+
+        return {
+            "action": action,
+            "total": len(mail_uids),
+            "succeeded": len(results),
+            "failed": len(errors),
+            "results": results,
+            "errors": errors if errors else None,
+        }
+
     def download_attachment(self, account_id: str, folder_name: str, mail_uid: str, filename: str) -> tuple[bytes, str]:
         """Download a specific attachment from a mail.
 
