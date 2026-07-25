@@ -676,6 +676,49 @@ class ModuleMail:
 
         return mails, total_count
 
+    def search_mails(self, account_id: str, folder_name: str, query: str) -> list[dict[str, Any]]:
+        """Search mails in a folder by text content.
+
+        Uses IMAP SEARCH TEXT to find matching mail UIDs, then fetches
+        full details for each matched mail.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param folder_name: The name of the folder to search
+        :type folder_name: str
+        :param query: The text to search for
+        :type query: str
+        :return: List of matching mail dicts with full details
+        :rtype: list[dict[str, Any]]
+        """
+        client = self._open_client_for(account_id)
+
+        # Get UIDs matching the search
+        uids = client.search_mails_by_text(folder_name, query)
+
+        if not uids:
+            return []
+
+        # Fetch full details for each matched mail
+        mails: list[dict[str, Any]] = []
+        for uid in uids:
+            try:
+                raw_entry = client.fetch_mail(folder_name, uid)
+                parsed = self._parse_mail(raw_entry)
+                parsed.pop("contents", None)
+                parsed.pop("attachments", None)
+                parsed.pop("certificates", None)
+                parsed.pop("mail_type_data", None)
+                mails.append(parsed)
+            except RequestException:
+                logger_mail_server.warning(
+                    "Failed to fetch mail uid=%s during search in '%s', skipping",
+                    uid, folder_name,
+                )
+                continue
+
+        return mails
+
     def delete_mails(self, account_id:str, folder_path: str, mail_uids: str|list[str]) -> None:
         """Delete multiple mails by UIDs in a single client session.
 

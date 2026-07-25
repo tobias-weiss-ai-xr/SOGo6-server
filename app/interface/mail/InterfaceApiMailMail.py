@@ -246,3 +246,23 @@ class InterfaceApiMailMail:
         except RequestException as ex:
             logger_api.error("Request exception in open_mail_for_edit: %s", str(ex))
             return create_api_base_response(None, ex.error)
+
+
+    def search_mails(self, account_id: str, folder_name: str, query: str) -> tuple[dict[str, Any], int]:
+        """Search mails in a folder by text content.
+
+        :param account_id: The ID of the account
+        :type account_id: str
+        :param folder_name: The name of the folder to search
+        :type folder_name: str
+        :param query: The search query (min 2 characters)
+        :type query: str
+        :return: A tuple of (API response dict, status code)
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            result = self.mail_module.search_mails(account_id, folder_name, query)
+            return create_api_base_response(result)
+        except RequestException as ex:
+            logger_api.error("Request exception in search_mails: %s", str(ex))
+            return create_api_base_response(None, ex.error)

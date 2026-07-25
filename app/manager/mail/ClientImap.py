@@ -1489,6 +1489,49 @@ class ClientImap(ClientMailServer):
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
 
+    def search_mails_by_text(self, folder_path: str, query: str, exclude_deleted: bool = True) -> list[str]:
+        """Search mails in a folder by text content using IMAP SEARCH TEXT.
+
+        :param folder_path: The name of the folder to search.
+        :type folder_path: str
+        :param query: The text to search for (IMAP SEARCH TEXT).
+        :type query: str
+        :param exclude_deleted: Whether to exclude deleted emails from the search.
+        :type exclude_deleted: bool
+        :return: A list of mail UIDs matching the search.
+        :rtype: list[str]
+        :raises RequestException: If the search fails.
+        """
+        logger_imap.debug("Searching mails in '%s' for '%s'", folder_path, query)
+        if self.connection is not None and self.authenticated:
+            if not folder_path.isascii():
+                raise RequestException(f"Mailbox name is not ascii: {folder_path}", err.ERROR_IMAP_NOT_ASCII)
+            folder_path = quote(folder_path)
+            self.select_mailbox(folder_path)
+
+            criteria_parts: list[str] = []
+            if exclude_deleted:
+                criteria_parts.append("NOT DELETED")
+
+            # IMAP SEARCH TEXT searches within the body text of the message
+            # Escape double quotes in the search query
+            escaped_query = query.replace('"', '""')
+            criteria_parts.append(f'TEXT "{escaped_query}"')
+
+            criteria = "(" + " ".join(criteria_parts) + ")"
+
+            success, datas = self._exec_imap4_method(self.connection.uid, 'SEARCH', criteria)
+
+            if not success:
+                raise RequestException(f"Failed to search mails in {folder_path} with query '{query}'.")
+
+            if datas:
+                return list(parse_uids_from_bytes(datas[0]))
+            return []
+        else:
+            raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
+
+
     def fetch_mail_raw(self, folder_path: str, mail_uid: str) -> str:
         """Fetch a mail from a specific mailbox using UID.
 

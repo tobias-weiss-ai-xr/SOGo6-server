@@ -20,6 +20,8 @@ from .schemas.mail import (
     MailDownloadSchema,
     MailEditResponseSchema,
     MailReplyResponseSchema,
+    MailSearchQuerySchema,
+    MailSearchResponseSchema,
 )
 
 if TYPE_CHECKING:
@@ -373,6 +375,37 @@ class ApiMailDetailRaw(MethodView):
         logger_api.debug("Calling ApiMailDetailRaw.get for account_id: %s, folder_name: %s, mail_uid: %s", account_id, folder_name, mail_uid)
         interface: InterfaceApiMailMail = g.inter
         return interface.get_mail_raw(account_id, folder_name, mail_uid)
+
+
+@blp.route("/search")
+class ApiMailSearch(MethodView):
+    """API to search mails within a folder by text content."""
+
+    @blp.arguments(MailSearchQuerySchema, location="query")
+    @blp.response(200, MailSearchResponseSchema)
+    def get(self, query_args: dict, account_id: str, folder_name: str) -> ResponseReturnValue:
+        """Search mails in a folder by text content.
+
+        Searches using IMAP SEARCH TEXT on the given folder and returns matching
+        mails in the same format as the mail list endpoint.
+
+        :param query_args: Query params with ``q`` (required, min 2 chars).
+        :type query_args: dict
+        :param account_id: The account identifier.
+        :type account_id: str
+        :param folder_name: The folder to search in.
+        :type folder_name: str
+        :return: List of matching mails.
+        :rtype: ResponseReturnValue
+        """
+        logger_api.debug(
+            "Calling ApiMailSearch.get for account_id: %s, folder_name: %s, query: %s",
+            account_id,
+            folder_name,
+            query_args.get("q"),
+        )
+        interface: InterfaceApiMailMail = g.inter
+        return interface.search_mails(account_id, folder_name, query_args["q"])
 
 
 @blp.route("/<string:mail_uid>/attachments/<path:filename>")

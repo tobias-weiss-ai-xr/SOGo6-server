@@ -376,3 +376,28 @@ class MailListQuerySchema(Schema):
         validate=validate.Range(min=1, max=100),
         load_default=20,
     )
+
+
+class MailSearchQuerySchema(Schema):
+    """Query parameters for mail search."""
+
+    q = fields.String(
+        required=True,
+        validate=validate.Length(min=2),
+        metadata={"description": "Search query (min 2 characters)"},
+    )
+
+
+class MailSearchResponseSchema(ApiBaseResponse):
+    """Response schema for mail search results."""
+
+    data = fields.List(fields.Dict(), required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        """Example response for mail search.
+
+        :return: Example mail search response
+        :rtype: dict
+        """
+        return MailListResponseSchema.example()
