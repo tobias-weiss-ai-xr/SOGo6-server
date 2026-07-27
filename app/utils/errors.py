@@ -230,6 +230,8 @@ ERROR_CALENDAR_IMIP_SENDER_MISMATCH          = E("S000625", "iMIP Sender Is Not 
 ERROR_CALENDAR_SYNC_FAILED                  = E("S000626", "Calendar Synchronization Failed", HTTPStatus.BAD_GATEWAY)
 ERROR_CALENDAR_CALDAV_DISCOVERY_FAILED      = E("S000627", "CalDAV Calendar Discovery Failed", HTTPStatus.BAD_GATEWAY)
 ERROR_CALENDAR_MAINTENANCE_REQUIRE_TARGET    = E("S000628", "At Least One Of user_uid Or calendar_key Is Required", HTTPStatus.BAD_REQUEST)
+ERROR_CALENDAR_RESOURCE_CONFLICT              = E("S000629", "Resource Is Not Available At The Requested Time", HTTPStatus.CONFLICT)
+ERROR_CALENDAR_RESOURCE_NOT_FOUND             = E("S000630", "Resource Not Found", HTTPStatus.NOT_FOUND)
 
 #the contacts
 ERROR_CONTACT_JSON_PARSE_FAILED              = E("S000700", "Failed To Parse Contact JSON Content", HTTPStatus.UNPROCESSABLE_ENTITY)

@@ -26,6 +26,8 @@ from app.module.calendar.model.CalOrganizer import CalOrganizer
 from app.module.calendar.model.enums.AttendeeStatus import AttendeeStatus
 from app.module.calendar.model.enums.CalendarSourceType import CalendarSourceType
 from app.module.calendar.model.enums.ComponentType import ComponentType
+from app.module.calendar.model.enums.CalUserType import CalUserType
+from app.module.calendar.model.CalAttendee import CalAttendee
 from app.module.calendar.model.CalEventReminder import CalEventReminder
 from app.module.calendar.model.CalSyncResult import CalSyncResult
 from app.module.calendar.model.CalSyncStatus import CalSyncStatus
@@ -195,6 +197,72 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         self._share_repo.delete(calendar_key, user_uid)
 
     #
+    # Resource booking - conflict detection
+    #
+    @staticmethod
+    def _get_resource_attendees(event: CalEvent) -> list[CalAttendee]:
+        """Return attendees whose CUTYPE is RESOURCE or ROOM."""
+        return [
+            a for a in event.attendees
+            if a.cutype in (CalUserType.RESOURCE, CalUserType.ROOM)
+        ]
+
+    @staticmethod
+    def _resource_email_set(attendees: list[CalAttendee]) -> set[str]:
+        """Return the set of email addresses for the given attendee list."""
+        return {a.email for a in attendees}
+
+    def _check_resource_conflicts(
+        self, owner_uid: str, event: CalEvent,
+        exclude_event_key: str | None = None,
+    ) -> None:
+        """Check that resources invited to *event* are not already booked elsewhere.
+
+        Raises ERROR_CALENDAR_RESOURCE_CONFLICT if any resource attendee has a
+        conflicting event in any calendar accessible to *owner_uid*. The optional
+        *exclude_event_key* skips a specific event (used when updating an event so
+        the resource attendee's existing booking is not a self-conflict).
+        """
+        resource_attendees: list[CalAttendee] = self._get_resource_attendees(event)
+        if not resource_attendees:
+            return
+
+        resource_emails: set[str] = self._resource_email_set(resource_attendees)
+        start: datetime = event.require_date_start
+        end: datetime = event.require_date_end or start
+
+        # Collect all calendars for the owner
+        calendars: list[CalCalendar] = RepositoryCalendar(self._db).find_all(owner_uid)
+        repo_event: RepositoryEvent = RepositoryEvent(self._db)
+        conflicting: list[str] = []
+
+        for cal in calendars:
+            if not cal.key:
+                continue
+            if cal.key == event.calendar_key and exclude_event_key:
+                # Skip the event being updated within its own calendar
+                continue
+            events_in_cal: list[CalEvent] = repo_event.find_by_calendar(
+                cal.key, start, end, component_type=ComponentType.EVENT,
+            )
+            for existing in events_in_cal:
+                if exclude_event_key and existing.key == exclude_event_key:
+                    continue
+                existing_resource_emails = self._resource_email_set(
+                    self._get_resource_attendees(existing),
+                )
+                overlap = resource_emails & existing_resource_emails
+                if overlap:
+                    conflicting.extend(overlap)
+
+        if conflicting:
+            logger_calendar.info(
+                "Resource conflict for %s in calendars of user %s: %s",
+                sorted(set(conflicting)), owner_uid, event.title,
+            )
+            raise RequestException(error=err.ERROR_CALENDAR_RESOURCE_CONFLICT)
+
+    #
     # Events - CRUD
     #
     def create_event(self, calendar_user: CalendarUser, calendar_key: str, event: CalEvent, organizer: CalOrganizer) -> CalEvent:
@@ -212,6 +280,8 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         if not event.organizer:
             event.organizer = organizer
         event.validate()
+        # Check resource availability before creating
+        self._check_resource_conflicts(calendar_user.owner.uid, event)
         try:
             created: CalEvent = source.insert_event(event)
             # Propagate changes to attendees
@@ -248,6 +318,13 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             # existing detached occurrence). Organizer-content changes are rejected; scope handling
             # lives in the processor, not here.
             return RecurrenceScopeProcessor.process_attendee_edit(source=source, original=event, event_update=event_update)
+
+        # Check resource conflicts if attendees changed
+        if event_update.attendees:
+            self._check_resource_conflicts(
+                calendar_user.owner.uid, event_update,
+                exclude_event_key=event.key,
+            )
 
         try:
             scope_result: ScopeResult = RecurrenceScopeProcessor.process(source=source, original=event, event_update=event_update)
@@ -395,8 +472,10 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         return self._imip.process_reply(calendar_user.owner, ical_bytes, from_email)
 
     def process_imip_request(self, calendar_user: CalendarUser, ical_bytes: bytes, from_email: str) -> CalEvent:
-        """Process an incoming iMIP REQUEST. Delegates to ImipProcessor (acts on the calendar owner)."""
-        #TODO : If no calendar provided, use default one
+        """Process an incoming iMIP REQUEST. Delegates to ImipProcessor (acts on the calendar owner).
+
+        The processor already falls back to the default calendar when no matching event is found.
+        """
         return self._imip.process_request(calendar_user.owner, ical_bytes, from_email)
 
     def process_imip_cancel(self, calendar_user: CalendarUser, ical_bytes: bytes, from_email: str) -> None:

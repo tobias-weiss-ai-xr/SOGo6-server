@@ -435,7 +435,6 @@ class ApiExternalAddressBookSync(MethodView):
         """Trigger a manual sync of the external CardDAV address book.
 
         Returns a job_id; poll GET /jobs/<job_id> until SUCCESS.
-        TODO: Actual sync not yet implemented.
         """
         logger_api.debug("POST /addressbooks/%s/sync user=%s", key, g.user.uid)
         interface: InterfaceApiContactContact = g.inter
