@@ -125,6 +125,7 @@ class SendMailSchema(Schema):
     priority = fields.Integer(required=False, allow_none=True, load_default=None, validate=validate.OneOf([1, 2, 3, 4, 5]), metadata={"description": "Email priority (1=highest, 5=lowest)"})
     is_html = fields.Boolean(required=False, load_default=False, metadata={"description": "If true, create multipart/alternative with both text/plain and text/html; if false, only text/plain"})
     reply_to = fields.String(required=False, allow_none=True, load_default=None, metadata={"description": "Reply-To email address or 'Name <email>' format"})
+    send_at = fields.String(required=False, allow_none=True, load_default=None, metadata={"description": "ISO 8601 datetime for scheduled delivery. If in the future, the email is queued and sent at that time. If empty or in the past, sent immediately.", "example": "2026-08-01T14:00:00.000Z"})
 
     @classmethod
     def example(cls) -> dict:

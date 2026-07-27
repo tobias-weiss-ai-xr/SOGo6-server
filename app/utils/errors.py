@@ -113,6 +113,10 @@ ERROR_MAIL_SAVE_SENT_FAILED  = E("S000363", "Saving Sent Mail To Folder Failed",
 ERROR_MAIL_DELETE_DRAFT_FAILED = E("S000364", "Deleting Draft Mail After Sending Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_UNDO_SEND_NOT_FOUND  = E("S000384", "Pending Send Not Found Or Already Expired", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_UNDO_SEND_EXPIRED    = E("S000385", "Undo Send Window Has Expired", HTTPStatus.GONE)
+ERROR_MAIL_SCHEDULE_SEND_FAILED = E("S000386", "Failed To Schedule Send For Later Delivery", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_MAIL_SCHEDULE_NOT_FOUND        = E("S000387", "Scheduled Send Not Found Or Already Delivered", HTTPStatus.NOT_FOUND)
+ERROR_MAIL_SCHEDULE_IN_DELIVERY      = E("S000388", "Scheduled Send Is Currently Being Delivered", HTTPStatus.CONFLICT)
+ERROR_MAIL_SCHEDULE_MAX_DELAY        = E("S000389", "Scheduled Date Exceeds Maximum Allowed Delay", HTTPStatus.BAD_REQUEST)
 
 # tmp_draft
 ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
