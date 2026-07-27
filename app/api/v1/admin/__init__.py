@@ -6,6 +6,7 @@ from .ApiAdminAuth import blp as admin_auth_api_blueprint
 from .ApiDnsWizard import blp as admin_dns_wizard_api_blueprint
 from .ApiSharedMailbox import blp as admin_shared_mailbox_api_blueprint
 from .ApiAdminCalendar import blp as admin_calendar_api_blueprint
+from .ApiResourceBooking import blp as admin_resource_booking_api_blueprint
 
 from .ApiAuditLog import blp as audit_log_api
 from .ApiDomainBranding import blp as domain_branding_api
@@ -31,4 +32,5 @@ admin_apis : list[Blueprint] = [
     admin_dns_wizard_api_blueprint,
     admin_shared_mailbox_api_blueprint,
     admin_calendar_api_blueprint,
+    admin_resource_booking_api_blueprint,
 ]

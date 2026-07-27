@@ -712,6 +712,41 @@ ALL_PWD_RESET_COL = [COL_ID,
 TABLE_PWD_RESET_TOKENS = Table(name=process_config.SOGO_P_TABLE_PWD_RESET_TOKENS, columns=ALL_PWD_RESET_COL,
                                primary_keys=(COL_ID.name,),)
 
+# ── Bookable Resources ────────────────────────────────────────────────────────
+
+COL_RES_ID = Column(name="id", data_type="str", extra_args={"max_len": 64}, is_unique=True)
+COL_RES_NAME = Column(name="name", data_type="str", extra_args={"max_len": 255})
+COL_RES_DESC = Column(name="description", data_type="text")
+COL_RES_EMAIL = Column(name="email", data_type="str", extra_args={"max_len": 512}, is_unique=True)
+COL_RES_TYPE = Column(name="resource_type", data_type="str", extra_args={"max_len": 32})
+COL_RES_CAPACITY = Column(name="capacity", data_type="int", is_nullable=True)
+COL_RES_LOCATION = Column(name="location", data_type="str", extra_args={"max_len": 512}, is_nullable=True)
+COL_RES_FEATURES = Column(name="features", data_type="list", extra_args={"data_type": "str"}, is_nullable=True)
+COL_RES_IS_ACTIVE = Column(name="is_active", data_type="bool", is_nullable=False)
+COL_RES_BOOKING_POLICY = Column(name="booking_policy", data_type="str", extra_args={"max_len": 32})
+COL_RES_ALLOWED_GROUPS = Column(name="allowed_groups", data_type="list", extra_args={"data_type": "str"}, is_nullable=True)
+COL_RES_AUTO_ACCEPT = Column(name="auto_accept", data_type="bool", is_nullable=False)
+COL_RES_CREATED = Column(name="created_at", data_type="datetime", is_nullable=True)
+COL_RES_UPDATED = Column(name="updated_at", data_type="datetime", is_nullable=True)
+
+ALL_RESOURCE_COL = [COL_RES_ID,
+                     COL_RES_NAME,
+                     COL_RES_DESC,
+                     COL_RES_EMAIL,
+                     COL_RES_TYPE,
+                     COL_RES_CAPACITY,
+                     COL_RES_LOCATION,
+                     COL_RES_FEATURES,
+                     COL_RES_IS_ACTIVE,
+                     COL_RES_BOOKING_POLICY,
+                     COL_RES_ALLOWED_GROUPS,
+                     COL_RES_AUTO_ACCEPT,
+                     COL_RES_CREATED,
+                     COL_RES_UPDATED]
+
+TABLE_RESOURCES = Table(name="sogo6_resources", columns=ALL_RESOURCE_COL,
+                         primary_keys=(COL_RES_ID.name,))
+
 ALL_TABLES = [TABLE_SETTINGS,
               TABLE_DOMAIN,
               TABLE_RULES,
@@ -729,4 +764,5 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_CONTACT_SHARE,
               TABLE_MFA_TOTP,
               TABLE_MFA_WEBAUTHN,
-              TABLE_PWD_RESET_TOKENS]
+              TABLE_PWD_RESET_TOKENS,
+              TABLE_RESOURCES]
