@@ -155,3 +155,54 @@ class CalendarImportUploadSchema(Schema):
         required=True,
         metadata={"type": "string", "format": "binary", "description": "The .ics file to import."},
     )
+
+
+#
+# Sharing schemas
+#
+
+_SHARE_LEVEL_VALUES = ["none", "view_date_time", "view_all", "respond", "modify_if_org", "modify"]
+
+
+class ShareCreateSchema(Schema):
+    """Request body for adding a share to a calendar."""
+
+    user_uid            = fields.String(required=True, metadata={"example": "alice@example.org", "description": "The uid (email) of the user to share with."})
+    public_level        = fields.String(load_default="view_all", validate=validate.OneOf(_SHARE_LEVEL_VALUES),
+                                         metadata={"example": "view_all"})
+    confidential_level  = fields.String(load_default="none", validate=validate.OneOf(_SHARE_LEVEL_VALUES),
+                                         metadata={"example": "none"})
+    private_level       = fields.String(load_default="none", validate=validate.OneOf(_SHARE_LEVEL_VALUES),
+                                         metadata={"example": "none"})
+    can_create          = fields.Boolean(load_default=False, metadata={"description": "Allow the user to create events."})
+    can_delete          = fields.Boolean(load_default=False, metadata={"description": "Allow the user to delete events."})
+
+
+class ShareSchema(Schema):
+    """Representation of a single share entry."""
+
+    user_uid            = fields.String()
+    public_level        = fields.String()
+    confidential_level  = fields.String()
+    private_level       = fields.String()
+    can_create          = fields.Boolean()
+    can_delete          = fields.Boolean()
+
+
+class ShareListDataSchema(Schema):
+    """Data payload for a list of shares."""
+
+    shares      = fields.List(fields.Nested(ShareSchema))
+    total_count = fields.Integer()
+
+
+class ShareListResponseSchema(ApiBaseResponse):
+    """Response schema for a list of shares."""
+
+    data = fields.Nested(ShareListDataSchema, allow_none=True)
+
+
+class ShareResponseSchema(ApiBaseResponse):
+    """Response schema for a single share operation (create/delete)."""
+
+    data = fields.Nested(ShareSchema, allow_none=True)

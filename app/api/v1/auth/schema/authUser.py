@@ -16,6 +16,7 @@ class AuthUserBasicPostSchema(Schema):
     """
     username = fields.String(required=True)
     password = fields.String(required=True)
+    mfa_code = fields.String(load_default=None, dump_default=None)
 
     @classmethod
     def example(cls) -> dict:

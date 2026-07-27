@@ -55,7 +55,7 @@ def patch_module_on_interface(monkeypatch, fake_module):
     """Patch ModuleAdminUser in InterfaceApiAdminUser module."""
     monkeypatch.setattr(
         "app.interface.admin.InterfaceApiAdminUser.ModuleAdminUser",
-        lambda: fake_module,
+        lambda **kwargs: fake_module,
     )
 
 

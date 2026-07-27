@@ -8,6 +8,7 @@ from app.utils.db.Condition import Order
 if TYPE_CHECKING:
     from app.module.contact.model.CardAddressBook import CardAddressBook
     from app.module.contact.model.CardContact import CardContact
+    from app.module.contact.model.CardContactSyncMeta import CardContactSyncMeta
     from app.module.contact.model.CardList import CardList
 
 
@@ -104,3 +105,11 @@ class ContactSource(ABC):
     @abstractmethod
     def delete_list(self, key: str) -> None:
         """Soft-delete a distribution list by its opaque key and clear its membership."""
+
+    @abstractmethod
+    def delete_by_key(self, key: str) -> None:
+        """Soft-delete a contact by its opaque key (for CardDAV sync)."""
+
+    @abstractmethod
+    def get_sync_metadata(self) -> list[CardContactSyncMeta]:
+        """Return sync metadata (key, uid, updated_at) for every non-deleted contact in this source."""

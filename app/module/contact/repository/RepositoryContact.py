@@ -13,6 +13,9 @@ from app.utils.datetime.DateTimeUtils import to_utc
 from app.utils.db.Condition import AndCondition, Condition, EqualCondition, FullTextCondition, Order, OrCondition, TrueCondition
 from app.utils.db.FullTextValue import FullTextValue
 from app.utils.exceptions import BugException, RequestException
+
+if TYPE_CHECKING:
+    from app.module.contact.model.CardContactSyncMeta import CardContactSyncMeta
 from app.utils.logger.logger import logger_contact
 from app.utils.maths.sogo_hash import generate_uuid
 from app.utils.strings import strip_accents
@@ -344,6 +347,36 @@ class RepositoryContact:
             condition=TrueCondition(),
         )
         return {row[0] for row in rows}
+
+    def find_sync_metadata(self, addressbook_key: str) -> list[CardContactSyncMeta]:
+        """Return sync metadata (key, uid, updated_at, rev) for every non-deleted contact in an address book.
+
+        Used by the CardDAV sync engine to compare local state with remote vCard data.
+        """
+        rows = self._db.select_from_table(
+            table_name=tbl.TABLE_CONTACT.name,
+            column_tuple=(tbl.COL_CT_KEY.name, tbl.COL_CT_UID.name, tbl.COL_CT_UPDATED_AT.name, tbl.COL_CT_CONTACT_DATA.name),
+            condition=AndCondition(
+                EqualCondition(tbl.COL_CT_ADDRESSBOOK_KEY.name, addressbook_key),
+                EqualCondition(tbl.COL_CT_IS_DELETED.name, False),
+            ),
+        )
+        result: list[CardContactSyncMeta] = []
+        for row in rows:
+            meta = CardContactSyncMeta(
+                key=row[0],
+                uid=row[1],
+                updated_at=row[2],
+            )
+            # Parse rev from contact_data JSON if available
+            if row[3]:
+                try:
+                    data = row[3] if isinstance(row[3], dict) else {}
+                    meta.rev = data.get("rev") if isinstance(data, dict) else None
+                except (TypeError, ValueError):
+                    pass
+            result.append(meta)
+        return result
 
     def all_photo_values(self) -> set[str]:
         """Return every photo value referenced across all contacts (used to detect orphan media blobs).

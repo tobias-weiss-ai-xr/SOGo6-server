@@ -149,6 +149,101 @@ class InterfaceApiAdminConfig:
             return create_api_base_response(ex.messages, err.ERROR_VALIDATION_ERROR)
         return create_api_base_response(ret_values)
 
+    def get_all_setting_theme(self) -> tuple[dict, int]:
+        """
+        Return the theme settings
+        """
+        ret = self.module.get_theme_settings()
+        return create_api_base_response(ret)
+
+    def get_list_of_rule(self) -> tuple[dict, int]:
+        """
+        Return the list of rules
+        """
+        ret = self.module.get_rules_list()
+        return create_api_base_response(ret)
+
+    def get_rule_settings(self, rule_id: int) -> tuple[dict, int]:
+        """
+        Return the settings for a specific rule
+
+        :param rule_id: Rule id
+        :type rule_id: int
+        :return: (response, status_code)
+        :rtype: tuple[dict, int]
+        """
+        try:
+            ret = self.module.get_one_rule(rule_id)
+        except RequestException as ex:
+            return create_api_base_response(str(ex), ex.error)
+        return create_api_base_response(ret)
+
+    def post_new_rule(self, new_data: dict) -> tuple[dict, int]:
+        """
+        Create a new rule
+
+        :param new_data: dict with rule_name, rule_description, rule_domains, rule_setting
+        :type new_data: dict
+        :return: (response, status_code)
+        :rtype: tuple[dict, int]
+        """
+        try:
+            _, ret_values = self.module.create_rule(new_data)
+        except RequestException as ex:
+            return create_api_base_response(str(ex), ex.error)
+        except ValidationError as ex:
+            return create_api_base_response(ex.messages, err.ERROR_VALIDATION_ERROR)
+        return create_api_base_response(ret_values)
+
+    def update_rule_settings(self, rule_id: int, new_data: dict) -> tuple[dict, int]:
+        """
+        Update a rule
+
+        :param rule_id: Rule id
+        :type rule_id: int
+        :param new_data: dict with fields to update
+        :type new_data: dict
+        :return: (response, status_code)
+        :rtype: tuple[dict, int]
+        """
+        try:
+            _, ret_values = self.module.update_one_rule(rule_id, new_data)
+        except RequestException as ex:
+            return create_api_base_response(str(ex), ex.error)
+        except ValidationError as ex:
+            return create_api_base_response(ex.messages, err.ERROR_VALIDATION_ERROR)
+        return create_api_base_response(ret_values)
+
+    def delete_rule_settings(self, rule_id: int) -> tuple[dict, int]:
+        """
+        Delete a rule
+
+        :param rule_id: Rule id
+        :type rule_id: int
+        :return: (response, status_code)
+        :rtype: tuple[dict, int]
+        """
+        try:
+            self.module.delete_one_rule(rule_id)
+        except RequestException as ex:
+            return create_api_base_response(str(ex), ex.error)
+        return {}, 200
+
+    def update_all_setting_theme(self, new_param: dict) -> tuple[dict, int]:
+        """
+        Update the theme settings
+
+        :param new_param: new parameters
+        :type new_param: dict
+        :return: (response, status_code)
+        :rtype: tuple[dict, int]
+        """
+        try:
+            _, ret_values = self.module.update_theme_settings(new_param)
+        except ValidationError as ex:
+            return create_api_base_response(ex.messages, err.ERROR_VALIDATION_ERROR)
+        return create_api_base_response(ret_values)
+
     def delete_domain_settings(self, domain_id: str) -> tuple[dict, int]:
         """
         Delete settings for a specific domain

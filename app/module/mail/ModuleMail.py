@@ -633,6 +633,244 @@ class ModuleMail:
             "mail_type_data": mail_type_data
         }
 
+    def search_mails(self, account_id: str, search_params: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+        """Search mails across one or more folders.
+
+        Fetches mail headers from each folder and applies search criteria
+        in-memory. This approach avoids requiring a low-level IMAP SEARCH
+        method on the client object and works with the existing
+        ``fetch_all_mails_without_content`` / ``fetch_all_mails_with_content``.
+
+        If ``in_body`` is True or ``body`` filter is set, mails are fetched
+        WITH content; otherwise only headers are fetched for performance.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param search_params: Dictionary with search parameters
+            (query, folders, in_body, from, to, subject, body, bcc,
+             with_attachments, unseen_only, flagged_only,
+             date_from, date_to, page, per_page, sort_by, sort_order)
+        :type search_params: dict[str, Any]
+        :return: A tuple of (list of mail dicts, total count)
+        :rtype: tuple[list[dict[str, Any]], int]
+        :raises RequestException: If searching fails
+        """
+        client = self._open_client_for(account_id)
+
+        # Determine which folders to search
+        folders_raw = search_params.get("folders") or "INBOX"
+        if isinstance(folders_raw, list):
+            folder_list: list[str] = [f.strip() for f in folders_raw if f and isinstance(f, str)]
+        elif isinstance(folders_raw, str):
+            folder_list = [f.strip() for f in folders_raw.split(",") if f.strip()]
+        else:
+            folder_list = ["INBOX"]
+
+        # Decide whether we need content (body) or just headers
+        need_content: bool = (
+            search_params.get("in_body", False)
+            or bool(search_params.get("body"))
+        )
+
+        query = search_params.get("query", "").lower() if search_params.get("query") else ""
+        query_in_body = query and search_params.get("in_body", False)
+        from_filter = (search_params.get("from") or "").lower()
+        to_filter = (search_params.get("to") or "").lower()
+        subject_filter = (search_params.get("subject") or "").lower()
+        body_filter = (search_params.get("body") or "").lower()
+        bcc_filter = (search_params.get("bcc") or "").lower()
+        with_attachments = search_params.get("with_attachments", False)
+        unseen_only = search_params.get("unseen_only", False)
+        flagged_only = search_params.get("flagged_only", False)
+        date_from = search_params.get("date_from")
+        date_to = search_params.get("date_to")
+
+        # Pagination
+        page = search_params.get("page", 1)
+        per_page = search_params.get("per_page", 20)
+
+        all_results: list[dict[str, Any]] = []
+
+        # Search each folder
+        search_limit = 500  # max mails to scan per folder for search
+        for folder_name in folder_list:
+            try:
+                # Fetch mails (without content for performance when possible)
+                if need_content:
+                    mail_iter = client.fetch_all_mails_with_content(
+                        folder_name,
+                        number_of_mails=search_limit,
+                        offset=1,
+                    )
+                else:
+                    mail_iter = client.fetch_all_mails_without_content(
+                        folder_name,
+                        number_of_mails=search_limit,
+                        offset=1,
+                    )
+
+                total_in_folder: int = 0
+                for raw_entry in mail_iter:
+                    if total_in_folder == 0:
+                        total_in_folder = raw_entry.get("nb_mails", 0)
+                        continue
+
+                    parsed = self._parse_mail(raw_entry)
+                    parsed["folder"] = folder_name
+
+                    # Apply search criteria
+                    if not self._matches_search(
+                        parsed, query, query, query_in_body,
+                        from_filter, to_filter, subject_filter,
+                        body_filter, bcc_filter,
+                        with_attachments, unseen_only, flagged_only,
+                        date_from, date_to,
+                    ):
+                        continue
+
+                    # Clean content from response if we fetched it for body search
+                    if need_content:
+                        parsed.pop("contents", None)
+                        parsed.pop("attachments", None)
+                        parsed.pop("certificates", None)
+                        parsed.pop("mail_type_data", None)
+
+                    all_results.append(parsed)
+
+            except Exception as ex:
+                logger_api.warning(
+                    "Search failed for folder %s: %s",
+                    folder_name, str(ex),
+                )
+                continue
+
+        # Sort results
+        sort_by = search_params.get("sort_by", "date")
+        sort_order = search_params.get("sort_order", "desc")
+        reverse = sort_order == "desc"
+
+        if sort_by == "date":
+            all_results.sort(key=lambda m: m.get("date", ""), reverse=reverse)
+        elif sort_by == "subject":
+            all_results.sort(key=lambda m: m.get("subject", "").lower(), reverse=reverse)
+        elif sort_by == "from":
+            all_results.sort(
+                key=lambda m: (m.get("from") or {}).get("name", "").lower(),
+                reverse=reverse,
+            )
+        elif sort_by == "size":
+            all_results.sort(key=lambda m: m.get("size", 0), reverse=reverse)
+
+        total_count = len(all_results)
+
+        # Apply pagination
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_results = all_results[start:end]
+
+        return page_results, total_count
+
+    @staticmethod
+    def _matches_search(
+        parsed: dict[str, Any],
+        query: str,
+        query_text: str,
+        query_in_body: bool,
+        from_filter: str,
+        to_filter: str,
+        subject_filter: str,
+        body_filter: str,
+        bcc_filter: str,
+        with_attachments: bool,
+        unseen_only: bool,
+        flagged_only: bool,
+        date_from: str | None,
+        date_to: str | None,
+    ) -> bool:
+        """Check if a parsed mail matches the search criteria."""
+        # Query search: check subject, from, to
+        if query:
+            subject = (parsed.get("subject") or "").lower()
+            from_name = ((parsed.get("from") or {}).get("name") or "").lower()
+            from_email = ((parsed.get("from") or {}).get("email") or "").lower()
+            to_list = parsed.get("to") or []
+            to_text = " ".join(
+                (t.get("name") or "") + " " + (t.get("email") or "")
+                for t in to_list
+            ).lower()
+
+            matched = (
+                query in subject
+                or query in from_name
+                or query in from_email
+                or query in to_text
+            )
+
+            if query_in_body and not matched:
+                body_text = (parsed.get("body") or "").lower()
+                for content in parsed.get("contents", []):
+                    body_text += (content.get("content") or "").lower()
+                matched = matched or query in body_text
+
+            if not matched:
+                return False
+
+        # Field-specific filters
+        if from_filter:
+            from_name = ((parsed.get("from") or {}).get("name") or "").lower()
+            from_email = ((parsed.get("from") or {}).get("email") or "").lower()
+            if from_filter not in from_name and from_filter not in from_email:
+                return False
+
+        if to_filter:
+            to_list = parsed.get("to") or []
+            to_text = " ".join(
+                (t.get("name") or "") + " " + (t.get("email") or "")
+                for t in to_list
+            ).lower()
+            if to_filter not in to_text:
+                return False
+
+        if subject_filter:
+            subject = (parsed.get("subject") or "").lower()
+            if subject_filter not in subject:
+                return False
+
+        if body_filter:
+            body_text = ""
+            for content in parsed.get("contents", []):
+                body_text += (content.get("content") or "").lower()
+            if body_filter not in body_text:
+                return False
+
+        if bcc_filter:
+            bcc_list = parsed.get("bcc") or []
+            bcc_text = " ".join(
+                (t.get("name") or "") + " " + (t.get("email") or "")
+                for t in bcc_list
+            ).lower()
+            if bcc_filter not in bcc_text:
+                return False
+
+        # Boolean flags
+        if with_attachments and not parsed.get("has_attachment", False):
+            return False
+        if unseen_only and parsed.get("seen", True):
+            return False
+        if flagged_only and not parsed.get("flagged", False):
+            return False
+
+        # Date range
+        if date_from or date_to:
+            mail_date = parsed.get("date", "")
+            # Parse date to compare (simple string comparison works for ISO dates)
+            if date_from and mail_date < date_from:
+                return False
+            if date_to and mail_date > date_to:
+                return False
+
+        return True
+
     def get_folder_mails(self, account_id: str, folder_name: str, collection_param: CollectionPaginateArgs) -> tuple[list[dict[str, Any]], int]:
         """Retrieve a list of mails in a specific folder with full details.
 
@@ -1422,6 +1660,87 @@ class ModuleMail:
         """
         client = self._open_client_for(account_id)
         client.save_mail_to_folder(message, folder_type)
+
+    def batch_mail_action(self, account_id: str, folder_name: str, batch_data: dict) -> dict[str, Any]:
+        """Perform a batch action on multiple mails.
+
+        Processes each mail UID in batch_data["mail_uids"] using the same
+        single-mail action logic. For delete operations the more efficient
+        delete_mails() is used instead.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param folder_name: The name of the folder
+        :type folder_name: str
+        :param batch_data: Dictionary containing 'action', 'mail_uids' and optional 'data'
+        :type batch_data: dict
+        :return: Result dict with processed mail UIDs
+        :rtype: dict[str, Any]
+        :raises RequestException: If the action is invalid or processing fails
+        """
+        action: str = batch_data["action"]
+        mail_uids: list[int] = batch_data["mail_uids"]
+        data = batch_data.get("data")
+
+        if not mail_uids:
+            return {"processed_ids": [], "action": action}
+
+        if action == "delete":
+            # Use the efficient bulk delete
+            self.delete_mails(account_id, folder_name, [str(uid) for uid in mail_uids])
+            return {"processed_ids": mail_uids, "action": action}
+
+        # For other actions, process each mail individually
+        processed_ids: list[int] = []
+        failed_ids: list[dict] = []
+
+        client = self._open_client_for(account_id)
+
+        for mail_uid in mail_uids:
+            try:
+                if action == "tag":
+                    self._action_tag(client, folder_name, str(mail_uid), data)
+                elif action == "untag":
+                    self._action_untag(client, folder_name, str(mail_uid), data)
+                elif action == "move":
+                    self._action_move(client, folder_name, str(mail_uid), data)
+                elif action == "spam":
+                    self._action_spam(client, folder_name, str(mail_uid))
+                elif action == "ham":
+                    self._action_ham(client, folder_name, str(mail_uid))
+                elif action == "copy":
+                    self._action_copy(client, folder_name, str(mail_uid), data)
+                elif action == "mark_read":
+                    client.add_flags_to_mail(folder_name, str(mail_uid), ['\\Seen'])
+                    processed_ids.append(mail_uid)
+                    continue
+                elif action == "mark_unread":
+                    client.remove_flags_to_mail(folder_name, str(mail_uid), ['\\Seen'])
+                    processed_ids.append(mail_uid)
+                    continue
+                elif action == "mark_flagged":
+                    client.add_flags_to_mail(folder_name, str(mail_uid), ['\\Flagged'])
+                    processed_ids.append(mail_uid)
+                    continue
+                elif action == "mark_unflagged":
+                    client.remove_flags_to_mail(folder_name, str(mail_uid), ['\\Flagged'])
+                    processed_ids.append(mail_uid)
+                    continue
+                else:
+                    raise RequestException(f"Invalid batch action: {action}", err.ERROR_INVALID_ACTION)
+                processed_ids.append(mail_uid)
+            except RequestException as ex:
+                logger_mail_server.error(
+                    "Batch action '%s' failed for mail %s in folder %s: %s",
+                    action, mail_uid, folder_name, str(ex)
+                )
+                failed_ids.append({"uid": mail_uid, "error": str(ex)})
+
+        return {
+            "processed_ids": processed_ids,
+            "failed_ids": failed_ids,
+            "action": action,
+        }
 
     def perform_mail_action(self, account_id:str, folder_name: str, mail_uid: str, action_data: dict) -> dict[str, Any]:
         """Perform an action on a specific mail.

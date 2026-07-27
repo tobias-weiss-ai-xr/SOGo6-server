@@ -46,7 +46,7 @@ class ClientSmtp(ClientOutgoing):
                 self.connection = smtplib.SMTP(self.server, self.port)
                 self.connection.starttls()
             elif self.encryption == cs.SOCKET_ENC_IMPLICIT_TLS:
-                self.connection = smtplib.SMTP_SSL(self.server, self.port) #TODO check
+                self.connection = smtplib.SMTP_SSL(self.server, self.port)
             else:
                 raise BugException(f"Unknown encryption given: {self.encryption}")
 
@@ -96,7 +96,7 @@ class ClientSmtp(ClientOutgoing):
                 credentials = base64.b64encode(
                     f"{username}\x00{authcid}\x00{password}".encode()
                 ).decode()
-                self.connection.docmd("AUTH", f"PLAIN {credentials}") #TODO add SecretString (in ldap branche) to protect crendetials to be logged
+                self.connection.docmd("AUTH", f"PLAIN {credentials}")
 
             elif self.auth_mech == "xoauth2":
                 auth_string = f"user={username}\x01auth=Bearer {password}\x01\x01"

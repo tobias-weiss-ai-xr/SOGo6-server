@@ -121,6 +121,197 @@ class ModuleAdminConfig:
 
         return self._get_setting_from_table_settings((tbl.COL_SETTINGS_DOMAIN_DEFAULT.name,))[0]
 
+    def get_theme_settings(self) -> dict:
+        """
+        Return the theme settings or an empty dict if there is not
+
+        :return: dict with current theme settings
+        :rtype: dict
+        """
+        return self._get_setting_from_table_settings((tbl.COL_SETTINGS_THEME.name,))[0]
+
+    def get_rules_list(self) -> list[dict]:
+        """
+        Return the list of all rules.
+
+        :return: List of dicts with id and name for each rule
+        :rtype: list[dict]
+        """
+        self.sogo_db_manager.connect()
+        result = list(self.sogo_db_manager.select_from_table(
+            table_name=tbl.TABLE_RULES.name,
+            column_tuple=(tbl.COL_ID.name, tbl.COL_RULE_NAME.name),
+            condition=TrueCondition(),
+        ))
+        return [{"id": row[0], "name": row[1]} for row in result]
+
+    def get_one_rule(self, rule_id: int) -> dict:
+        """
+        Get a single rule by its id.
+
+        :param rule_id: Rule id
+        :type rule_id: int
+        :raises RequestException: if rule not found
+        :return: dict with rule data
+        :rtype: dict
+        """
+        self.sogo_db_manager.connect()
+        cond = EqualCondition(param_name=tbl.COL_ID.name, param_value=rule_id)
+        result = list(self.sogo_db_manager.select_from_table(
+            table_name=tbl.TABLE_RULES.name,
+            column_tuple=tuple(col.name for col in tbl.TABLE_RULES.columns),
+            condition=cond,
+        ))
+        if len(result) == 0:
+            raise RequestException(f"Rule with id {rule_id} not found", err.ERROR_RULE_NOT_FOUND)
+        row = result[0]
+        col_names = [col.name for col in tbl.TABLE_RULES.columns]
+        ret = dict(zip(col_names, row))
+        if tbl.COL_RULE_SETTINGS.name in ret and isinstance(ret[tbl.COL_RULE_SETTINGS.name], str):
+            ret[tbl.COL_RULE_SETTINGS.name] = json.loads(ret[tbl.COL_RULE_SETTINGS.name])
+        if tbl.COL_RULE_DOMAINS.name in ret and isinstance(ret[tbl.COL_RULE_DOMAINS.name], str):
+            ret[tbl.COL_RULE_DOMAINS.name] = json.loads(ret[tbl.COL_RULE_DOMAINS.name])
+        return ret
+
+    def create_rule(self, data: dict) -> tuple[str, dict]:
+        """
+        Create a new rule.
+
+        :param data: dict with rule_name, rule_description, rule_domains, rule_setting
+        :type data: dict
+        :return: (error_code, result_dict)
+        :rtype: tuple[str, dict]
+        """
+        self.sogo_db_manager.connect()
+
+        rule_name = data["rule_name"]
+        rule_description = data.get("rule_description", "")
+        rule_domains = data.get("rule_domains", [])
+        rule_setting = data.get("rule_setting", {})
+
+        # Check unique name
+        cond = EqualCondition(param_name=tbl.COL_RULE_NAME.name, param_value=rule_name)
+        existing = list(self.sogo_db_manager.select_from_table(
+            table_name=tbl.TABLE_RULES.name,
+            column_tuple=(tbl.COL_ID.name,),
+            condition=cond,
+        ))
+        if existing:
+            raise RequestException(f"Rule name '{rule_name}' already exists", err.ERROR_RULE_NAME_TAKEN)
+
+        value_hash = get_unique_token(HASH_SIZE_DOMAIN)
+
+        insert_values = [[
+            value_hash,
+            rule_name,
+            rule_description,
+            rule_domains,
+            rule_setting,
+        ]]
+        columns = (
+            tbl.COL_HASH.name,
+            tbl.COL_RULE_NAME.name,
+            tbl.COL_RULE_DESCRIPTION.name,
+            tbl.COL_RULE_DOMAINS.name,
+            tbl.COL_RULE_SETTINGS.name,
+        )
+
+        try:
+            row_updated = self.sogo_db_manager.insert_in_table(
+                table_name=tbl.TABLE_RULES.name,
+                column_tuple=columns,
+                values_tuple=insert_values,
+            )
+        except BugException:
+            value_hash = get_unique_token(HASH_SIZE_DOMAIN + 1)
+            insert_values[0][0] = value_hash
+            row_updated = self.sogo_db_manager.insert_in_table(
+                table_name=tbl.TABLE_RULES.name,
+                column_tuple=columns,
+                values_tuple=insert_values,
+            )
+
+        if row_updated != 1:
+            logger.error("Failed to create rule, rows affected: %s", row_updated)
+            raise BugException(f"Failed to create rule, rows affected: {row_updated}", err.ERROR_UNKOWN)
+
+        # Fetch the inserted rule to get its auto-generated id
+        cond = EqualCondition(param_name=tbl.COL_HASH.name, param_value=value_hash)
+        result = list(self.sogo_db_manager.select_from_table(
+            table_name=tbl.TABLE_RULES.name,
+            column_tuple=(tbl.COL_ID.name,),
+            condition=cond,
+        ))
+        rule_id = result[0][0] if result else None
+
+        return err.ERROR_NO_ERROR.c, {
+            "id": rule_id,
+            "hash": value_hash,
+            "rule_name": rule_name,
+            "rule_description": rule_description,
+            "rule_domains": rule_domains,
+            "rule_setting": rule_setting,
+        }
+
+    def update_one_rule(self, rule_id: int, new_param: dict) -> tuple[str, dict]:
+        """
+        Update a rule.
+
+        :param rule_id: Rule id
+        :type rule_id: int
+        :param new_param: dict with fields to update
+        :type new_param: dict
+        :return: (error_code, result_dict)
+        :rtype: tuple[str, dict]
+        """
+        self.sogo_db_manager.connect()
+
+        stored = self.get_one_rule(rule_id)
+
+        # Merge patch
+        for key in ("rule_name", "rule_description", "rule_domains", "rule_setting"):
+            if key in new_param:
+                stored[key] = new_param[key]
+
+        col_names = []
+        values = []
+        for key in ("rule_name", "rule_description", "rule_domains", "rule_setting"):
+            col_names.append(key)
+            values.append(stored[key])
+
+        cond = EqualCondition(param_name=tbl.COL_ID.name, param_value=rule_id)
+        row_updated = self.sogo_db_manager.update_in_table(
+            table_name=tbl.TABLE_RULES.name,
+            column_tuple=tuple(col_names),
+            values_list=values,
+            condition=cond,
+        )
+
+        if row_updated != 1:
+            logger.error("Failed to update rule %s, rows affected: %s", rule_id, row_updated)
+            raise BugException(f"Failed to update rule {rule_id}, rows affected: {row_updated}", err.ERROR_UNKOWN)
+
+        return err.ERROR_NO_ERROR.c, stored
+
+    def delete_one_rule(self, rule_id: int) -> int:
+        """
+        Delete a rule.
+
+        :param rule_id: Rule id
+        :type rule_id: int
+        :raises RequestException: if rule not found
+        :return: number of deleted rows
+        :rtype: int
+        """
+        self.sogo_db_manager.connect()
+
+        # Verify existence
+        self.get_one_rule(rule_id)
+
+        cond = EqualCondition(param_name=tbl.COL_ID.name, param_value=rule_id)
+        deleted = self.sogo_db_manager.delete_row_in_table(tbl.TABLE_RULES.name, cond, expected_row=1)
+        return deleted
+
     def get_both_system_and_default_domain_settings(self) -> tuple[dict, dict]:
         """
         Return a tuple of both system settings and default domain settings
@@ -338,6 +529,70 @@ class ModuleAdminConfig:
         """
 
         return self._update_setting_in_table_settings(new_param, tbl.COL_SETTINGS_DOMAIN_DEFAULT.name, get_all_domain_schemas)
+
+    def update_theme_settings(self, new_param: dict) -> tuple[str, dict]:
+        """
+        Update the theme settings.
+        Accepts a dict of theme variables (e.g. {"primary": "#123456", ...}).
+
+        :param new_param: values for the theme settings
+        :type new_param: dict
+        :return: (error_code, new_values)
+        :rtype: tuple[str, dict]
+        """
+        self.sogo_db_manager.connect()
+
+        cond_select = NotEqualCondition(param_name=tbl.COL_SETTINGS_UNIQUE.name, param_value=0)
+        result = list(self.sogo_db_manager.select_from_table(
+            table_name=tbl.TABLE_SETTINGS.name,
+            column_tuple=(tbl.COL_SETTINGS_THEME.name,),
+            condition=cond_select
+        ))
+        size = len(result)
+
+        values: dict = {}
+        if size == 0:
+            # First-time setup — insert row with theme column
+            values = new_param
+            values_tuple = [1, {}, {}, values]
+            ret = self.sogo_db_manager.insert_in_table(
+                table_name=tbl.TABLE_SETTINGS.name,
+                column_tuple=(
+                    tbl.COL_SETTINGS_UNIQUE.name,
+                    tbl.COL_SETTINGS_SYSTEM.name,
+                    tbl.COL_SETTINGS_DOMAIN_DEFAULT.name,
+                    tbl.COL_SETTINGS_THEME.name,
+                ),
+                values_tuple=[values_tuple],
+            )
+        elif size == 1:
+            current: dict = result[0][0] or {}
+            # JSON Merge Patch
+            current.update(new_param)
+            values = current
+
+            cond_update = EqualCondition(param_name=tbl.COL_SETTINGS_UNIQUE.name, param_value=1)
+            ret = self.sogo_db_manager.update_in_table(
+                table_name=tbl.TABLE_SETTINGS.name,
+                column_tuple=(tbl.COL_SETTINGS_THEME.name,),
+                values_list=[values],
+                condition=cond_update,
+            )
+        else:
+            logger.error("Table %s has more than one row (%s)", tbl.TABLE_SETTINGS.name, size)
+            raise AggravatedException(
+                f"Table {tbl.TABLE_SETTINGS.name} has more than one row ({size})",
+                err.ERROR_TABLE_SYSTEM_NOT_UNIQUE,
+            )
+
+        if ret != 1:
+            logger.error("Failed to update theme settings, rows affected: %s", ret)
+            raise BugException(
+                f"Failed to update theme settings, rows affected: {ret}",
+                err.ERROR_TABLE_SYSTEM_NOT_UNIQUE,
+            )
+
+        return err.ERROR_NO_ERROR.c, values
 
     def create_domain_settings(self, new_param: dict) -> tuple[str, dict]:
         """

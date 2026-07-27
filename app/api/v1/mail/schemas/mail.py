@@ -365,6 +365,164 @@ class MailReplyResponseSchema(MailDetailResponseSchema):
         return base
 
 
+class MailBatchActionSchema(Schema):
+    """
+    Schema for batch action on multiple mails.
+    """
+    action = fields.String(
+        required=True,
+        validate=validate.OneOf(['delete', 'move', 'spam', 'ham', 'tag', 'untag', 'copy',
+                                  'mark_read', 'mark_unread', 'mark_flagged', 'mark_unflagged'])
+    )
+    mail_uids = fields.List(fields.Integer(), required=True)
+    data = fields.Raw(required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        """Example data for batch mail action.
+
+        :return: Example batch action payload
+        :rtype: dict
+        """
+        return {
+            "action": "move",
+            "mail_uids": [1, 2, 3],
+            "data": "Archive"
+        }
+
+
+class MailSearchQuerySchema(Schema):
+    """Schema for mail search query parameters."""
+
+    query = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Search text across subject, from, to, and optionally body"}
+    )
+    folders = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Comma-separated list of folders to search in (default: INBOX)"}
+    )
+    in_body = fields.Boolean(
+        load_default=False,
+        metadata={"description": "Search in message body as well"}
+    )
+    from_field = fields.String(
+        data_key="from",
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by sender email or name"}
+    )
+    to_field = fields.String(
+        data_key="to",
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by recipient email or name"}
+    )
+    subject = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by subject"}
+    )
+    body = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by body content"}
+    )
+    bcc = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Filter by BCC field"}
+    )
+    with_attachments = fields.Boolean(
+        load_default=False,
+        metadata={"description": "Only mails with attachments"}
+    )
+    unseen_only = fields.Boolean(
+        load_default=False,
+        metadata={"description": "Only unseen mails"}
+    )
+    flagged_only = fields.Boolean(
+        load_default=False,
+        metadata={"description": "Only flagged mails"}
+    )
+    date_from = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Start date for filter (YYYY-MM-DD)"}
+    )
+    date_to = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "End date for filter (YYYY-MM-DD)"}
+    )
+    page = fields.Int(
+        validate=validate.Range(min=1),
+        load_default=1,
+    )
+    per_page = fields.Int(
+        validate=validate.Range(min=1, max=100),
+        load_default=20,
+    )
+    sort_by = fields.String(
+        required=False,
+        allow_none=True,
+        metadata={"description": "Sort by field (date, size, subject, from)"}
+    )
+    sort_order = fields.String(
+        load_default="desc",
+        validate=validate.OneOf(["asc", "desc"]),
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        """Example data for mail search.
+
+        :return: Example search query
+        :rtype: dict
+        """
+        return {
+            "query": "meeting tomorrow",
+            "folders": "INBOX,Sent",
+            "in_body": True,
+            "page": 1,
+            "per_page": 20,
+        }
+
+
+class MailSearchResponseSchema(ApiBaseResponse):
+    """
+    Schema for GET /mailboxes/<account_id>/search response
+    """
+    data = fields.List(fields.Dict(), required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        """Example response for mail search.
+
+        :return: Example search response
+        :rtype: dict
+        """
+        return {
+            "error_code": 0,
+            "error_msg": "",
+            "data": [
+                {
+                    "uid": "42",
+                    "folder": "INBOX",
+                    "size": 12543,
+                    "seen": False,
+                    "flagged": False,
+                    "subject": "Meeting Tomorrow",
+                    "from": {"name": "Alice Smith", "email": "alice@example.com"},
+                    "to": [{"name": "Bob Jones", "email": "bob@example.com"}],
+                    "date": "Tue, 17 Dec 2024 14:30:00 +0100",
+                }
+            ]
+        }
+
+
 class MailListQuerySchema(Schema):
     """Schema for mail list query parameters."""
 

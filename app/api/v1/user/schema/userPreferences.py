@@ -87,3 +87,41 @@ class UserPreferencesPatch(Schema):
                 }
             }
         }
+
+
+class UserPasswordChangeSchema(Schema):
+    """
+    Schema for POST /profile/password request body.
+    """
+    current_password = fields.String(
+        required=True,
+        metadata={"description": "The user's current (existing) password for verification"},
+    )
+    new_password = fields.String(
+        required=True,
+        metadata={"description": "The new password the user wants to set"},
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "current_password": "currentPass123!",
+            "new_password": "newSecurePass456!",
+        }
+
+
+class UserPasswordChangeResponseSchema(ApiBaseResponse):
+    """
+    Schema for POST /profile/password response.
+    """
+    data = fields.Dict(required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {
+                "changed": True,
+            },
+        }

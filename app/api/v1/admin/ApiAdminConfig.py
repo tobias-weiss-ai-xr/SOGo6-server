@@ -70,6 +70,32 @@ class ApiAdminConfigSystem(MethodView):
         interface_api : InterfaceApiAdminConfig = g.inter
         return interface_api.update_all_setting_system(new_data["settings"])
 
+
+@blp.route("/theme")
+class ApiAdminConfigTheme(MethodView):
+    """
+    Singleton, can't be created, only modified
+
+    Endpoint for theme customization settings
+    """
+    @blp.response(200, sch.AdminConfigThemeGetRetSchema, example=sch.AdminConfigThemeGetRetSchema.example())
+    def get(self,) -> ResponseReturnValue:
+        """
+        Singleton, fetch the theme settings
+        """
+        interface_api : InterfaceApiAdminConfig = g.inter
+        return interface_api.get_all_setting_theme()
+
+    @blp.arguments(sch.AdminConfigThemePatchSchema, example=sch.AdminConfigThemePatchSchema.example(), error_status_code=400)
+    @blp.response(200, sch.AdminConfigThemeGetRetSchema, example=sch.AdminConfigThemeGetRetSchema.example())
+    def patch(self, new_data: dict) -> ResponseReturnValue:
+        """
+        Singleton, update the theme settings
+        """
+        interface_api : InterfaceApiAdminConfig = g.inter
+        return interface_api.update_all_setting_theme(new_data["settings"])
+
+
 @blp.route("/domain-default")
 class ApiAdminConfigDefaultDomain(MethodView):
     """
@@ -154,58 +180,58 @@ class ApiAdminConfigDomainSettings(MethodView):
             return None
         return ret, code
 
-# @blp.route("/rulesList")
-# class ApiAdminConfigRule(MethodView):
-#     """
-#     Endpoint that return a list of all rules
-#     """
-#     @blp.response(200)
-#     def get(self) -> ResponseReturnValue:
-#         """
-#         Return the list of rules defined
-#         """
-#         interface_api : InterfaceApiAdminConfig = g.inter
-#         return interface_api.get_list_of_rule()
+@blp.route("/rules")
+class ApiAdminConfigRuleList(MethodView):
+    """
+    Endpoint that returns a list of all rules
+    """
+    @blp.response(200)
+    def get(self) -> ResponseReturnValue:
+        """
+        Return the list of rules defined
+        """
+        interface_api: InterfaceApiAdminConfig = g.inter
+        return interface_api.get_list_of_rule()
 
-#     @blp.arguments(sch.AdminConfigSystemPatchSchema, example=sch.AdminConfigSystemPatchSchema.example())
-#     @blp.response(200)
-#     def delete(self, data: dict) -> None:
-#         """
-#         _summary_
+    @blp.arguments(sch.AdminConfigRulePostSchema, example=sch.AdminConfigRulePostSchema.example(), error_status_code=400)
+    @blp.response(201)
+    def post(self, new_data: dict) -> ResponseReturnValue:
+        """
+        Create a new rule
+        """
+        interface_api: InterfaceApiAdminConfig = g.inter
+        return interface_api.post_new_rule(new_data)
 
-#         :param data: _description_
-#         :type data: _type_
-#         """
-#         print(f"delete: {data}")
 
-# @blp.route("/rules/<int:rule_id>")
-# class ApiAdminConfigRuleSetting(MethodView):
-#     """
-#     Endpoint that return all the settings of the rule_id
-#     """
-#     @blp.response(200)
-#     def get(self, rule_id: int) -> ResponseReturnValue:
-#         """
-#         Return the rules settings
-#         """
-#         interface_api : InterfaceApiAdminConfig = g.inter
-#         ret =  interface_api.get_all_setting_rule(rule_id)
-#         if ret:
-#             return ret
-#         return {"error": f"rule_id {rule_id} not found"}, 400
+@blp.route("/rules/<int:rule_id>")
+class ApiAdminConfigRuleSettings(MethodView):
+    """
+    Endpoint that returns the settings of a specific rule
+    """
+    @blp.response(200)
+    def get(self, rule_id: int) -> ResponseReturnValue:
+        """
+        Return the rule settings
+        """
+        interface_api: InterfaceApiAdminConfig = g.inter
+        return interface_api.get_rule_settings(rule_id)
 
-# @blp.route("/all")
-# class ApiAdminConfigAll(MethodView):
-#     """
-#     Action, GET
+    @blp.arguments(sch.AdminConfigRulePatchSchema, example=sch.AdminConfigRulePatchSchema.example(), error_status_code=400)
+    @blp.response(200)
+    def patch(self, new_data: dict, rule_id: int) -> ResponseReturnValue:
+        """
+        Update a rule
+        """
+        interface_api: InterfaceApiAdminConfig = g.inter
+        return interface_api.update_rule_settings(rule_id, new_data)
 
-#     Endpoint that return all the settings value
-#     """
-#     @blp.response(200)
-#     def get(self) -> ResponseReturnValue:
-#         """
-#         Return the system settings, the domain default settings, the list of rules and the list of domains
-#         """
-#         interface_api : InterfaceApiAdminConfig = g.inter
-#         ret = interface_api.get_all_setting_value()
-#         return create_api_base_response(ret)
+    @blp.response(200)
+    def delete(self, rule_id: int) -> ResponseReturnValue:
+        """
+        Delete a rule
+        """
+        interface_api: InterfaceApiAdminConfig = g.inter
+        ret, code = interface_api.delete_rule_settings(rule_id)
+        if code == 200:
+            return None
+        return ret, code

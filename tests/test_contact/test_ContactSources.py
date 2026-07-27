@@ -29,9 +29,15 @@ def test_get_local_returns_db_source():
     assert isinstance(source, ContactSourceDb)
 
 
+def test_get_carddav_returns_carddav_source():
+    from app.module.contact.source.ContactSourceCardDav import ContactSourceCardDav
+    source = _build().get(_book(CardSourceType.CARDDAV))
+    assert isinstance(source, ContactSourceCardDav)
+
+
 def test_get_unknown_source_type_raises():
     with pytest.raises(RequestException) as exc:
-        _build().get(_book(CardSourceType.CARDDAV))
+        _build().get(_book("unknown_type"))  # type: ignore[arg-type]
     assert exc.value.error == err.ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED
 
 
@@ -56,6 +62,7 @@ def test_search_all_lists_resolves_members_and_book_name():
 def test_get_by_key_returns_none_when_absent():
     sources = _build()
     sources._repo_addressbook.find_by_key.return_value = None
+    sources._repo_addressbook.find_by_key_unscoped.return_value = None
     assert sources.get_by_key("u", "ab-k") is None
 
 

@@ -18,6 +18,8 @@ from app.module.calendar.imip.ImipProcessor import ImipProcessor
 from app.module.calendar.acl.CalendarAclEngine import CalendarAclEngine
 from app.module.calendar.model.CalCalendar import CalCalendar
 from app.module.calendar.model.CalendarPermissions import CalendarPermissions
+from app.module.calendar.model.CalendarShare import CalendarShare
+from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCalendarShare
 from app.module.calendar.model.CalendarUser import CalendarUser
 from app.module.calendar.model.enums.CalendarPermissionAction import CalendarPermissionAction
 from app.module.calendar.model.CalOrganizer import CalOrganizer
@@ -74,9 +76,10 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         self._db.connect()
         self._cache: ClientRedis | None = cache
         self._agent: ClientAgent | None = agent
-        self._sources: CalendarSources = CalendarSources(self._db)
+        self._share_repo: RepositoryCalendarShare = RepositoryCalendarShare(self._db)
+        self._sources: CalendarSources = CalendarSources(self._db, self._share_repo)
         self._imip: ImipProcessor = ImipProcessor(self._sources)
-        self._acl: CalendarAclEngine = CalendarAclEngine()
+        self._acl: CalendarAclEngine = CalendarAclEngine(self._share_repo)
 
     def __del__(self) -> None:
         if hasattr(self, "_db"):
@@ -164,7 +167,32 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     def delete_calendar(self, user: User, key: str) -> None:
         """Delete a calendar and all its events."""
         source: CalendarSource = self.get_calendar(user, key)
+        calendar_user: CalendarUser = CalendarUser(user=user, owner=user)
+        self._acl.check_permission(
+            source.calendar.permissions, CalendarPermissionAction.DELETE,
+        )
         source.delete_calendar()
+
+    #
+    # Sharing
+    #
+    def list_shares(self, calendar_key: str) -> list[CalendarShare]:
+        """Return all share entries for a calendar."""
+        return self._share_repo.find_by_calendar_key(calendar_key)
+
+    def add_share(self, calendar_key: str, share: CalendarShare) -> CalendarShare:
+        """Add a share entry for a user on a calendar."""
+        # Check that the share doesn't already exist
+        existing = self._share_repo.find_by_calendar_and_user(calendar_key, share.user_uid)
+        if existing is not None:
+            from app.utils import errors as err
+            from app.utils.exceptions import RequestException
+            raise RequestException(error=err.ERROR_CALENDAR_DUPLICATE)
+        return self._share_repo.insert(share)
+
+    def remove_share(self, calendar_key: str, user_uid: str) -> None:
+        """Remove a share entry for a user on a calendar."""
+        self._share_repo.delete(calendar_key, user_uid)
 
     #
     # Events - CRUD

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from time import time
 
 import click
 from flask_compress import Compress
@@ -27,6 +28,7 @@ sogo_state, cache, agent_client = init_sogo()
 set_cache(cache)
 set_agent(agent_client)
 app = create_app(sogo_state)
+app.config["SOGO_START_TIME"] = time()
 
 
 @app.route("/")

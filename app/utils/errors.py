@@ -91,6 +91,8 @@ ERROR_IMAP_UNAUTHORIZED      = E("S000310", "IMAP Unauthorized - Invalid Credent
 ERROR_IMAP_CONNECTION_FAILED = E("S000311", "IMAP connection failed", HTTPStatus.SERVICE_UNAVAILABLE)
 ERROR_MAILBOX_NOT_FOUND      = E("S000312", "Mailbox Not Found", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_DELETION          = E("S000313", "Mail Deletion Error", HTTPStatus.BAD_REQUEST)
+ERROR_RULE_NAME_TAKEN       = E("S000380", "Rule's Name Already Taken", HTTPStatus.BAD_REQUEST)
+ERROR_RULE_NOT_FOUND        = E("S000381", "Rule Not Found", HTTPStatus.NOT_FOUND)
 ERROR_IMAP_LOGOUT            = E("S001300", "Try To Make An IMAP Command While Being In LOGOUT state", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_UNAIVALABLE       = E("S001301", "IMAP Command Failed Momenteraly, Try Again Later", HTTPStatus.SERVICE_UNAVAILABLE)
 ERROR_IMAP_FAILED            = E("S001302", "IMAP Command Failed, See Logs To Get More Details", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -245,6 +247,7 @@ ERROR_CONTACT_IMPORT_NO_FILE                 = E("S000716", "No File Provided In
 ERROR_CONTACT_IMPORT_TOO_LARGE               = E("S000717", "Import Payload Exceeds Maximum Allowed Size", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
 ERROR_CONTACT_IMPORT_PARSE_FAILED            = E("S000718", "Failed To Parse The Import Document", HTTPStatus.UNPROCESSABLE_ENTITY)
 ERROR_CONTACT_DISPLAY_NAME_REQUIRED          = E("S000719", "Contact Display Name Is Required", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_CONTACT_ADDRESSBOOK_SYNC_FAILED        = E("S000720", "External Address Book Sync Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 
 #AGENT / TASK
 ERROR_JOB_NOT_FOUND        = E("S000800", "Job Not Found", HTTPStatus.NOT_FOUND)
@@ -266,3 +269,57 @@ ERROR_ADMIN_AUTH_NOT_CONFIG = E("S001001", "Admin Authentication Not Configured"
 
 #the bugs
 ERROR_UNKOWN = E("S999999", "Undefined Error", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+# ── Password Change (S0011xx) ────────────────────────────────────────────────
+ERROR_PWD_CHANGE_DISABLED     = E("S001100", "Password Change Is Not Enabled For This Domain", HTTPStatus.FORBIDDEN)
+ERROR_PWD_CHANGE_REAUTH_FAILED = E("S001101", "Current Password Is Incorrect", HTTPStatus.UNAUTHORIZED)
+ERROR_PWD_CHANGE_FAILED        = E("S001102", "Failed To Change Password", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+# ── OIDC Authentication (S0012xx) ─────────────────────────────────────────────
+ERROR_OIDC_NOT_CONFIGURED     = E("S001200", "OIDC Is Not Configured For This Domain", HTTPStatus.PRECONDITION_FAILED)
+ERROR_OIDC_DISCOVERY_FAILED   = E("S001201", "OIDC Provider Discovery Failed", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_OIDC_TOKEN_EXCHANGE_FAILED = E("S001202", "OIDC Token Exchange Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_OIDC_ID_TOKEN_INVALID   = E("S001203", "OIDC ID Token Validation Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_OIDC_USERINFO_FAILED     = E("S001204", "OIDC User Info Retrieval Failed", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_OIDC_STATE_MISMATCH      = E("S001205", "OIDC State Parameter Mismatch", HTTPStatus.UNAUTHORIZED)
+ERROR_OIDC_REDIRECT_NOT_ALLOWED = E("S001206", "OIDC Redirect URI Not In Allowlist", HTTPStatus.BAD_REQUEST)
+
+# ── SAML2 Authentication (S00121x) ────────────────────────────────────────────
+ERROR_SAML_NOT_CONFIGURED      = E("S001210", "SAML2 Is Not Configured For This Domain", HTTPStatus.PRECONDITION_FAILED)
+ERROR_SAML_RESPONSE_INVALID    = E("S001211", "SAML2 Response Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_ISSUER_MISMATCH     = E("S001212", "SAML2 Assertion Issuer Mismatch", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_STATUS_FAILURE      = E("S001213", "SAML2 IdP Returned Failure Status", HTTPStatus.UNAUTHORIZED)
+
+# ── App Passwords (S00122x) ───────────────────────────────────────────────────
+ERROR_APP_PASSWORD_NOT_FOUND   = E("S001220", "App Password Not Found", HTTPStatus.NOT_FOUND)
+ERROR_APP_PASSWORD_NOT_OWNED   = E("S001221", "App Password Does Not Belong To User", HTTPStatus.FORBIDDEN)
+ERROR_APP_PASSWORD_INVALID     = E("S001222", "App Password Token Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_APP_PASSWORD_LABEL_EMPTY = E("S001223", "App Password Label Cannot Be Empty", HTTPStatus.BAD_REQUEST)
+
+# ── MFA / TOTP (S00123x) ──────────────────────────────────────────────────────
+ERROR_MFA_TOTP_NOT_CONFIGURED = E("S001230", "TOTP Is Not Configured For This Account", HTTPStatus.PRECONDITION_FAILED)
+ERROR_MFA_TOTP_ALREADY_ENABLED = E("S001231", "TOTP Is Already Enabled For This Account", HTTPStatus.CONFLICT)
+ERROR_MFA_TOTP_ALREADY_DISABLED = E("S001232", "TOTP Is Already Disabled For This Account", HTTPStatus.CONFLICT)
+ERROR_MFA_TOTP_INVALID_CODE   = E("S001233", "TOTP Verification Code Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_MFA_TOTP_SETUP_REQUIRED = E("S001234", "TOTP Setup Required Before Enabling", HTTPStatus.PRECONDITION_FAILED)
+ERROR_MFA_TOTP_NOT_ENABLED    = E("S001235", "TOTP Is Not Enabled For This Account", HTTPStatus.PRECONDITION_FAILED)
+ERROR_MFA_TOTP_VOUCHER_INVALID = E("S001236", "MFA Voucher Token Is Invalid Or Expired", HTTPStatus.UNAUTHORIZED)
+
+# ── WebAuthn / Passkeys (S00124x) ──────────────────────────────────────────────
+ERROR_WEBAUTHN_NOT_CONFIGURED      = E("S001240", "WebAuthn Is Not Configured For This Account", HTTPStatus.PRECONDITION_FAILED)
+ERROR_WEBAUTHN_ALREADY_ENABLED     = E("S001241", "WebAuthn Credential Already Exists", HTTPStatus.CONFLICT)
+ERROR_WEBAUTHN_CREDENTIAL_NOT_FOUND = E("S001242", "WebAuthn Credential Not Found", HTTPStatus.NOT_FOUND)
+ERROR_WEBAUTHN_REGISTRATION_FAILED = E("S001243", "WebAuthn Registration Verification Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_WEBAUTHN_AUTHENTICATION_FAILED = E("S001244", "WebAuthn Authentication Verification Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_WEBAUTHN_CHALLENGE_EXPIRED   = E("S001245", "WebAuthn Challenge Has Expired", HTTPStatus.UNAUTHORIZED)
+
+#Password Recovery
+ERROR_PWD_RESET_DISABLED          = E("S001310", "Password Recovery Is Not Enabled For This Domain", HTTPStatus.FORBIDDEN)
+ERROR_PWD_RESET_USER_NOT_FOUND    = E("S001311", "User Not Found For Password Recovery", HTTPStatus.NOT_FOUND)
+ERROR_PWD_RESET_TOKEN_INVALID     = E("S001312", "Password Reset Token Is Invalid Or Expired", HTTPStatus.UNAUTHORIZED)
+ERROR_PWD_RESET_TOKEN_USED        = E("S001313", "Password Reset Token Has Already Been Used", HTTPStatus.CONFLICT)
+ERROR_PWD_RESET_TOKEN_EXPIRED     = E("S001314", "Password Reset Token Has Expired", HTTPStatus.UNAUTHORIZED)
+ERROR_PWD_RESET_RATE_LIMITED      = E("S001315", "Password Reset Requested Too Frequently. Please Wait Before Trying Again", HTTPStatus.TOO_MANY_REQUESTS)
+ERROR_PWD_RESET_UPDATE_FAILED     = E("S001316", "Failed To Update Password During Reset", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PWD_RESET_TOKEN_GEN_FAILED  = E("S001317", "Failed To Generate Password Reset Token", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PWD_RESET_EMAIL_FAILED      = E("S001318", "Failed To Send Password Reset Email", HTTPStatus.SERVICE_UNAVAILABLE)
