@@ -7,6 +7,8 @@ from app.config.settings.DomainSettings import (
     CalendarContactSettingsObj,
     UserModuleSettings,
     UserModuleSettingsObj,
+    UserSourceSettings,
+    UserSourceSettingsObj,
 )
 from app.module.contact.ContactConst import AUTOCOMPLETE_DEFAULT_LIMIT
 from app.module.contact.ModuleContact import ModuleContact
@@ -60,6 +62,14 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
         self._user_module_settings: UserModuleSettingsObj = UserModuleSettingsObj(
             user_domain_settings[UserModuleSettings.subparent]
         )
+        # Build the user_sources dict from the domain's USER_SOURCE configuration.
+        self._user_sources: dict[str, UserSourceSettingsObj] | None = None
+        raw_sources: dict | None = user_domain_settings.get(UserSourceSettings.subparent)
+        if raw_sources:
+            self._user_sources = {
+                src_uid: UserSourceSettingsObj(src_cfg)
+                for src_uid, src_cfg in raw_sources.items()
+            }
         self.module: ModuleContact = ModuleContact(process_setting, cache=sogo_cache(), agent=sogo_agent())
         self._addressbook_serializer: CardAddressBookSerializerDict = CardAddressBookSerializerDict()
         self._addressbooks_serializer: CardAddressBooksSerializerList = CardAddressBooksSerializerList()
@@ -76,9 +86,9 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     # Address books
     #
     def get_all_addressbooks(self) -> tuple[dict[str, Any], int]:
-        """List the address books owned by the current user."""
+        """List the address books owned by the current user (includes directory books when user_sources set)."""
         try:
-            books: list[CardAddressBook] = self.module.get_all_addressbooks(self.user)
+            books: list[CardAddressBook] = self.module.get_all_addressbooks(self.user, self._user_sources)
             serialized: list[dict[str, Any]] = self._addressbooks_serializer.serialize(books)
             return create_api_base_response({"addressbooks": serialized, "total_count": len(books)})
         except RequestException as ex:
@@ -88,7 +98,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def get_addressbook(self, key: str) -> tuple[dict[str, Any], int]:
         """Get a single address book by its key."""
         try:
-            source: ContactSource = self.module.get_addressbook(self.user, key)
+            source: ContactSource = self.module.get_addressbook(self.user, key, self._user_sources)
             return create_api_base_response(self._addressbook_serializer.serialize(source.addressbook))
         except RequestException as ex:
             logger_api.error("get_addressbook failed for user %s key %s: %s", self.user.uid, key, ex)
@@ -204,6 +214,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
                 limit=collection_param.page_size,
                 sort_by=collection_param.sort_by,
                 order=order,
+                user_sources=self._user_sources,
             )
             serialized: list[dict[str, Any]] = self._contacts_serializer.serialize(contacts)
             return total, *create_api_base_response({"contacts": serialized})
@@ -216,7 +227,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
 
         Below the domain's autocompletion minimum length the result is an empty list rather than an
         error (standard autocomplete behaviour). The search spans all the user's address books (and
-        the directory once ContactSourceDirectory is wired); contacts and lists are each capped at
+        the directory via ContactSourceDirectory); contacts and lists are each capped at
         AUTOCOMPLETE_DEFAULT_LIMIT. A list surfaces as a suggestion carrying its member_count instead
         of an email address.
 
@@ -227,8 +238,11 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
             if len(query.strip()) < self._user_module_settings.SOGO_D_AUTOCOMPLETION_MIN_LEN:
                 return create_api_base_response({"suggestions": []})
             contacts, _ = self.module.get_contacts(
-                self.user, search=query, limit=AUTOCOMPLETE_DEFAULT_LIMIT, resolve_images=False)
-            lists = self.module.search_all_lists(self.user, search=query, limit=AUTOCOMPLETE_DEFAULT_LIMIT)
+                self.user, search=query, limit=AUTOCOMPLETE_DEFAULT_LIMIT, resolve_images=False,
+                user_sources=self._user_sources,
+            )
+            lists = self.module.search_all_lists(self.user, search=query, limit=AUTOCOMPLETE_DEFAULT_LIMIT,
+                                                  user_sources=self._user_sources)
             suggestions: list[dict[str, Any]] = (
                 self._autocomplete_serializer.serialize(contacts)
                 + self._list_autocomplete_serializer.serialize(lists)
@@ -241,7 +255,8 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def get_contact(self, addressbook_key: str, key: str) -> tuple[dict[str, Any], int]:
         """Get a single contact by key within an address book."""
         try:
-            contact: CardContact = self.module.get_contact(self.user, addressbook_key, key)
+            contact: CardContact = self.module.get_contact(self.user, addressbook_key, key,
+                                                           user_sources=self._user_sources)
             return create_api_base_response(self._contact_serializer.serialize(contact))
         except RequestException as ex:
             logger_api.error("get_contact failed for user %s contact %s: %s", self.user.uid, key, ex)
@@ -251,7 +266,8 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
         """Create a new contact in the given address book."""
         try:
             contact: CardContact = self._contact_deserializer.deserialize(body)
-            created: CardContact = self.module.create_contact(self.user, addressbook_key, contact)
+            created: CardContact = self.module.create_contact(self.user, addressbook_key, contact,
+                                                              user_sources=self._user_sources)
             return create_api_base_response(self._contact_serializer.serialize(created), code=201)
         except RequestException as ex:
             logger_api.error("create_contact failed for user %s book %s: %s", self.user.uid, addressbook_key, ex)
@@ -263,9 +279,11 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def patch_contact(self, addressbook_key: str, key: str, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
         """Apply partial updates to a contact within an address book."""
         try:
-            existing: CardContact = self.module.get_contact(self.user, addressbook_key, key)
+            existing: CardContact = self.module.get_contact(self.user, addressbook_key, key,
+                                                            user_sources=self._user_sources)
             contact_update: CardContact = self._contact_deserializer.deserialize_with_update(existing, body)
-            updated: CardContact = self.module.update_contact(self.user, addressbook_key, key, contact_update)
+            updated: CardContact = self.module.update_contact(self.user, addressbook_key, key, contact_update,
+                                                              user_sources=self._user_sources)
             return create_api_base_response(self._contact_serializer.serialize(updated))
         except RequestException as ex:
             logger_api.error("patch_contact failed for user %s contact %s: %s", self.user.uid, key, ex)
@@ -277,7 +295,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def delete_contact(self, addressbook_key: str, key: str) -> tuple[dict[str, Any], int]:
         """Delete a contact within an address book."""
         try:
-            self.module.delete_contact(self.user, addressbook_key, key)
+            self.module.delete_contact(self.user, addressbook_key, key, user_sources=self._user_sources)
             return create_api_base_response(None)
         except RequestException as ex:
             logger_api.error("delete_contact failed for user %s contact %s: %s", self.user.uid, key, ex)
@@ -309,6 +327,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
                 limit=collection_param.page_size,
                 sort_by=collection_param.sort_by,
                 order=order,
+                user_sources=self._user_sources,
             )
             serialized: list[dict[str, Any]] = self._lists_serializer.serialize(lists)
             return total, *create_api_base_response({"lists": serialized})
@@ -319,7 +338,8 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def get_list(self, addressbook_key: str, key: str) -> tuple[dict[str, Any], int]:
         """Get a single distribution list by key within an address book."""
         try:
-            card_list: CardList = self.module.get_list(self.user, addressbook_key, key)
+            card_list: CardList = self.module.get_list(self.user, addressbook_key, key,
+                                                       user_sources=self._user_sources)
             return create_api_base_response(self._list_serializer.serialize(card_list))
         except RequestException as ex:
             logger_api.error("get_list failed for user %s list %s: %s", self.user.uid, key, ex)
@@ -329,7 +349,8 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
         """Create a new distribution list in the given address book."""
         try:
             card_list: CardList = self._list_deserializer.deserialize(body)
-            created: CardList = self.module.create_list(self.user, addressbook_key, card_list)
+            created: CardList = self.module.create_list(self.user, addressbook_key, card_list,
+                                                        user_sources=self._user_sources)
             return create_api_base_response(self._list_serializer.serialize(created), code=201)
         except RequestException as ex:
             logger_api.error("create_list failed for user %s book %s: %s", self.user.uid, addressbook_key, ex)
@@ -341,9 +362,11 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def patch_list(self, addressbook_key: str, key: str, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
         """Apply partial updates to a distribution list within an address book."""
         try:
-            existing: CardList = self.module.get_list(self.user, addressbook_key, key)
+            existing: CardList = self.module.get_list(self.user, addressbook_key, key,
+                                                      user_sources=self._user_sources)
             list_update: CardList = self._list_deserializer.deserialize_with_update(existing, body)
-            updated: CardList = self.module.update_list(self.user, addressbook_key, key, list_update)
+            updated: CardList = self.module.update_list(self.user, addressbook_key, key, list_update,
+                                                        user_sources=self._user_sources)
             return create_api_base_response(self._list_serializer.serialize(updated))
         except RequestException as ex:
             logger_api.error("patch_list failed for user %s list %s: %s", self.user.uid, key, ex)
@@ -355,7 +378,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def delete_list(self, addressbook_key: str, key: str) -> tuple[dict[str, Any], int]:
         """Delete a distribution list within an address book."""
         try:
-            self.module.delete_list(self.user, addressbook_key, key)
+            self.module.delete_list(self.user, addressbook_key, key, user_sources=self._user_sources)
             return create_api_base_response(None)
         except RequestException as ex:
             logger_api.error("delete_list failed for user %s list %s: %s", self.user.uid, key, ex)

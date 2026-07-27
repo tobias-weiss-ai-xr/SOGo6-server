@@ -39,6 +39,7 @@ class UserPeferencesGetRetSchema(ApiBaseResponse):
                 "SOGO_U_WORKDAY_END_TIME": "18:00",
                 "SOGO_U_TASK_DEFAULT_CLASS": "PUBLIC",
                 "SOGO_U_WORKDAY_START_TIME": "09:00",
+                "SOGO_U_NON_WORKING_WEEKDAYS": [5, 6],
                 "SOGO_U_EVENT_DEFAULT_CLASS": "PUBLIC",
                 "SOGO_U_CALENDAR_DAYS_SHOWED": [
                 0,

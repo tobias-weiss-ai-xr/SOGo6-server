@@ -356,6 +356,30 @@ class ClientLdap(ClientUserSource):
         raise exc.BugException("self.connection is still None, meaning self.connect() method didn't catch or raise correctly an error")
 
 
+    def search_entries(
+        self, base_dn: str | None = None, l_filter: str | None = None,
+        attributes: list | None = None,
+    ) -> list[dict[str, list[str]]]:
+        """Search the LDAP directory for entries matching a filter, return parsed dicts.
+
+        Binds with the admin credentials first (the caller must have called connect() already),
+        then searches under base_dn (defaults to self.base_dn). Returns a list of attribute dicts
+        keyed by lower-case attribute name, each value a list of strings. The DN is included as
+        the special key ``"dn"``.
+
+        :param base_dn: Search base DN (defaults to the configured base_dn).
+        :param l_filter: LDAP filter string. When None, all entries are returned.
+        :param attributes: Attribute names to fetch (defaults to all).
+        :return: List of parsed entry dicts.
+        """
+        if not self.connected:
+            raise exc.BugException("ClientLdap.search_entries called before connect()")
+        # Ensure we are bound with admin creds
+        self._bind(self.bind_dn, self.bind_pwd, use_admin=True, throw_error=False)
+        base: str = base_dn or self.base_dn
+        raw: list[tuple[str, dict[str, list[bytes]]]] = self._search(base, l_filter, attributes)
+        return [parse_python_ldap_record(record) for record in raw]
+
     def close(self) -> None:
         """
         Unbind the connection if needed

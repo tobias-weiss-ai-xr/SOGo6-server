@@ -69,9 +69,23 @@ class UserCalendarGeneralSettings(SogoSchema):
 
     SOGO_U_CALENDAR_CREATION_NOTIF = fields.Boolean(load_default=True, dump_default=True) #Send mail notification when user create a calendar or addrebook
     SOGO_U_CALENDAR_VIEW_FIRST_DAY = fields.Integer(load_default=0, dump_default=0, validate=validate.Range(min=0, max=6)) #0 means Sunday, first day of the week showns in calendar weeks and months views.
-    SOGO_U_WORKDAY_START_TIME = fields.String(load_default="09:00", dump_default="09:00") # Allow to define work hours
-    SOGO_U_WORKDAY_END_TIME = fields.String(load_default="18:00", dump_default="18:00")  #
+    SOGO_U_WORKDAY_START_TIME = fields.String(
+        load_default="09:00", dump_default="09:00",
+        validate=validate.Regexp(r"^\d{2}:\d{2}$"),
+        metadata={"description": "Workday start time in HH:MM format (24h)."},
+    )
+    SOGO_U_WORKDAY_END_TIME = fields.String(
+        load_default="18:00", dump_default="18:00",
+        validate=validate.Regexp(r"^\d{2}:\d{2}$"),
+        metadata={"description": "Workday end time in HH:MM format (24h)."},
+    )
     SOGO_U_BUSY_OFF_HOURS = fields.Boolean(load_default=False, dump_default=False) # Be shown as busy outside work hour
+    SOGO_U_NON_WORKING_WEEKDAYS = fields.List(
+        fields.Integer(validate=validate.Range(min=0, max=6)),
+        load_default=[5, 6], dump_default=[5, 6],
+        metadata={"description": "Days considered non-working for free/busy (0=Sunday, 6=Saturday). "
+                                 "Defaults to weekend (Saturday, Sunday)."},
+    )
     SOGO_U_CALENDAR_DAYS_SHOWED = fields.List(fields.Integer(validate=validate.Range(min=0, max=6)),
                                               load_default=[0,1,2,3,4,5,6],
                                               dump_default=[0,1,2,3,4,5,6]) #Days to show in calendar view; 0 Sunday, 6 Saturday

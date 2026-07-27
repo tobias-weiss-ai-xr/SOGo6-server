@@ -846,7 +846,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     #
     # Maintenance
     #
-    # TODO: Implement in admin API
+    # Exposed as POST /admin/calendar/clean (ApiAdminCalendar)
     def clean(self, user_uid: str | None = None, calendar_key: str | None = None) -> int:
         """Physically remove soft-deleted event and reminder rows.
 

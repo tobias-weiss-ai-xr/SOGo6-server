@@ -449,6 +449,9 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
             workday_start=cal_prefs.get("SOGO_U_WORKDAY_START_TIME", "09:00"),
             workday_end=cal_prefs.get("SOGO_U_WORKDAY_END_TIME", "18:00"),
             timezone=self._user_timezone(target_uid),
+            non_working_weekdays=frozenset(
+                cal_prefs.get("SOGO_U_NON_WORKING_WEEKDAYS", [5, 6])
+            ),
         )
 
     def _compute_freebusy(self, target_uids: list[str], start: datetime, end: datetime) -> dict:
