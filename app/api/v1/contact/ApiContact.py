@@ -22,6 +22,11 @@ from .schemas.addressbook import (
     ContactImportQueryArgsSchema,
     ContactImportUploadSchema,
     ContactJobResponseSchema,
+    ExternalAddressBookCreateSchema,
+    ExternalAddressBookUpdateSchema,
+    ShareCreateSchema,
+    ShareListResponseSchema,
+    ShareResponseSchema,
 )
 from .schemas.contact import (
     ContactCreateSchema,
@@ -120,6 +125,38 @@ class ApiAddressBookDetail(MethodView):
         logger_api.debug("DELETE /addressbooks/%s user=%s", key, g.user.uid)
         interface: InterfaceApiContactContact = g.inter
         return interface.delete_addressbook(key)
+
+
+@blp.route("/addressbooks/<string:key>/shares")
+class ApiAddressBookShareList(MethodView):
+    """API to list and add shares on an address book."""
+
+    @blp.response(200, ShareListResponseSchema)
+    def get(self, key: str) -> ResponseReturnValue:
+        """List all shares for an address book."""
+        logger_api.debug("GET /addressbooks/%s/shares user=%s", key, g.user.uid)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.list_shares(key)
+
+    @blp.arguments(ShareCreateSchema)
+    @blp.response(201, ShareResponseSchema)
+    def post(self, body: dict, key: str) -> ResponseReturnValue:
+        """Share an address book with a user."""
+        logger_api.debug("POST /addressbooks/%s/shares user=%s body=%s", key, g.user.uid, body)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.add_share(key, body)
+
+
+@blp.route("/addressbooks/<string:key>/shares/<string:user_uid>")
+class ApiAddressBookShareDetail(MethodView):
+    """API to remove a share from an address book."""
+
+    @blp.response(200, ShareResponseSchema)
+    def delete(self, key: str, user_uid: str) -> ResponseReturnValue:
+        """Remove a share from an address book."""
+        logger_api.debug("DELETE /addressbooks/%s/shares/%s user=%s", key, user_uid, g.user.uid)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.remove_share(key, user_uid)
 
 
 @blp.route("/addressbooks/<string:key>/contacts")
@@ -369,3 +406,37 @@ class ApiListExport(MethodView):
         logger_api.debug("GET /addressbooks/%s/lists/%s/export user=%s", key, list_key, g.user.uid)
         interface: InterfaceApiContactContact = g.inter
         return interface.export_list(key, list_key, request.headers.get("Accept", ""))
+
+
+#
+# External address books (CardDAV subscriptions)
+#
+
+
+@blp.route("/addressbooks/external")
+class ApiExternalAddressBookCreate(MethodView):
+    """API to create an external CardDAV address book subscription."""
+
+    @blp.arguments(ExternalAddressBookCreateSchema)
+    @blp.response(201, AddressBookResponseSchema)
+    def post(self, body: dict) -> ResponseReturnValue:
+        """Create a new external CardDAV address book subscription."""
+        logger_api.debug("POST /addressbooks/external user=%s url=%s", g.user.uid, body.get("url"))
+        interface: InterfaceApiContactContact = g.inter
+        return interface.create_external_addressbook(body)
+
+
+@blp.route("/addressbooks/<string:key>/sync")
+class ApiExternalAddressBookSync(MethodView):
+    """API to trigger a manual sync of an external CardDAV address book."""
+
+    @blp.response(202, ContactJobResponseSchema)
+    def post(self, key: str) -> ResponseReturnValue:
+        """Trigger a manual sync of the external CardDAV address book.
+
+        Returns a job_id; poll GET /jobs/<job_id> until SUCCESS.
+        TODO: Actual sync not yet implemented.
+        """
+        logger_api.debug("POST /addressbooks/%s/sync user=%s", key, g.user.uid)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.enqueue_external_sync(key)

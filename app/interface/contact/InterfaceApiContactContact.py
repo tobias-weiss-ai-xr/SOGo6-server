@@ -13,7 +13,9 @@ from app.module.contact.ModuleContact import ModuleContact
 from app.module.contact.jobs.ContactJobKind import ContactJobKind
 from app.module.contact.model.CardAddressBook import CardAddressBook
 from app.module.contact.model.enums.CardSourceType import CardSourceType
+from app.module.contact.model.ContactShare import ContactShare
 from app.module.contact.model.enums.ContactExportFormat import ContactExportFormat
+from app.module.contact.model.enums.ContactShareLevel import ContactShareLevel
 from app.module.contact.serializer.CardAddressBookSerializerDict import CardAddressBookSerializerDict
 from app.module.contact.serializer.CardAddressBooksSerializerList import CardAddressBooksSerializerList
 from app.module.contact.serializer.CardContactAutocompleteSerializerList import CardContactAutocompleteSerializerList
@@ -123,6 +125,56 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
             return create_api_base_response(None)
         except RequestException as ex:
             logger_api.error("delete_addressbook failed for user %s key %s: %s", self.user.uid, key, ex)
+            return create_api_base_response(None, ex.error)
+
+    #
+    # Sharing
+    #
+    def list_shares(self, key: str) -> tuple[dict[str, Any], int]:
+        """List all shares for an address book."""
+        try:
+            shares: list[ContactShare] = self.module.list_shares(key)
+            serialized: list[dict[str, Any]] = [
+                {"user_uid": s.user_uid, "share_level": s.share_level.name.lower()}
+                for s in shares
+            ]
+            return create_api_base_response({"shares": serialized, "total_count": len(shares)})
+        except RequestException as ex:
+            logger_api.error("list_shares failed for address book %s: %s", key, ex)
+            return create_api_base_response(None, ex.error)
+
+    @staticmethod
+    def _parse_share_level(value: str | None, default: str = "view") -> ContactShareLevel:
+        """Parse a share level from a JSON string, case-insensitive."""
+        raw = (value or default).upper().replace("_", "")
+        for member in ContactShareLevel:
+            if member.name.replace("_", "") == raw:
+                return member
+        return ContactShareLevel[default.upper()]
+
+    def add_share(self, key: str, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Add a share for a user on an address book."""
+        try:
+            share: ContactShare = ContactShare(
+                addressbook_key=key,
+                user_uid=body["user_uid"],
+                share_level=self._parse_share_level(body.get("share_level"), "view"),
+            )
+            created: ContactShare = self.module.add_share(key, share)
+            return create_api_base_response(
+                {"user_uid": created.user_uid, "share_level": created.share_level.name.lower()}
+            )
+        except RequestException as ex:
+            logger_api.error("add_share failed for address book %s user %s: %s", key, body.get("user_uid"), ex)
+            return create_api_base_response(None, ex.error)
+
+    def remove_share(self, key: str, user_uid: str) -> tuple[dict[str, Any], int]:
+        """Remove a share for a user on an address book."""
+        try:
+            self.module.remove_share(key, user_uid)
+            return create_api_base_response(None)
+        except RequestException as ex:
+            logger_api.error("remove_share failed for address book %s user %s: %s", key, user_uid, ex)
             return create_api_base_response(None, ex.error)
 
     #
@@ -399,3 +451,38 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
         if "text/vcard" in value or "text/x-vcard" in value:
             return ContactExportFormat.VCARD4 if "version=4" in value else ContactExportFormat.VCARD3
         return None
+
+    #
+    # External address books (CardDAV)
+    #
+
+    def create_external_addressbook(self, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Create a new external CardDAV address book subscription.
+
+        :param body: Validated request body with ``name``, ``url``, optional ``sync_interval_minutes``.
+        :return: API envelope with the created address book, plus HTTP status code.
+        """
+        try:
+            created: CardAddressBook = self.module.create_external_addressbook(
+                self.user,
+                name=body["name"],
+                url=body["url"],
+                sync_interval_minutes=body.get("sync_interval_minutes", 60),
+            )
+            return create_api_base_response(self._addressbook_serializer.serialize(created), code=201)
+        except RequestException as ex:
+            logger_api.error("create_external_addressbook failed for user %s: %s", self.user.uid, ex)
+            return create_api_base_response(None, ex.error)
+
+    def enqueue_external_sync(self, key: str) -> tuple[dict[str, Any], int]:
+        """Enqueue a manual CardDAV sync for an external address book and return its job_id (202).
+
+        Currently runs synchronously; returns a placeholder job_id. Will dispatch through
+        the agent infrastructure once the async worker is wired for CardDAV.
+        """
+        try:
+            job_id: str = self.module.enqueue_external_sync(self.user, key)
+            return create_api_base_response({"job_id": job_id, "status": "completed"}, code=200)
+        except RequestException as ex:
+            logger_api.error("enqueue_external_sync failed for user %s key %s: %s", self.user.uid, key, ex)
+            return create_api_base_response(None, ex.error)
