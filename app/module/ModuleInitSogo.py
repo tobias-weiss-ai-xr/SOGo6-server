@@ -94,6 +94,14 @@ class ModuleInitSogo:
         elif len(table_ok) == len(ALL_TABLES):
             #All tables are ok
             self.first_init = False
+
+        # Ensure supplementary tables exist (shared mailboxes, etc.)
+        try:
+            from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
+            ModuleSharedMailbox.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure supplementary tables: %s", exc)
+
         sogo_db_manager.close()
 
     
