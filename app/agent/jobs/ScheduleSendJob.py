@@ -39,10 +39,11 @@ class ScheduleSendRequest(JobRequest):
     soft_timeout_seconds: ClassVar[int] = 120
     max_concurrent: ClassVar[int] = 0  # Allow multiple concurrent scheduled sends
 
-    account_id: str
-    mail_data: dict
-    extra_headers: dict | None
-    tmp_draft_key: str | None
+    def __init__(self, account_id: str, mail_data: dict, extra_headers: dict | None, tmp_draft_key: str | None):
+        self.account_id = account_id
+        self.mail_data = mail_data
+        self.extra_headers = extra_headers
+        self.tmp_draft_key = tmp_draft_key
 
     def payload(self) -> dict[str, Any]:
         return {

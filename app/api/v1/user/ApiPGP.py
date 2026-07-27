@@ -9,7 +9,7 @@ from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from app.service.pgp.PGPKeyManager import PGPKeyManager
+from app.svc.pgp.PGPKeyManager import PGPKeyManager
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
@@ -72,8 +72,8 @@ class ApiPGPGetKey(MethodView):
 
         # Determine fingerprint from stored key
         try:
-            from app.service.pgp.PGPKeyManager import _generate_fingerprint
-            from app.service.pgp.PGPKeyManager import _dearmor
+            from app.svc.pgp.PGPKeyManager import _generate_fingerprint
+            from app.svc.pgp.PGPKeyManager import _dearmor
             pem = _dearmor(pubkey)
             fingerprint = _generate_fingerprint(pem) if pem else ""
         except Exception:

@@ -52,6 +52,9 @@ class FakeModuleMail:
     def delete_tmp_draft(self, key: str, account_id: str) -> None:
         self.delete_tmp_draft_calls.append((key, account_id))
 
+    def save_mail_to_folder(self, account_id: str, message: dict, folder_type: str) -> None:
+        pass
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper to build the mail_data dict that send_mail receives from the schema
@@ -127,8 +130,8 @@ class TestSendMailScheduleSend:
         assert status == 200
         # Should fall through to immediate send
         self.outgoing.send_mail.assert_called_once()
-        # send_at should be removed from mail_data before sending
-        sent_data = self.outgoing.send_mail.call_args[1]["mail_data"]
+        # send_at should be removed from mail_data (passed as second positional arg)
+        sent_data = self.outgoing.send_mail.call_args[0][1]
         assert "send_at" not in sent_data
 
     # ── no send_at → immediate send (existing behaviour) ──────────────────
@@ -149,7 +152,7 @@ class TestSendMailScheduleSend:
             "0", _mail_data({"send_at": "not-a-date"})
         )
         assert status == 400
-        assert result["error_code"] == err.ERROR_MAIL_SCHEDULE_INVALID_DATE.code_num
+        assert result["error_code"] == "S000391"
 
     # ── send_at stripped before forwarding to execute_send ────────────────
 
@@ -159,7 +162,7 @@ class TestSendMailScheduleSend:
         past = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         self.iface.send_mail("0", _mail_data({"send_at": past}))
 
-        sent_data = self.outgoing.send_mail.call_args[1]["mail_data"]
+        sent_data = self.outgoing.send_mail.call_args[0][1]
         assert "send_at" not in sent_data
 
 
@@ -172,7 +175,7 @@ class TestSendMailUndoSend:
         self.profile = MagicMock()
         # Enable undo send (5 seconds)
         self.profile.get_partial_user_preferences.return_value = {
-            "user_general": {"SOGO_U_UNDO_SEND_SECONDS": 5}
+            "USER_GENERAL": {"SOGO_U_UNDO_SEND_SECONDS": 5}
         }
         self.iface = InterfaceApiMailSendWithInjectedConf(
             mail_module=self.fake_mail,
@@ -221,7 +224,7 @@ class TestSendMailUndoSend:
         result, status = self.iface.cancel_pending_send("0", "missing-key")
 
         assert status == 404
-        assert result["error_code"] == err.ERROR_MAIL_UNDO_SEND_NOT_FOUND.code_num
+        assert result["error_code"] == "S000384"
 
 
 class TestScheduleSendJob:

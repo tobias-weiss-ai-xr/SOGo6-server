@@ -9,8 +9,8 @@ from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from app.service.push.PushService import PushService
-from app.service.push.PushService import get_vapid_keys
+from app.svc.push.PushService import PushService
+from app.svc.push.PushService import get_vapid_keys
 from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
