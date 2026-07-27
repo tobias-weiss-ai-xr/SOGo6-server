@@ -477,13 +477,13 @@ class ModuleAdminConfig:
             merge_patch(new_param, clean_param)
             values = check_data_for_sogo_schemas(clean_param, get_schema)
             if column_name == tbl.COL_SETTINGS_SYSTEM.name:
-                values_tuple = [1, values, {}]
+                values_tuple = [1, values, {}, {}]
             elif column_name == tbl.COL_SETTINGS_DOMAIN_DEFAULT.name:
-                values_tuple = [1, {}, values]
+                values_tuple = [1, {}, values, {}]
             else:
                 raise BugException(f"Trying to insert an unknown column in {tbl.TABLE_SETTINGS.name}: {column_name}", err.ERROR_BUG_UNKNWON_COLUMN)
             ret = self.sogo_db_manager.insert_in_table(table_name=tbl.TABLE_SETTINGS.name,
-                                               column_tuple=(tbl.COL_SETTINGS_UNIQUE.name, tbl.COL_SETTINGS_SYSTEM.name,tbl.COL_SETTINGS_DOMAIN_DEFAULT.name),
+                                               column_tuple=(tbl.COL_SETTINGS_UNIQUE.name, tbl.COL_SETTINGS_SYSTEM.name,tbl.COL_SETTINGS_DOMAIN_DEFAULT.name,tbl.COL_SETTINGS_THEME.name),
                                                values_tuple=[values_tuple])
         if size == 1:
             #Merge the new data and check it
