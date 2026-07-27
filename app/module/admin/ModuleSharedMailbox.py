@@ -7,7 +7,7 @@ from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api as logger_admin
 from app.utils.maths.sogo_hash import generate_uuid
-from app.utils.db.Condition import EqualCondition
+from app.utils.db.Condition import EqualCondition, TrueCondition
 
 if TYPE_CHECKING:
     from app.manager.db.ClientSQL import ClientSQL
@@ -79,7 +79,7 @@ class ModuleSharedMailbox:
         rows = self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
-            condition=None,
+            condition=TrueCondition(),
         )
         return [self._row_to_dict(row) for row in rows]
 
