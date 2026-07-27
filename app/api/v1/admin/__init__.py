@@ -26,6 +26,21 @@ from .ApiCrmLight import blp as crm_light_api
 from .ApiWorkflowBuilder import blp as workflow_builder_api
 from .ApiQuickActions import blp as quick_actions_api
 
+# Tier 6 — Vertical Markets
+from .ApiScimProvisioning import blp as scim_provisioning_api
+from .ApiStudentGroups import blp as student_groups_api
+from .ApiHipaaCompliance import blp as hipaa_compliance_api
+from .ApiEidasSignatures import blp as eidas_signatures_api
+from .ApiDonorManagement import blp as donor_management_api
+from .ApiVolunteerScheduling import blp as volunteer_scheduling_api
+
+# Tier 7 — Advanced
+from .ApiImportExport import blp as import_export_api
+from .ApiMatrixChat import blp as matrix_chat_api
+from .ApiJmapProtocol import blp as jmap_protocol_api
+from .ApiActiveSync import blp as active_sync_api
+from .ApiMobileApp import blp as mobile_app_api
+
 admin_apis : list[Blueprint] = [
     audit_log_api,
     domain_branding_api,
@@ -51,4 +66,19 @@ admin_apis : list[Blueprint] = [
     admin_shared_mailbox_api_blueprint,
     admin_calendar_api_blueprint,
     admin_resource_booking_api_blueprint,
+
+    # Tier 6
+    scim_provisioning_api,
+    student_groups_api,
+    hipaa_compliance_api,
+    eidas_signatures_api,
+    donor_management_api,
+    volunteer_scheduling_api,
+
+    # Tier 7
+    import_export_api,
+    matrix_chat_api,
+    jmap_protocol_api,
+    active_sync_api,
+    mobile_app_api,
 ]
