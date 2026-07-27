@@ -37,6 +37,12 @@ class UserGeneralSettings(SogoSchema):
     SOGO_U_FIRST_MODULE = fields.String(load_default="mail", dump_default="mail",
                                         validate=validate.OneOf(('mail', 'calendar', 'contact', 'last'))) #Tell what module to show after login
     SOGO_U_REFRESH_MAIL_VIEW = fields.Integer(load_default=0, dump_default=0, validate=validate.OneOf((0, 1, 2, 5, 10, 20, 30, 60))) #0 means the mail view must be refreshed manually, other value are the poolin interval in minutes
+    SOGO_U_UNDO_SEND_SECONDS = fields.Integer(
+        load_default=0, dump_default=0, validate=validate.Range(min=0, max=60),
+        metadata={"description": "Grace period in seconds for Undo Send "
+                                 "(0 = disabled, max 60). During this window "
+                                 "the email can be recalled via the cancel endpoint."},
+    )
     SOGO_U_BROWSER_NOTIF = fields.Boolean(load_default=False, dump_default=False) #Enable notificaiton on browser
     SOGO_U_EXT_AVATAR_ENABLED  = fields.Boolean(load_default=False, dump_default=False) #Download external avatar (gravatar, libravatar) to display on mail list
     SOGO_U_PROFILE_PICTURE  = fields.String(load_default="default", dump_default="default",

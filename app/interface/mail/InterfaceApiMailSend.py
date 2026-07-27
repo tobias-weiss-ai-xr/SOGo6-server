@@ -2,18 +2,31 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 
-from app.config.settings.DomainSettings import UserModuleSettings, UserModuleSettingsObj, MailSettings, MailSettingsObj
+import json
+from datetime import datetime, timezone
+
+from app.config.settings.DomainSettings import (
+    UserModuleSettings, UserModuleSettingsObj, MailSettings, MailSettingsObj,
+)
+from app.config.settings.UserSettings import UserGeneralSettings, UserGeneralSettingsObj
 from app.module.mail.ModuleMail import ModuleMail
 from app.module.mail.ModuleMailOutgoing import ModuleMailOutgoing
 from app.module.user.ModuleUserProfile import ModuleUserProfile
+from app.service import sogo_cache
+from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import constants as cs
 from app.utils.logger.logger import logger_api
+from app.utils.maths.sogo_hash import generate_uuid
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.auth.User import User
+    from app.manager.cache.ClientRedis import ClientRedis
+
+# Redis key prefix for pending undo sends.
+_PENDING_SEND_PREFIX: str = "undo_send:"
 
 
 class InterfaceApiMailSend:
@@ -63,20 +76,27 @@ class InterfaceApiMailSend:
             logger_api.error("Request exception in save_draft for user %s, account %s: %s", self.user.uid, account_id, str(ex))
             return create_api_base_response(None, ex.error)
 
+    def _user_undo_seconds(self) -> int:
+        """Return the user's Undo Send grace period in seconds (0 = disabled)."""
+        raw_gen: dict = self.module_user_profile.get_partial_user_preferences(
+            self.user.uid, UserGeneralSettings.subparent.lower()
+        )
+        prefs: dict = raw_gen.get(UserGeneralSettings.subparent, {})
+        return int(prefs.get("SOGO_U_UNDO_SEND_SECONDS", 0))
+
     def send_mail(self, account_id: str, mail_data: dict, key: str | None = None) -> tuple[dict, int]:
         """Send an email from the specified account.
 
+        If the user has configured Undo Send (SOGO_U_UNDO_SEND_SECONDS > 0),
+        the email is held in a pending state in Redis for that many seconds.
+        The response includes a ``pending_key`` that can be used to cancel
+        the send via ``cancel_pending_send()``.
+
         :param account_id: The account identifier ("0" for main account, hash for external)
-        :type account_id: str
         :param mail_data: Validated mail data from schema
-        :type mail_data: dict
-        :param draft_uid: Optional UID of the draft mail to delete after sending
-        :type draft_uid: str | None
         :param key: Optional tmp_draft key; if provided, it is validated (existence, ownership, lock)
-            and the entry is deleted after a successful send
-        :type key: str | None
+            and the entry is deleted after a successful send or undo
         :return: A tuple of (API response dict, status code)
-        :rtype: tuple[dict, int]
         """
         if key is not None:
             try:
@@ -103,8 +123,96 @@ class InterfaceApiMailSend:
                 logger_api.warning("Failed to retrieve attachments from tmp_draft key %s for user %s: %s", key, self.user.uid, str(ex))
         else:
             extra_headers = {}
+
+        undo_seconds: int = self._user_undo_seconds()
+
+        if undo_seconds > 0:
+            # Undo Send is enabled: hold in Redis instead of sending immediately
+            pending_key: str = generate_uuid()
+            redis_key: str = f"{_PENDING_SEND_PREFIX}{self.user.uid}:{pending_key}"
+            cache: ClientRedis = sogo_cache()
+
+            payload: dict = {
+                "account_id": account_id,
+                "mail_data": mail_data,
+                "extra_headers": extra_headers or None,
+                "tmp_draft_key": key,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            cache.set(redis_key, json.dumps(payload), ttl=undo_seconds)
+
+            logger_api.info(
+                "Undo Send: pending send %s for user %s (ttl=%ds)",
+                pending_key, self.user.uid, undo_seconds,
+            )
+            return create_api_base_response({
+                "status": "pending",
+                "pending_key": pending_key,
+                "undo_available_until": (
+                    datetime.now(timezone.utc).timestamp() + undo_seconds
+                ),
+            })
+
+        # No undo: send immediately
+        return self._execute_send(account_id, mail_data, extra_headers or None, key)
+
+    def cancel_pending_send(self, account_id: str, pending_key: str) -> tuple[dict, int]:
+        """Cancel a pending send (Undo Send).
+
+        Removes the pending email from Redis so it will never be sent.
+        If the tmp_draft key is still present, it is also cleaned up.
+
+        :param account_id: The account identifier.
+        :param pending_key: The key returned by send_mail when undo was active.
+        :return: A tuple of (API response dict, status code)
+        """
+        redis_key: str = f"{_PENDING_SEND_PREFIX}{self.user.uid}:{pending_key}"
+        cache: ClientRedis = sogo_cache()
+        raw: str | None = cache.get(redis_key, str)
+        if raw is None:
+            return create_api_base_response(None, err.ERROR_MAIL_UNDO_SEND_NOT_FOUND)
+
         try:
-            message = self.mail_outgoing_module.send_mail(account_id, mail_data, extra_headers=extra_headers or None)
+            payload: dict = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            cache.delete(redis_key)
+            return create_api_base_response(None, err.ERROR_MAIL_UNDO_SEND_NOT_FOUND)
+
+        # Verify that the undo window hasn't expired via Redis TTL (key would be gone),
+        # but also check the created_at for an extra safety layer.
+        created_raw: str | None = payload.get("created_at")
+        if created_raw:
+            try:
+                created = datetime.fromisoformat(created_raw)
+                elapsed = (datetime.now(timezone.utc) - created).total_seconds()
+                undo_seconds: int = self._user_undo_seconds()
+                if undo_seconds > 0 and elapsed > undo_seconds + 2:  # 2s grace
+                    cache.delete(redis_key)
+                    return create_api_base_response(None, err.ERROR_MAIL_UNDO_SEND_EXPIRED)
+            except (ValueError, TypeError):
+                pass
+
+        # Delete the pending entry from Redis
+        cache.delete(redis_key)
+
+        # Clean up the tmp_draft if one was associated
+        tmp_key: str | None = payload.get("tmp_draft_key")
+        if tmp_key:
+            try:
+                self.mail_module.delete_tmp_draft(tmp_key, account_id)
+            except RequestException as ex:
+                logger_api.warning("Failed to clean up tmp_draft %s after undo: %s", tmp_key, str(ex))
+
+        logger_api.info(
+            "Undo Send: cancelled pending send %s for user %s",
+            pending_key, self.user.uid,
+        )
+        return create_api_base_response({"status": "cancelled"})
+
+    def _execute_send(self, account_id: str, mail_data: dict, extra_headers: dict | None, key: str | None) -> tuple[dict, int]:
+        """Actually send the email (shared by immediate send and deferred undo expiry)."""
+        try:
+            message = self.mail_outgoing_module.send_mail(account_id, mail_data, extra_headers=extra_headers)
         except RequestException as ex:
             logger_api.error("Request exception in send_mail for user %s, account %s: %s", self.user.uid, account_id, str(ex))
             return create_api_base_response(None, ex.error, error_msg=str(ex))

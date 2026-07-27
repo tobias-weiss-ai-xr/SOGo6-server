@@ -111,6 +111,8 @@ ERROR_INVALID_ENCRYPTED_DATA = E("S000362", "Encrypted Password Is Not Valid Bas
 ERROR_MAIL_SAVE_DRAFT_FAILED = E("S000365", "Mail Draft Save Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_SAVE_SENT_FAILED  = E("S000363", "Saving Sent Mail To Folder Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_DELETE_DRAFT_FAILED = E("S000364", "Deleting Draft Mail After Sending Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_MAIL_UNDO_SEND_NOT_FOUND  = E("S000380", "Pending Send Not Found Or Already Expired", HTTPStatus.NOT_FOUND)
+ERROR_MAIL_UNDO_SEND_EXPIRED    = E("S000381", "Undo Send Window Has Expired", HTTPStatus.GONE)
 
 # tmp_draft
 ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
