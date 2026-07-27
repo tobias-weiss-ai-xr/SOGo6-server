@@ -14,7 +14,7 @@ from app.utils.exceptions import RequestException
 blp = Blueprint(
     "Shared Mailboxes",
     __name__,
-    url_prefix="/admin/shared-mailboxes",
+    url_prefix="/shared-mailboxes",
     description="Team/shared mailbox management (e.g., support@, info@)",
 )
 

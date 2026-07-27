@@ -12,7 +12,7 @@ from app.utils.api.ApiBaseResponse import create_api_base_response
 blp = Blueprint(
     "DNS Wizard",
     __name__,
-    url_prefix="/admin/dns",
+    url_prefix="/dns",
     description="DKIM/DMARC/SPF DNS record generator and validator",
 )
 
