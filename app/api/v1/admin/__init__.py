@@ -16,6 +16,8 @@ from .ApiMailboxDebug import blp as mailbox_debug_api
 from .ApiUsageQuotas import blp as usage_quotas_api
 from .ApiBulkUsers import blp as bulk_users_api
 from .ApiWebhooks import blp as webhooks_api
+from .ApiBackup import blp as backup_api
+from .ApiDbMigration import blp as db_migration_api
 
 admin_apis : list[Blueprint] = [
     audit_log_api,
@@ -26,6 +28,8 @@ admin_apis : list[Blueprint] = [
     usage_quotas_api,
     bulk_users_api,
     webhooks_api,
+    backup_api,
+    db_migration_api,
     admin_auth_api_blueprint,
     admin_config_api_blueprint,
     admin_user_api_blueprint,
