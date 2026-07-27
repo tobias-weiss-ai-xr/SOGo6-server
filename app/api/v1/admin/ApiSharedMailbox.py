@@ -62,9 +62,14 @@ class SharedMailboxResponseDataSchema(Schema):
 def _get_module() -> ModuleSharedMailbox:
     if not hasattr(g, "_shared_mailbox_module"):
         from app.manager.db.ClientPostgreSQL import ClientPostgreSQL
+        from app.utils.module.importManager import import_and_instantiate_manager
 
         process = g.process_settings
-        db = ClientPostgreSQL(process.get_db_settings())
+        db = import_and_instantiate_manager(
+            module_path="app.manager.db",
+            module_and_class_name="ClientPostgreSQL",
+            module_args=process.get_db_settings(),
+        )
         g._shared_mailbox_module = ModuleSharedMailbox(db)
     return g._shared_mailbox_module
 
