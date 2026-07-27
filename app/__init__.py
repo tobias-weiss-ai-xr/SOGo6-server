@@ -22,7 +22,11 @@ import app.utils.errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response, ApiBaseResponse
 from app.utils import constants as cs
 from app.utils.logger.logger import logger, logger_api
+from app.utils.logger.json_logger import enable_json_logging
+from app.utils.api.prometheus import init_prometheus
 from app.utils.exceptions import AggravatedException
+
+from pathlib import Path
 
 #Apis
 from app.api import all_apis
@@ -43,9 +47,27 @@ def create_app(sogo_state: int) -> Flask:
     # memory. See app.utils.constants.MAX_HTTP_REQUEST_BYTES for the rationale.
     app.config["MAX_CONTENT_LENGTH"] = cs.MAX_HTTP_REQUEST_BYTES
 
+    # Enable structured JSON logging when SOGO_JSON_LOG=1
+    enable_json_logging()
+
+    # Store the process config reference for health-check access
+    app.config["process_config"] = process_config
+
+    # Initialise Prometheus metrics and expose /metrics
+    init_prometheus(app)
+
     if not app.config.get("DO_SWAGGER"):
         app.config.pop("BASIC_OPENAPI_URL_PREFIX")
         app.config.pop("ADMIN_OPENAPI_URL_PREFIX")
+    else:
+        # Load custom Swagger UI template
+        template_path = Path(__file__).resolve().parent / "templates" / "swagger-ui.html"
+        if template_path.exists():
+            swagger_template = template_path.read_text(encoding="utf-8")
+            app.config["BASIC_OPENAPI_SWAGGER_UI_TEMPLATE"] = swagger_template
+            app.config["ADMIN_OPENAPI_SWAGGER_UI_TEMPLATE"] = swagger_template
+        else:
+            logger.warning("Custom Swagger UI template not found at %s", template_path)
 
 
     flask_api = Api(app, config_prefix="BASIC_") # type: ignore [call-arg]
@@ -54,10 +76,17 @@ def create_app(sogo_state: int) -> Flask:
     register_route(flask_api, cs.API_BASIC, sogo_state)
     register_route(admin_api, cs.API_ADMIN, sogo_state)
 
-    CORS(app, resources={r"/api/*": {"origins": "*",
+    allowed_origins = [
+        process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000",
+    ]
+    # In development, also allow the Docker host
+    if process_config.SOGO_P_PUBLIC_BASE_URL:
+        allowed_origins.append(process_config.SOGO_P_PUBLIC_BASE_URL)
+
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins,
                                      "allow_headers": ["authorization", "content-type"],
-                                        "expose_headers": ["X-Pagination"]}})
-    #TODO: remove CORS policy when we have a proper frontend
+                                     "expose_headers": ["X-Pagination"],
+                                     "supports_credentials": True}})
 
     return app
 
@@ -296,6 +325,29 @@ def register_after_request(base_blueprint: Blueprint) -> None:
                     response.set_data(dumps(
                         create_api_base_response(body, err.ERROR_VALIDATION_ERROR)
                     ))
+
+        # Security headers
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+        # Content-Security-Policy: restrict script/style sources
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data:; "
+            "font-src 'self' https://cdn.jsdelivr.net; "
+            "connect-src 'self' https://cdn.jsdelivr.net",
+        )
+        # Referrer-Policy
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # Permissions-Policy: disallow features by default
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=()",
+        )
+
         return response
 
 def register_route(flask_api: Api, name: str, sogo_state: int) -> None:
