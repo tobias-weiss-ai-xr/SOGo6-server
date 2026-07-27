@@ -28,6 +28,7 @@ _VAPID_CLAIMS: dict = {}
 
 # Redis key prefix for push subscriptions
 _PUSH_SUB_PREFIX: str = "push:sub:"
+_PUSH_INDEX_PREFIX: str = "push:index:"
 _PUSH_MSG_PREFIX: str = "push:msg:"
 
 
@@ -128,27 +129,46 @@ class PushService:
         :param subscription: Push subscription object from browser
             {endpoint, keys: {p256dh, auth}}
         """
-        key = f"{_PUSH_SUB_PREFIX}{user_uid}:{hashlib.sha256(subscription['endpoint'].encode()).hexdigest()[:16]}"
+        import hashlib
+        sub_id = hashlib.sha256(subscription['endpoint'].encode()).hexdigest()[:16]
+        key = f"{_PUSH_SUB_PREFIX}{user_uid}:{sub_id}"
         self.cache.set(key, json.dumps(subscription), ttl=86400 * 365)
+        # Maintain index
+        import json as _json
+        index_raw = self.cache.get(f"{_PUSH_INDEX_PREFIX}{user_uid}", list)
+        index: list = list(index_raw) if isinstance(index_raw, list) else []
+        if sub_id not in index:
+            index.append(sub_id)
+            self.cache.set(f"{_PUSH_INDEX_PREFIX}{user_uid}", index, ttl=86400 * 365)
         logger_api.info("Push subscription stored for user %s", user_uid)
 
     def unsubscribe(self, user_uid: str, endpoint: str) -> None:
         """Remove a push subscription."""
-        key = f"{_PUSH_SUB_PREFIX}{user_uid}:{hashlib.sha256(endpoint.encode()).hexdigest()[:16]}"
+        import hashlib
+        sub_id = hashlib.sha256(endpoint.encode()).hexdigest()[:16]
+        key = f"{_PUSH_SUB_PREFIX}{user_uid}:{sub_id}"
         self.cache.delete(key)
+        # Update index
+        import json as _json
+        index_raw = self.cache.get(f"{_PUSH_INDEX_PREFIX}{user_uid}", list)
+        index: list = list(index_raw) if isinstance(index_raw, list) else []
+        if sub_id in index:
+            index.remove(sub_id)
+            self.cache.set(f"{_PUSH_INDEX_PREFIX}{user_uid}", index, ttl=86400 * 365)
         logger_api.info("Push subscription removed for user %s", user_uid)
 
     def get_subscriptions(self, user_uid: str) -> list[dict]:
         """Get all push subscriptions for a user."""
-        pattern = f"{_PUSH_SUB_PREFIX}{user_uid}:*"
-        keys = self.cache.scan(pattern)
+        import json as _json
+        index_raw = self.cache.get(f"{_PUSH_INDEX_PREFIX}{user_uid}", list)
+        index: list = list(index_raw) if isinstance(index_raw, list) else []
         subs = []
-        for key in keys:
-            raw = self.cache.get(key, str)
+        for sub_id in index:
+            raw = self.cache.get(f"{_PUSH_SUB_PREFIX}{user_uid}:{sub_id}", str)
             if raw:
                 try:
-                    subs.append(json.loads(raw))
-                except json.JSONDecodeError:
+                    subs.append(_json.loads(raw))
+                except _json.JSONDecodeError:
                     pass
         return subs
 
@@ -179,8 +199,8 @@ class PushService:
 
         for sub in subscriptions:
             try:
-                self._send_to_subscription(sub, payload)
-                sent += 1
+                if self._send_to_subscription(sub, payload):
+                    sent += 1
             except Exception as e:
                 logger_api.warning("Failed to send push to %s: %s", user_uid, e)
 
@@ -190,11 +210,11 @@ class PushService:
         )
         return sent
 
-    def _send_to_subscription(self, subscription: dict, payload: str) -> None:
-        """Send encrypted push to a single subscription."""
+    def _send_to_subscription(self, subscription: dict, payload: str) -> bool:
+        """Send encrypted push to a single subscription. Returns True on success."""
         endpoint = subscription.get("endpoint", "")
         if not endpoint:
-            return
+            return False
 
         headers = {
             "Content-Type": "application/octet-stream",
@@ -214,11 +234,13 @@ class PushService:
         try:
             resp = urllib.request.urlopen(req, timeout=10)
             logger_api.debug("Push sent to %s: HTTP %d", endpoint[:30], resp.status)
+            return resp.status < 300
         except urllib.error.HTTPError as e:
             if e.code in (410, 404):
-                # Subscription expired or invalid — should remove it
                 logger_api.info("Push subscription gone (HTTP %d), should remove", e.code)
             else:
                 logger_api.warning("Push send failed (HTTP %d): %s", e.code, e)
+            return False
         except urllib.error.URLError as e:
             logger_api.warning("Push send failed (connection): %s", e)
+            return False

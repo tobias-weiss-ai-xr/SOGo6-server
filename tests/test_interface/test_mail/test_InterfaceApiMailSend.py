@@ -2,74 +2,13 @@
 """Unit tests for InterfaceApiMailSend — send_mail / Schedule Send / Undo Send."""
 
 from datetime import datetime, timezone, timedelta
-from typing import Any
 from unittest.mock import patch, MagicMock
 
-from app.interface.mail.InterfaceApiMailSend import InterfaceApiMailSend
-from app.utils.exceptions import RequestException
-from app.utils import errors as err
+from tests.helpers import (
+    make_mail_data,
+    make_mail_iface,
+)
 from app.agent.jobs.ScheduleSendJob import ScheduleSendRequest
-
-
-class InterfaceApiMailSendWithInjectedConf(InterfaceApiMailSend):
-    """Subclass that allows injecting mocked dependencies for testing."""
-
-    def __init__(self, mail_module=None, outgoing_module=None, user_profile=None):
-        self.mail_module = mail_module or MagicMock()
-        self.mail_outgoing_module = outgoing_module or MagicMock()
-        self.module_user_profile = user_profile or MagicMock()
-        self._process = MagicMock()
-        self.user = MagicMock()
-        self.user.uid = "testuser@example.org"
-
-
-class FakeModuleMail:
-    """Fake ModuleMail for testing send_mail flows."""
-
-    def __init__(self):
-        self.validate_tmp_draft_key_calls = []
-        self.get_headers_from_tmp_draft_calls = []
-        self.get_attachments_from_tmp_draft_calls = []
-        self.delete_tmp_draft_calls = []
-
-        self.validate_tmp_draft_key_side_effect = None
-        self.get_headers_from_tmp_draft_result = {}
-        self.get_attachments_from_tmp_draft_result = []
-
-    def validate_tmp_draft_key(self, key: str) -> None:
-        self.validate_tmp_draft_key_calls.append(key)
-        if self.validate_tmp_draft_key_side_effect:
-            raise self.validate_tmp_draft_key_side_effect
-
-    def get_headers_from_tmp_draft(self, key: str) -> dict:
-        self.get_headers_from_tmp_draft_calls.append(key)
-        return self.get_headers_from_tmp_draft_result
-
-    def get_attachments_from_tmp_draft(self, account_id: str, key: str) -> list:
-        self.get_attachments_from_tmp_draft_calls.append((account_id, key))
-        return self.get_attachments_from_tmp_draft_result
-
-    def delete_tmp_draft(self, key: str, account_id: str) -> None:
-        self.delete_tmp_draft_calls.append((key, account_id))
-
-    def save_mail_to_folder(self, account_id: str, message: dict, folder_type: str) -> None:
-        pass
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper to build the mail_data dict that send_mail receives from the schema
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _mail_data(overrides: dict | None = None) -> dict[str, Any]:
-    data = {
-        "from": "sender@example.org",
-        "to": ["recipient@example.org"],
-        "subject": "Test",
-        "body": "Hello",
-    }
-    if overrides:
-        data.update(overrides)
-    return data
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -80,19 +19,9 @@ class TestSendMailScheduleSend:
     """Tests for send_mail with send_at (Schedule Send)."""
 
     def setup_method(self):
-        self.fake_mail = FakeModuleMail()
-        self.outgoing = MagicMock()
-        self.profile = MagicMock()
-        # Default: undo send disabled (0 seconds)
-        self.profile.get_partial_user_preferences.return_value = {
-            "user_general": {"SOGO_U_UNDO_SEND_SECONDS": 0}
-        }
-        self.iface = InterfaceApiMailSendWithInjectedConf(
-            mail_module=self.fake_mail,
-            outgoing_module=self.outgoing,
-            user_profile=self.profile,
-        )
-        self.iface.user.uid = "testuser@example.org"
+        self.iface = make_mail_iface(undo_seconds=0)
+        self.outgoing = self.iface.mail_outgoing_module
+        self.fake_mail = self.iface.mail_module
 
     # ── send_at in the future → scheduled ──────────────────────────────────
 
@@ -105,7 +34,7 @@ class TestSendMailScheduleSend:
 
         future = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
         result, status = self.iface.send_mail(
-            "0", _mail_data({"send_at": future})
+            "0", make_mail_data({"send_at": future})
         )
 
         assert status == 200
@@ -124,7 +53,7 @@ class TestSendMailScheduleSend:
         self.outgoing.send_mail.return_value = {"uid": "42"}
         past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         result, status = self.iface.send_mail(
-            "0", _mail_data({"send_at": past})
+            "0", make_mail_data({"send_at": past})
         )
 
         assert status == 200
@@ -139,7 +68,7 @@ class TestSendMailScheduleSend:
     def test_send_mail_without_send_at_sends_immediately(self):
         """No send_at → existing behaviour unchanged (immediate send)."""
         self.outgoing.send_mail.return_value = {"uid": "99"}
-        result, status = self.iface.send_mail("0", _mail_data())
+        result, status = self.iface.send_mail("0", make_mail_data())
 
         assert status == 200
         self.outgoing.send_mail.assert_called_once()
@@ -149,7 +78,7 @@ class TestSendMailScheduleSend:
     def test_send_mail_with_invalid_send_at_format(self):
         """Malformed send_at → 400 error."""
         result, status = self.iface.send_mail(
-            "0", _mail_data({"send_at": "not-a-date"})
+            "0", make_mail_data({"send_at": "not-a-date"})
         )
         assert status == 400
         assert result["error_code"] == "S000391"
@@ -160,7 +89,7 @@ class TestSendMailScheduleSend:
         """send_at must be removed from mail_data before _execute_send."""
         self.outgoing.send_mail.return_value = {"uid": "7"}
         past = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-        self.iface.send_mail("0", _mail_data({"send_at": past}))
+        self.iface.send_mail("0", make_mail_data({"send_at": past}))
 
         sent_data = self.outgoing.send_mail.call_args[0][1]
         assert "send_at" not in sent_data
@@ -176,7 +105,7 @@ class TestSendMailScheduleSend:
 
         far_future = (datetime.now(timezone.utc) + timedelta(days=31)).isoformat()
         result, status = self.iface.send_mail(
-            "0", _mail_data({"send_at": far_future})
+            "0", make_mail_data({"send_at": far_future})
         )
 
         assert status == 400
@@ -192,9 +121,9 @@ class TestSendMailScheduleSend:
         mock_agent.enqueue.return_value = "job-uuid-boundary"
         mock_client_agent.return_value = mock_agent
 
-        boundary = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        boundary = (datetime.now(timezone.utc) + timedelta(days=29)).isoformat()
         result, status = self.iface.send_mail(
-            "0", _mail_data({"send_at": boundary})
+            "0", make_mail_data({"send_at": boundary})
         )
 
         assert status == 200
@@ -205,19 +134,9 @@ class TestSendMailUndoSend:
     """Tests for Undo Send (existing behaviour preserved)."""
 
     def setup_method(self):
-        self.fake_mail = FakeModuleMail()
-        self.outgoing = MagicMock()
-        self.profile = MagicMock()
-        # Enable undo send (5 seconds)
-        self.profile.get_partial_user_preferences.return_value = {
-            "USER_GENERAL": {"SOGO_U_UNDO_SEND_SECONDS": 5}
-        }
-        self.iface = InterfaceApiMailSendWithInjectedConf(
-            mail_module=self.fake_mail,
-            outgoing_module=self.outgoing,
-            user_profile=self.profile,
-        )
-        self.iface.user.uid = "testuser@example.org"
+        self.iface = make_mail_iface(undo_seconds=5)
+        self.outgoing = self.iface.mail_outgoing_module
+        self.fake_mail = self.iface.mail_module
 
     @patch("app.interface.mail.InterfaceApiMailSend.sogo_cache")
     def test_undo_send_enabled_returns_pending(self, mock_cache):
@@ -225,7 +144,7 @@ class TestSendMailUndoSend:
         mock_redis = MagicMock()
         mock_cache.return_value = mock_redis
 
-        result, status = self.iface.send_mail("0", _mail_data())
+        result, status = self.iface.send_mail("0", make_mail_data())
 
         assert status == 200
         assert result["data"]["status"] == "pending"

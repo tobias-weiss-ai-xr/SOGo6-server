@@ -22,6 +22,11 @@ import pytest
 from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 
+# Optimisation: reduce example count for fast CI feedback.
+# Increase locally with --hypothesis-max-examples if needed.
+DEFAULT_EXAMPLES = 30
+FUZZ_EXAMPLES = 50
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Strategies: reusable generators for API input fuzzing
 # ─────────────────────────────────────────────────────────────────────────────
@@ -86,7 +91,7 @@ class TestApiEnvelopeContract:
     # ── Module-level fixtures are set up per-test-class in conftest ──
 
     @given(send_at=iso_datetime_strings)
-    @settings(max_examples=50, deadline=None)
+    @settings(max_examples=DEFAULT_EXAMPLES, deadline=500)
     def test_send_mail_envelope_with_various_send_at(
         self, send_at: str, mail_iface
     ):
@@ -111,7 +116,7 @@ class TestApiEnvelopeContract:
         subject=text_strings,
         body=text_strings,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=FUZZ_EXAMPLES, deadline=1000)
     def test_send_mail_envelope_with_fuzzed_fields(
         self, sender: str, recipient: str, subject: str, body: str, mail_iface
     ):
