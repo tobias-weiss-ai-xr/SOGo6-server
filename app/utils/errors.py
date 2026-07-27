@@ -126,6 +126,11 @@ ERROR_PGP_RECIPIENT_KEY_NOT_FOUND     = E("S000507", "Recipient PGP Key Not Foun
 ERROR_PGP_ENCRYPT_FAILED              = E("S000508", "PGP Encryption Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_PGP_DECRYPT_FAILED              = E("S000509", "PGP Decryption Failed — Invalid Key Or Corrupted Message", HTTPStatus.BAD_REQUEST)
 
+# API Tokens
+ERROR_API_TOKEN_NOT_FOUND             = E("S000510", "API Token Not Found", HTTPStatus.NOT_FOUND)
+ERROR_API_TOKEN_EXPIRED               = E("S000511", "API Token Has Expired", HTTPStatus.UNAUTHORIZED)
+ERROR_API_TOKEN_INVALID               = E("S000512", "API Token Is Invalid", HTTPStatus.UNAUTHORIZED)
+
 # tmp_draft
 ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
 ERROR_TMP_DRAFT_LOCKED          = E("S000371", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
