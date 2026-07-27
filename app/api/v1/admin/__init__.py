@@ -9,6 +9,7 @@ from .ApiAdminCalendar import blp as admin_calendar_api_blueprint
 
 from .ApiAuditLog import blp as audit_log_api
 from .ApiDomainBranding import blp as domain_branding_api
+from .ApiFileSharing import blp as file_sharing_api
 from .ApiHealthDashboard import blp as health_dashboard_api
 from .ApiMailboxDebug import blp as mailbox_debug_api
 from .ApiUsageQuotas import blp as usage_quotas_api
@@ -18,6 +19,7 @@ from .ApiWebhooks import blp as webhooks_api
 admin_apis : list[Blueprint] = [
     audit_log_api,
     domain_branding_api,
+    file_sharing_api,
     health_dashboard_api,
     mailbox_debug_api,
     usage_quotas_api,
