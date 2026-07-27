@@ -394,7 +394,7 @@ class ModuleMail:
 #MAILS SERVER#
 ##############
 
-    def _parse_mail(self, mail_dict:dict) -> dict:
+    def _parse_mail(self, mail_dict: dict) -> dict:
         """
         Parse a mail and return a dict with all the infos
 
@@ -457,6 +457,11 @@ class ModuleMail:
         email_msg: Message = mail_dict["mail"]
         flags_dict: dict = mail_dict["flags"]
         size = mail_dict["size"]
+
+        # Parse threading headers
+        message_id: str = email_msg.get("Message-ID", "").strip()
+        in_reply_to: str = email_msg.get("In-Reply-To", "").strip()
+        references: str = email_msg.get("References", "").strip()
 
         # Parse subject
         try:
@@ -630,7 +635,12 @@ class ModuleMail:
             "priority": priority,
             "should_ask_receipt": should_ask_receipt,
             "mail_type": mail_type,
-            "mail_type_data": mail_type_data
+            "mail_type_data": mail_type_data,
+            # Threading / Conversation fields
+            "message_id": message_id,
+            "in_reply_to": in_reply_to,
+            "references": references,
+            "thread_id": (references.split()[0] if references else (in_reply_to.split()[0] if in_reply_to else message_id)).strip("<>"),
         }
 
     def search_mails(self, account_id: str, search_params: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
