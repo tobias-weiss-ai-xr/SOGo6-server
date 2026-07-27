@@ -130,6 +130,7 @@ ERROR_PGP_DECRYPT_FAILED              = E("S000509", "PGP Decryption Failed — 
 ERROR_API_TOKEN_NOT_FOUND             = E("S000510", "API Token Not Found", HTTPStatus.NOT_FOUND)
 ERROR_API_TOKEN_EXPIRED               = E("S000511", "API Token Has Expired", HTTPStatus.UNAUTHORIZED)
 ERROR_API_TOKEN_INVALID               = E("S000512", "API Token Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_OAUTH_INVALID_CLIENT            = E("S000520", "OAuth Client Not Found", HTTPStatus.NOT_FOUND)
 
 # tmp_draft
 ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)

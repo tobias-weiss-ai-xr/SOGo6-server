@@ -13,6 +13,7 @@ from .ApiHealthDashboard import blp as health_dashboard_api
 from .ApiMailboxDebug import blp as mailbox_debug_api
 from .ApiUsageQuotas import blp as usage_quotas_api
 from .ApiBulkUsers import blp as bulk_users_api
+from .ApiWebhooks import blp as webhooks_api
 
 admin_apis : list[Blueprint] = [
     audit_log_api,
@@ -21,6 +22,7 @@ admin_apis : list[Blueprint] = [
     mailbox_debug_api,
     usage_quotas_api,
     bulk_users_api,
+    webhooks_api,
     admin_auth_api_blueprint,
     admin_config_api_blueprint,
     admin_user_api_blueprint,
