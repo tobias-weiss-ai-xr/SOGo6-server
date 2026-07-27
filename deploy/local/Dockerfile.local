@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         gunicorn celery \
         prometheus-client authlib pyotp qrcode[pil] webauthn \
         marshmallow icalendar \
-        psycopg[binary] python-ldap redis \
+        psycopg[binary] mysql-connector-python python-ldap redis \
         cryptography pyjwt pydantic pydantic-settings \
         sievelib yarl || \
     echo "Some packages failed - will check at runtime"
