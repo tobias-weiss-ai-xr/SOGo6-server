@@ -45,11 +45,11 @@ class ModuleSharedMailbox:
                member_uids: list[str] | None = None) -> dict[str, Any]:
         """Create a new shared mailbox."""
         # Check for duplicate
-        existing = self._db.select_from_table(
+        existing = list(self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
             condition=EqualCondition(self.COL_EMAIL, email),
-        )
+        ))
         if existing:
             raise RequestException(error=err.ERROR_SHARED_MAILBOX_DUPLICATE)
 
@@ -76,20 +76,20 @@ class ModuleSharedMailbox:
 
     def get_all(self) -> list[dict[str, Any]]:
         """Return all shared mailboxes."""
-        rows = self._db.select_from_table(
+        rows = list(self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
             condition=TrueCondition(),
-        )
+        ))
         return [self._row_to_dict(row) for row in rows]
 
     def get_by_id(self, mailbox_id: str) -> dict[str, Any] | None:
         """Return a shared mailbox by ID."""
-        rows = self._db.select_from_table(
+        rows = list(self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
             condition=EqualCondition(self.COL_ID, mailbox_id),
-        )
+        ))
         return self._row_to_dict(rows[0]) if rows else None
 
     def get_for_user(self, user_uid: str) -> list[dict[str, Any]]:
