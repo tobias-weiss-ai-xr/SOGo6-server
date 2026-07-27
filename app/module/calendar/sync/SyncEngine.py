@@ -47,7 +47,7 @@ class SyncEngine:
 
         Acquires a Redis lock to prevent concurrent syncs on the same calendar.
         """
-        if calendar.source_type != CalendarSourceType.ICS:
+        if calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
 
         url: str | None = (calendar.sync_config or {}).get("url")

@@ -538,25 +538,37 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
     # External calendars
     #
     def create_external_calendar(self, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
-        """Create a new external ICS calendar subscription via the common create_calendar flow.
+        """Create a new external calendar subscription (ICS or CalDAV) via the common create_calendar flow.
 
-        :param body: Validated request body with ``name``, ``url``, optional ``color`` and ``sync_interval_minutes``.
+        :param body: Validated request body with ``name``, ``url``, optional ``color``,
+            ``sync_interval_minutes`` and ``source_type`` ("ics" or "caldav", default "ics").
         :type body: dict
         :return: API envelope with the created calendar, plus HTTP status code.
         :rtype: tuple[dict, int]
         """
         try:
+            source_type_str: str = body.get("source_type", "ics").lower()
+            if source_type_str == "caldav":
+                st = CalendarSourceType.CALDAV
+            else:
+                st = CalendarSourceType.ICS
+
             cal: CalCalendar = CalCalendar(
                 user_uid=self.user.uid,
                 name=body["name"],
                 color=body.get("color"),
-                source_type=CalendarSourceType.ICS,
+                source_type=st,
                 sync_config={
                     "url": body["url"],
                     "sync_interval_minutes": body.get("sync_interval_minutes", 60),
                     "sync_status": CalendarSyncStatus.PENDING.value,
                 },
             )
+            if body.get("username"):
+                cal.sync_config["username"] = body["username"]
+            if body.get("password"):
+                cal.sync_config["password"] = body["password"]
+
             created: CalCalendar = self.module.create_calendar(self.user, cal)
             return create_api_base_response(self._calendar_serializer.serialize(created), code=201)
         except RequestException as ex:

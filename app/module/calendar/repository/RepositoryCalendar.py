@@ -191,14 +191,19 @@ class RepositoryCalendar:
         return [self._row_to_calendar(row) for row in rows]
 
     def find_all_external(self) -> list[CalCalendar]:
-        """Return every external ICS calendar across all users, ordered by id.
+        """Return every external ICS/CalDAV calendar across all users, ordered by id.
 
         System-wide (no user filter): used by the periodic auto-sync sweep, which has no user context.
         """
+        from app.utils.db.Condition import OrCondition, EqualCondition
+
         rows = self._db.select_from_table(
             table_name=tbl.TABLE_CALENDAR.name,
             column_tuple=_ALL_COLS,
-            condition=EqualCondition(tbl.COL_CAL_SOURCE_TYPE.name, CalendarSourceType.ICS.value),
+            condition=OrCondition(
+                EqualCondition(tbl.COL_CAL_SOURCE_TYPE.name, CalendarSourceType.ICS.value),
+                EqualCondition(tbl.COL_CAL_SOURCE_TYPE.name, CalendarSourceType.CALDAV.value),
+            ),
             sort_by=tbl.COL_ID.name,
         )
         return [self._row_to_calendar(row) for row in rows]

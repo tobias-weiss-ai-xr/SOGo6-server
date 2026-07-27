@@ -99,7 +99,11 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
 
 
 class IcsFetcher:
-    """Downloads ICS content from a remote HTTPS URL with SSRF protection.
+    """Downloads ICS/CalDAV content from a remote HTTPS URL with SSRF protection.
+
+    Supports:
+    - Direct ICS URLs (single .ics file download)
+    - CalDAV calendar URLs (PROPFIND discovery + GET for event collection)
 
     Validates the URL scheme (https only) and rejects private/loopback/link-local IPs.
     The hostname is resolved once and the connection is pinned to that IP (anti DNS-rebinding).
@@ -108,50 +112,234 @@ class IcsFetcher:
     Supports HTTP Basic authentication for htaccess-protected feeds.
     """
 
+    # CalDAV XML namespaces for PROPFIND discovery
+    NS_DAV: str = "DAV:"
+    NS_CALDAV: str = "urn:ietf:params:xml:ns:caldav"
+
     @staticmethod
     def fetch(url: str, username: str | None = None, password: str | None = None) -> str:
         """Download and return the ICS content as a string.
 
-        :param url: The remote ICS URL to fetch (https only).
+        For direct ICS URLs this performs a simple GET.
+        For CalDAV URLs this attempts GET first, and if the response is not
+        iCalendar data, performs a PROPFIND to discover the calendar URL.
+
+        :param url: The remote ICS or CalDAV URL to fetch (https only).
         :param username: Optional HTTP Basic auth username.
         :param password: Optional HTTP Basic auth password.
         :raises RequestException: On network error, invalid URL, SSRF attempt, size limit exceeded, or invalid ICS format.
         """
         pinned_ip: str = IcsFetcher._validate_url(url)
-        logger_calendar.debug("Fetching ICS from %s", url)
+        logger_calendar.debug("Fetching calendar from %s", url)
         try:
-            request = urllib.request.Request(url)
-            if username and password:
-                credentials: str = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
-                request.add_header("Authorization", f"Basic {credentials}")
+            # First try: direct GET (works for plain ICS feeds)
+            result: str = IcsFetcher._http_get(url, pinned_ip, username, password)
+            if IcsFetcher._looks_like_icalendar(result):
+                return result
 
-            opener = urllib.request.build_opener(
-                _PinnedHTTPSHandler(pinned_ip, context=ssl.create_default_context()),
-                _ValidatingRedirectHandler(max_redirects=MAX_ICS_REDIRECTS),
+            # Second try: CalDAV PROPFIND to discover calendar URL
+            logger_calendar.debug(
+                "Direct GET did not return iCalendar, trying CalDAV PROPFIND for %s", url
             )
-            with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
-                raw: bytes = response.read(MAX_ICS_BYTES + 1)
-                if len(raw) > MAX_ICS_BYTES:
-                    logger_calendar.error("ICS feed from %s exceeds size limit (%d bytes)", url, MAX_ICS_BYTES)
-                    raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED)
-                try:
-                    text: str = raw.decode("utf-8")
-                except UnicodeDecodeError:
-                    text = raw.decode("latin-1")
+            calendar_url: str | None = IcsFetcher._discover_calendar_url(
+                url, pinned_ip, username, password,
+            )
+            if calendar_url:
+                result = IcsFetcher._http_get(
+                    calendar_url, pinned_ip, username, password,
+                )
+                if IcsFetcher._looks_like_icalendar(result):
+                    return result
 
-            IcsFetcher._validate_ics_format(text, url)
-            return text
+            # If neither succeeded, the content is not valid ICS
+            raise RequestException(error=ERROR_CALENDAR_ICS_PARSE_FAILED)
+
         except RequestException:
             raise
         except urllib.error.HTTPError as exc:
-            logger_calendar.error("HTTP %s fetching ICS from %s: %s", exc.code, url, IcsFetcher._sanitize(exc.reason))
+            logger_calendar.error("HTTP %s fetching calendar from %s: %s",
+                                  exc.code, url, IcsFetcher._sanitize(str(exc.reason)))
             raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
         except urllib.error.URLError as exc:
-            logger_calendar.error("Failed to fetch ICS from %s: %s", url, IcsFetcher._sanitize(str(exc)))
+            logger_calendar.error("Failed to fetch calendar from %s: %s",
+                                  url, IcsFetcher._sanitize(str(exc)))
             raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
         except Exception as exc:
-            logger_calendar.exception("Unexpected error fetching ICS from %s", url)
+            logger_calendar.exception("Unexpected error fetching calendar from %s", url)
             raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
+
+    @staticmethod
+    def _http_get(url: str, pinned_ip: str, username: str | None = None,
+                  password: str | None = None) -> str:
+        """Perform an HTTP GET request with SSRF protection."""
+        request = urllib.request.Request(url)
+        request.add_header("Accept", "text/calendar, application/calendar+json, */*")
+        if username and password:
+            credentials: str = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+            request.add_header("Authorization", f"Basic {credentials}")
+
+        opener = urllib.request.build_opener(
+            _PinnedHTTPSHandler(pinned_ip, context=ssl.create_default_context()),
+            _ValidatingRedirectHandler(max_redirects=MAX_ICS_REDIRECTS),
+        )
+        with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            raw: bytes = response.read(MAX_ICS_BYTES + 1)
+            if len(raw) > MAX_ICS_BYTES:
+                logger_calendar.error("Calendar feed from %s exceeds size limit (%d bytes)",
+                                      url, MAX_ICS_BYTES)
+                raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED)
+            try:
+                return raw.decode("utf-8")
+            except UnicodeDecodeError:
+                return raw.decode("latin-1")
+
+    @staticmethod
+    def _discover_calendar_url(url: str, pinned_ip: str, username: str | None = None,
+                                password: str | None = None) -> str | None:
+        """Discover the calendar URL via CalDAV PROPFIND.
+
+        Sends a PROPFIND to the URL to discover calendar-home-set or
+        directly listed calendar URLs. Returns the first calendar URL found.
+        Returns None if PROPFIND is not supported (HTTP 405).
+        """
+        propfind_xml = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            '  <d:prop>'
+            '    <d:resourcetype/>'
+            '    <d:displayname/>'
+            '    <c:supported-calendar-component-set/>'
+            '  </d:prop>'
+            '</d:propfind>'
+        )
+
+        request = urllib.request.Request(
+            url,
+            data=propfind_xml.encode("utf-8"),
+            method="PROPFIND",
+        )
+        request.add_header("Content-Type", "application/xml; charset=utf-8")
+        request.add_header("Depth", "1")
+        if username and password:
+            credentials = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+            request.add_header("Authorization", f"Basic {credentials}")
+
+        opener = urllib.request.build_opener(
+            _PinnedHTTPSHandler(pinned_ip, context=ssl.create_default_context()),
+            _ValidatingRedirectHandler(max_redirects=MAX_ICS_REDIRECTS),
+        )
+
+        try:
+            with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+                raw = response.read(MAX_ICS_BYTES + 1)
+                body = raw.decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 405:
+                # Method not allowed -> not a CalDAV server
+                logger_calendar.debug("PROPFIND not supported at %s (HTTP 405), treating as ICS URL", url)
+                return None
+            raise
+
+        # Parse the XML response to find calendar URLs
+        parsed = urllib.parse.urlparse(url)
+        calendar_urls = IcsFetcher._parse_propfind_response(body, parsed)
+
+        if calendar_urls:
+            # Return the first VEVENT-capable calendar
+            for cal_url in calendar_urls:
+                if "VEVENT" in cal_url.get("components", []):
+                    return cal_url["href"]
+            return calendar_urls[0]["href"]
+
+        return None
+
+    @staticmethod
+    def _parse_propfind_response(
+        xml_body: str, base_parsed: urllib.parse.ParseResult
+    ) -> list[dict[str, object]]:
+        """Minimal XML parser for PROPFIND responses.
+
+        Extracts href, displayname, and supported calendar components
+        without external XML library dependencies.
+        """
+        calendars: list[dict[str, object]] = []
+        current: dict[str, object] = {}
+        in_response = False
+        tag_content = ""
+
+        for line in xml_body.split("<"):
+            if not line:
+                continue
+
+            if line.startswith("d:response") or line.startswith("response"):
+                if in_response and current:
+                    calendars.append(current)
+                current = {}
+                in_response = True
+                continue
+
+            if (line.startswith("/d:response") or line.startswith("/response")):
+                if in_response and current:
+                    calendars.append(current)
+                in_response = False
+                current = {}
+                continue
+
+            if not in_response:
+                continue
+
+            # href
+            if line.startswith("d:href") or line.startswith("href"):
+                if ">" in line:
+                    content = line.split(">", 1)[1]
+                    if "<" in content:
+                        content = content.split("<", 1)[0]
+                        if content:
+                            current["href"] = content
+                continue
+
+            # displayname
+            if line.startswith("d:displayname") or line.startswith("displayname"):
+                if ">" in line:
+                    content = line.split(">", 1)[1]
+                    if "<" in content:
+                        content = content.split("<", 1)[0]
+                        if content:
+                            current["displayname"] = content
+                continue
+
+            # calendar component (VEVENT, VTODO, etc.)
+            if "calendar-component" in line or "supported-calendar-component" in line:
+                if ">" in line:
+                    comp = line.split(">", 1)[1].split("<", 1)[0].strip()
+                    if comp:
+                        components = current.get("components", [])
+                        if isinstance(components, list):
+                            components.append(comp)
+                            current["components"] = components
+                continue
+
+        # Resolve relative hrefs
+        base_scheme = base_parsed.scheme
+        base_netloc = base_parsed.netloc
+        base_path = base_parsed.path.rstrip("/") if base_parsed.path else ""
+
+        resolved: list[dict[str, object]] = []
+        for cal in calendars:
+            href = cal.get("href", "")
+            if isinstance(href, str):
+                if href.startswith("/"):
+                    cal["href"] = f"{base_scheme}://{base_netloc}{href}"
+                elif not href.startswith("http"):
+                    cal["href"] = f"{base_scheme}://{base_netloc}{base_path}/{href.lstrip('/')}"
+            resolved.append(cal)
+
+        return resolved
+
+    @staticmethod
+    def _looks_like_icalendar(text: str) -> bool:
+        """Check if the response looks like iCalendar data."""
+        return "BEGIN:VCALENDAR" in text and "END:VCALENDAR" in text
 
     @staticmethod
     def _validate_ics_format(text: str, url: str) -> None:

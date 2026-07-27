@@ -788,15 +788,15 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         if self._agent is None:
             raise RuntimeError("ModuleCalendar.enqueue_sync requires a ClientAgent")
         source: CalendarSource = self.get_calendar(user, key)
-        if source.calendar.source_type != CalendarSourceType.ICS:
+        if source.calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
         request: JobRequestSyncExternalManual = JobRequestSyncExternalManual(calendar_key=key)
         return self._agent.enqueue(request, user_uid=user.uid)
 
     def sync_external_calendar(self, user: User, key: str) -> CalSyncResult:
-        """Run the sync of an external ICS calendar (worker-side counterpart of the manual enqueue)."""
+        """Run the sync of an external ICS/CalDAV calendar (worker-side counterpart of the manual enqueue)."""
         source: CalendarSource = self.get_calendar(user, key)
-        if source.calendar.source_type != CalendarSourceType.ICS:
+        if source.calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
         if self._cache is None:
             raise BugException("ModuleCalendar requires a cache for calendar sync")
@@ -804,7 +804,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         return engine.sync(source.calendar)
 
     def sync_all_due_external(self) -> dict[str, int]:
-        """Sync every external ICS calendar whose interval has elapsed. System-wide (no user scope).
+        """Sync every external ICS/CalDAV calendar whose interval has elapsed. System-wide (no user scope).
 
         Used by the periodic auto-sync job. Each calendar is synced independently: a failure is counted
         and never aborts the batch. A calendar already RUNNING, or not yet due, is skipped.
@@ -834,7 +834,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     def get_sync_status(self, user: User, key: str) -> CalSyncStatus:
         """Return the sync status for an external calendar."""
         source: CalendarSource = self.get_calendar(user, key)
-        if source.calendar.source_type != CalendarSourceType.ICS:
+        if source.calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
         config: dict = source.calendar.sync_config or {}
         return CalSyncStatus(

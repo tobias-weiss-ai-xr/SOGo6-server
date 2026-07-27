@@ -21,20 +21,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_DEBUG=1 \
     PIP_NO_CACHE_DIR=off
 
-# Install Poetry
+# Install all dependencies directly via pip (avoids poetry lock file issues)
+COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir poetry
-
-# Copy dependency files first for better caching
-COPY pyproject.toml poetry.lock* ./
-
-# Install project dependencies via Poetry
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-cache --no-ansi --no-interaction --no-root || \
-    echo "Poetry install failed - dependencies may need manual setup"
-
-# Install dev/debug tools
-RUN pip install --no-cache-dir debugpy watchdog flask-debugtoolbar prometheus-client flask-compress authlib pyotp qrcode[pil] webauthn || true
+    pip install --no-cache-dir \
+        debugpy watchdog flask-debugtoolbar \
+        flask flask-compress flask-cors flask-smorest \
+        gunicorn celery \
+        prometheus-client authlib pyotp qrcode[pil] webauthn \
+        marshmallow icalendar \
+        psycopg[binary] python-ldap redis \
+        cryptography pyjwt pydantic pydantic-settings \
+        sievelib yarl || \
+    echo "Some packages failed - will check at runtime"
 
 # Copy source code (will be mounted by compose in dev)
 COPY . ./

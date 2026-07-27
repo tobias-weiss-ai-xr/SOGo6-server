@@ -13,6 +13,7 @@ from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCal
 from app.module.calendar.rrule.RecurrenceScopeProcessor import EventAction, ScopeResult
 from app.module.calendar.source.CalendarSourceDb import CalendarSourceDb
 from app.module.calendar.source.CalendarSourceIcsMirror import CalendarSourceIcsMirror
+from app.module.calendar.source.CalendarSourceCalDav import CalendarSourceCalDav
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_calendar
@@ -52,6 +53,9 @@ class CalendarSources:
 
         if calendar.source_type == CalendarSourceType.ICS:
             return CalendarSourceIcsMirror(self._db, calendar)
+
+        if calendar.source_type == CalendarSourceType.CALDAV:
+            return CalendarSourceCalDav(self._db, calendar)
 
         logger_calendar.error("Unknown source_type=%s for calendar key=%s", calendar.source_type, calendar.key)
         raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
