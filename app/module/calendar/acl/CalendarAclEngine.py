@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.module.calendar.model.CalCalendar import CalCalendar
     from app.module.calendar.model.CalEvent import CalEvent
     from app.module.calendar.model.CalendarUser import CalendarUser
+    from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCalendarShare
 
 _BUSY_TITLE = "Busy"
 
@@ -22,18 +23,22 @@ class CalendarAclEngine:
     """Resolves and enforces calendar permissions.
 
     Centralizes all ACL logic: permission resolution, action checks, and event sanitization.
-    Currently stubbed - owner gets full access, non-owner is denied.
-    Will be connected to the ACL module when it is implemented.
+    Owner gets full access. Non-owners are looked up in the share repository (if available)
+    or denied.
     """
+
+    def __init__(self, share_repo: RepositoryCalendarShare | None = None) -> None:
+        """Optionally inject a share repository for resolving shared-user permissions."""
+        self._share_repo = share_repo
 
     def get_permissions(self, calendar: CalCalendar, calendar_user: CalendarUser) -> CalendarPermissions:
         """Resolve the permissions for a user on a specific calendar.
 
-        Owner gets full access on local calendars. Non-owner is denied (stub).
-        ICS calendars can be shared with overridden permissions, but events are never
-        writable: levels are capped at VIEW_ALL and create/modify are always denied.
+        Owner gets full access on local calendars (VIEW_ALL read-only for ICS).
+        Non-owners are looked up in the share repository; if no share exists, denied.
+        ICS calendars cap all share levels at VIEW_ALL and disable create/delete.
         """
-        is_owner: bool = calendar_user.user.uid == calendar_user.owner.uid
+        is_owner: bool = calendar_user.user.uid == calendar.user_uid
         if calendar.source_type == CalendarSourceType.ICS:
             if is_owner:
                 base: CalendarPermissions = CalendarPermissions(
@@ -44,12 +49,30 @@ class CalendarAclEngine:
                     can_delete=False,
                 )
             else:
-                # TODO: lookup shared permissions from the ACL module, then cap below
-                base = CalendarPermissions.denied()
+                base = self._lookup_share(calendar, calendar_user)
             return self._cap_ics_permissions(base)
         if is_owner:
             return CalendarPermissions.owner()
-        # TODO: lookup real permissions from the ACL module
+        return self._lookup_share(calendar, calendar_user)
+
+    def _lookup_share(self, calendar: CalCalendar, calendar_user: CalendarUser) -> CalendarPermissions:
+        """Look up a share entry for the acting user on this calendar.
+
+        Returns CalendarPermissions built from the share if found, otherwise denied.
+        """
+        if self._share_repo is None:
+            return CalendarPermissions.denied()
+        share = self._share_repo.find_by_calendar_and_user(
+            calendar.require_key, calendar_user.user.uid,
+        )
+        if share is not None:
+            return CalendarPermissions(
+                public_level=share.public_level,
+                confidential_level=share.confidential_level,
+                private_level=share.private_level,
+                can_create=share.can_create,
+                can_delete=share.can_delete,
+            )
         return CalendarPermissions.denied()
 
     def check_permission(self, permissions: CalendarPermissions | None, action: CalendarPermissionAction,

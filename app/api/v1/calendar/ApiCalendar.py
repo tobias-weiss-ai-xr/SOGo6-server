@@ -21,6 +21,9 @@ from .schemas.calendar import (
     CalendarImportResponseSchema,
     CalendarImportUploadSchema,
     CalendarSubscriptionResponseSchema,
+    ShareCreateSchema,
+    ShareListResponseSchema,
+    ShareResponseSchema,
 )
 from .schemas.event import (
     AttendanceSchema,
@@ -366,6 +369,38 @@ class ApiReminderList(MethodView):
         logger_api.debug("GET /reminders user=%s args=%s", g.user.uid, query_args)
         interface: InterfaceApiCalendarCalendar = g.inter
         return interface.get_reminders(query_args)
+
+
+@blp.route("/calendars/<string:key>/shares")
+class ApiCalendarShareList(MethodView):
+    """API to list and add shares on a calendar."""
+
+    @blp.response(200, ShareListResponseSchema)
+    def get(self, key: str) -> ResponseReturnValue:
+        """List all shares for a calendar."""
+        logger_api.debug("GET /calendars/%s/shares user=%s", key, g.user.uid)
+        interface: InterfaceApiCalendarCalendar = g.inter
+        return interface.list_shares(key)
+
+    @blp.arguments(ShareCreateSchema)
+    @blp.response(201, ShareResponseSchema)
+    def post(self, body: dict, key: str) -> ResponseReturnValue:
+        """Add a share for a user on a calendar."""
+        logger_api.debug("POST /calendars/%s/shares user=%s body=%s", key, g.user.uid, body)
+        interface: InterfaceApiCalendarCalendar = g.inter
+        return interface.add_share(key, body)
+
+
+@blp.route("/calendars/<string:key>/shares/<string:user_uid>")
+class ApiCalendarShareDetail(MethodView):
+    """API to remove a share from a calendar."""
+
+    @blp.response(200, ShareResponseSchema)
+    def delete(self, key: str, user_uid: str) -> ResponseReturnValue:
+        """Remove a share for a user on a calendar."""
+        logger_api.debug("DELETE /calendars/%s/shares/%s user=%s", key, user_uid, g.user.uid)
+        interface: InterfaceApiCalendarCalendar = g.inter
+        return interface.remove_share(key, user_uid)
 
 
 @blp.route("/external-calendars")

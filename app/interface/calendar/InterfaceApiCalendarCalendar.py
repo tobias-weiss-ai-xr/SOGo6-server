@@ -15,7 +15,6 @@ from app.module.calendar.ModuleCalendar import ModuleCalendar
 from app.module.calendar.imip.ImipBuilder import ImipBuilder
 from app.module.calendar.imip.ImipEmailBuilder import ImipEmailBuilder
 from app.module.mail.ModuleMailOutgoing import ModuleMailOutgoing
-from app.module.calendar.freebusy.FreeBusyEngine import FreeBusyPrefs
 from app.module.calendar.model.CalCalendar import CalCalendar
 from app.module.calendar.model.CalendarUser import CalendarUser
 from app.module.calendar.model.CalEventReminder import CalEventReminder
@@ -34,6 +33,10 @@ from app.module.calendar.serializer.CalTaskSerializerDict import CalTaskSerializ
 from app.module.calendar.serializer.CalCalendarSerializerDict import CalCalendarSerializerDict
 from app.module.calendar.serializer.CalCalendarsSerializerList import CalCalendarsSerializerList
 from app.module.calendar.serializer.CalEventReminderSerializerDict import CalEventReminderSerializerDict
+from app.module.calendar.model.CalendarShare import CalendarShare
+from app.module.calendar.model.enums.CalendarShareLevel import CalendarShareLevel
+from app.module.calendar.serializer.CalendarShareSerializerDict import CalendarShareSerializerDict
+from app.module.calendar.freebusy.FreeBusyEngine import FreeBusyPrefs
 from app.module.calendar.serializer.CalFreeBusyResultSerializerDict import CalFreeBusyResultSerializerDict
 from app.module.calendar.serializer.CalSyncStatusSerializerDict import CalSyncStatusSerializerDict
 from app.module.user.ModuleUserProfile import ModuleUserProfile
@@ -82,6 +85,7 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
         self._freebusy_serializer: CalFreeBusyResultSerializerDict = CalFreeBusyResultSerializerDict()
         self._reminder_serializer: CalEventReminderSerializerDict = CalEventReminderSerializerDict()
         self._sync_status_serializer: CalSyncStatusSerializerDict = CalSyncStatusSerializerDict()
+        self._share_serializer: CalendarShareSerializerDict = CalendarShareSerializerDict()
 
     def _calendar_user_from_owner_uid(self, owner_uid: str) -> CalendarUser:
         """Build the (acting user, owner) pair from a calendar owner uid, loading the owner profile.
@@ -472,6 +476,62 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
             return create_api_base_response(self._freebusy_serializer.serialize(result))
         except RequestException as ex:
             logger_api.error("get_freebusy failed for user %s: %s", self.user.uid, ex)
+            return create_api_base_response(None, ex.error)
+
+    #
+    # Sharing
+    #
+    def list_shares(self, key: str) -> tuple[dict[str, Any], int]:
+        """List all share entries for a calendar."""
+        try:
+            shares: list[CalendarShare] = self.module.list_shares(key)
+            share_list: list[dict[str, Any]] = [self._share_serializer.serialize(s) for s in shares]
+            return create_api_base_response({"shares": share_list, "total_count": len(share_list)})
+        except RequestException as ex:
+            logger_api.error("list_shares failed for calendar %s: %s", key, ex)
+            return create_api_base_response(None, ex.error)
+
+    @staticmethod
+    def _parse_share_level(value: str | None, default: str = "none") -> CalendarShareLevel:
+        """Parse a share level from a JSON string, case-insensitive.
+
+        Accepts snake_case or compact forms:
+          - "view_date_time" / "view_datetime"
+          - "modify_if_org" / "modify_if_organizer"
+        Converts by removing underscores entirely so that both DATETIME variants
+        resolve to the VIEW_DATETIME enum member.
+        """
+        raw = (value or default).upper().replace("_", "")
+        for member in CalendarShareLevel:
+            if member.name.replace("_", "") == raw:
+                return member
+        return CalendarShareLevel[default.upper()]
+
+    def add_share(self, key: str, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Add a share for a user on a calendar."""
+        try:
+            share: CalendarShare = CalendarShare(
+                calendar_key=key,
+                user_uid=body["user_uid"],
+                public_level=self._parse_share_level(body.get("public_level"), "view_all"),
+                confidential_level=self._parse_share_level(body.get("confidential_level"), "none"),
+                private_level=self._parse_share_level(body.get("private_level"), "none"),
+                can_create=body.get("can_create", False),
+                can_delete=body.get("can_delete", False),
+            )
+            created: CalendarShare = self.module.add_share(key, share)
+            return create_api_base_response(self._share_serializer.serialize(created))
+        except RequestException as ex:
+            logger_api.error("add_share failed for calendar %s user %s: %s", key, body.get("user_uid"), ex)
+            return create_api_base_response(None, ex.error)
+
+    def remove_share(self, key: str, user_uid: str) -> tuple[dict[str, Any], int]:
+        """Remove a share for a user on a calendar."""
+        try:
+            self.module.remove_share(key, user_uid)
+            return create_api_base_response(None)
+        except RequestException as ex:
+            logger_api.error("remove_share failed for calendar %s user %s: %s", key, user_uid, ex)
             return create_api_base_response(None, ex.error)
 
     #
