@@ -89,7 +89,9 @@ ERROR_MISSING_ACTION_DATA    = E("S001306", "Missing Required Data For Action", 
 
 ERROR_IMAP_UNAUTHORIZED      = E("S000310", "IMAP Unauthorized - Invalid Credentials Or Insufficient Permissions", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_CONNECTION_FAILED = E("S000311", "IMAP connection failed", HTTPStatus.SERVICE_UNAVAILABLE)
-ERROR_MAILBOX_NOT_FOUND      = E("S000312", "Mailbox Not Found", HTTPStatus.NOT_FOUND)
+ERROR_MAILBOX_NOT_FOUND          = E("S000312", "Mailbox Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SHARED_MAILBOX_DUPLICATE    = E("S000313", "Shared Mailbox Already Exists", HTTPStatus.CONFLICT)
+ERROR_SHARED_MAILBOX_NOT_FOUND    = E("S000314", "Shared Mailbox Not Found", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_DELETION          = E("S000313", "Mail Deletion Error", HTTPStatus.BAD_REQUEST)
 ERROR_RULE_NAME_TAKEN       = E("S000380", "Rule's Name Already Taken", HTTPStatus.BAD_REQUEST)
 ERROR_RULE_NOT_FOUND        = E("S000381", "Rule Not Found", HTTPStatus.NOT_FOUND)
