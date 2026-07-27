@@ -20,6 +20,11 @@ from .ApiBackup import blp as backup_api
 from .ApiDbMigration import blp as db_migration_api
 from .ApiMigration import blp as migration_api
 from .ApiConfigAsCode import blp as config_as_code_api
+from .ApiApprovalWorkflows import blp as approval_workflows_api
+from .ApiHelpdesk import blp as helpdesk_api
+from .ApiCrmLight import blp as crm_light_api
+from .ApiWorkflowBuilder import blp as workflow_builder_api
+from .ApiQuickActions import blp as quick_actions_api
 
 admin_apis : list[Blueprint] = [
     audit_log_api,
@@ -34,6 +39,11 @@ admin_apis : list[Blueprint] = [
     db_migration_api,
     migration_api,
     config_as_code_api,
+    approval_workflows_api,
+    helpdesk_api,
+    crm_light_api,
+    workflow_builder_api,
+    quick_actions_api,
     admin_auth_api_blueprint,
     admin_config_api_blueprint,
     admin_user_api_blueprint,
