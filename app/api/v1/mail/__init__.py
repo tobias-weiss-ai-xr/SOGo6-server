@@ -7,6 +7,6 @@ from.ApiMailFolder import blp as mail_folder_blueprint
 from.ApiMailMailbox import blp as mail_mailbox_blueprint
 from.ApiMailFilter import blp as mail_filter_blueprint
 from.ApiMailSearch import blp as mail_search_blueprint
+from.ApiMailSnooze import blp as mail_snooze_blueprint
 
-
-mail_apis : list[Blueprint] = [mail_mailbox_blueprint, mail_send_blueprint, mail_folder_blueprint, mail_detail_blueprint, mail_filter_blueprint, mail_search_blueprint]
+mail_apis : list[Blueprint] = [mail_mailbox_blueprint, mail_send_blueprint, mail_folder_blueprint, mail_detail_blueprint, mail_filter_blueprint, mail_search_blueprint, mail_snooze_blueprint]

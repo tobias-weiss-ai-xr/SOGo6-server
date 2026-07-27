@@ -747,6 +747,29 @@ ALL_RESOURCE_COL = [COL_RES_ID,
 TABLE_RESOURCES = Table(name="sogo6_resources", columns=ALL_RESOURCE_COL,
                          primary_keys=(COL_RES_ID.name,))
 
+# ── Snoozed Emails ───────────────────────────────────────────────────────────
+
+COL_SNOOZE_ID = Column(name="id", data_type="serial")
+COL_SNOOZE_USER_UID = Column(name="user_uid", data_type="str", extra_args={"max_len": 512})
+COL_SNOOZE_MAIL_UID = Column(name="mail_uid", data_type="str", extra_args={"max_len": 128})
+COL_SNOOZE_FOLDER = Column(name="folder", data_type="str", extra_args={"max_len": 512})
+COL_SNOOZE_ORIGINAL_FOLDER = Column(name="original_folder", data_type="str", extra_args={"max_len": 512})
+COL_SNOOZE_UNTIL = Column(name="snooze_until", data_type="datetime")
+COL_SNOOZE_CREATED = Column(name="created_at", data_type="datetime")
+COL_SNOOZE_ACCOUNT_ID = Column(name="account_id", data_type="str", extra_args={"max_len": 128})
+
+ALL_SNOOZE_COL = [COL_SNOOZE_ID,
+                    COL_SNOOZE_USER_UID,
+                    COL_SNOOZE_MAIL_UID,
+                    COL_SNOOZE_FOLDER,
+                    COL_SNOOZE_ORIGINAL_FOLDER,
+                    COL_SNOOZE_UNTIL,
+                    COL_SNOOZE_CREATED,
+                    COL_SNOOZE_ACCOUNT_ID]
+
+TABLE_SNOOZE = Table(name="sogo6_snoozed", columns=ALL_SNOOZE_COL,
+                      primary_keys=(COL_SNOOZE_ID.name,))
+
 ALL_TABLES = [TABLE_SETTINGS,
               TABLE_DOMAIN,
               TABLE_RULES,
@@ -765,4 +788,5 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_MFA_TOTP,
               TABLE_MFA_WEBAUTHN,
               TABLE_PWD_RESET_TOKENS,
-              TABLE_RESOURCES]
+              TABLE_RESOURCES,
+              TABLE_SNOOZE]
