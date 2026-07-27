@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from flask import g, request
+from flask.views import MethodView
 from flask_smorest import Blueprint
 from marshmallow import fields, Schema
 
@@ -46,7 +47,7 @@ def _get_origin() -> str:
 
 
 @blp.route("/register/begin")
-class WebAuthnRegisterBegin:
+class WebAuthnRegisterBegin(MethodView):
     @blp.response(200, sch.WebAuthnRegisterBeginResponseSchema)
     def post(self) -> ResponseReturnValue:
         """Start WebAuthn credential registration.
@@ -73,7 +74,7 @@ class _WebAuthnRegisterCompleteSchema(Schema):
 
 
 @blp.route("/register/complete")
-class WebAuthnRegisterComplete:
+class WebAuthnRegisterComplete(MethodView):
     @blp.arguments(_WebAuthnRegisterCompleteSchema, error_status_code=400)
     @blp.response(200, sch.WebAuthnRegisterCompleteResponseSchema)
     def post(self, data: dict) -> ResponseReturnValue:
@@ -97,7 +98,7 @@ class WebAuthnRegisterComplete:
 
 
 @blp.route("/login/begin")
-class WebAuthnLoginBegin:
+class WebAuthnLoginBegin(MethodView):
     @blp.response(200, sch.WebAuthnLoginBeginResponseSchema)
     def post(self) -> ResponseReturnValue:
         """Start WebAuthn authentication.
@@ -129,7 +130,7 @@ class _WebAuthnLoginCompleteSchema(Schema):
 
 
 @blp.route("/login/complete")
-class WebAuthnLoginComplete:
+class WebAuthnLoginComplete(MethodView):
     @blp.arguments(_WebAuthnLoginCompleteSchema, error_status_code=400)
     @blp.response(200)
     def post(self, data: dict) -> ResponseReturnValue:
@@ -152,7 +153,7 @@ class WebAuthnLoginComplete:
 
 
 @blp.route("/credentials")
-class WebAuthnCredentials:
+class WebAuthnCredentials(MethodView):
     @blp.response(200, sch.WebAuthnCredentialsListResponseSchema)
     def get(self) -> ResponseReturnValue:
         """List all WebAuthn credentials for the authenticated user."""
@@ -170,7 +171,7 @@ class _WebAuthnDeleteSchema(Schema):
 
 
 @blp.route("/credentials/delete")
-class WebAuthnCredentialDelete:
+class WebAuthnCredentialDelete(MethodView):
     @blp.arguments(_WebAuthnDeleteSchema, error_status_code=400)
     @blp.response(200)
     def post(self, data: dict) -> ResponseReturnValue:
