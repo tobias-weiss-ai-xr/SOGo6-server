@@ -22,7 +22,7 @@ from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
 
-from app.service.cache.sogo_cache import sogo_cache
+from app.service import sogo_cache
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.exceptions import RequestException

@@ -22,7 +22,7 @@ from marshmallow.validate import Length
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-from app.service.cache.sogo_cache import sogo_cache
+from app.service import sogo_cache
 
 if TYPE_CHECKING:
     from app.auth.User import User
@@ -101,7 +101,7 @@ class ApiBulkImportCSV(MethodView):
 
 
 class BatchOperationSchema(Schema):
-    operation = fields.String(required=True, validate=fields.String.validate, metadata={"description": "enable, disable, or delete"})
+    operation = fields.String(required=True, metadata={"description": "enable, disable, or delete"})
     uids = fields.List(fields.String(), required=True, validate=Length(min=1), metadata={"description": "List of user UIDs"})
 
 

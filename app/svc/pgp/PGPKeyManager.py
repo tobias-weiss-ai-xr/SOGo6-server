@@ -169,7 +169,7 @@ class PGPKeyManager:
 
     def has_keypair(self, user_uid: str) -> bool:
         """Check if a user has a PGP keypair."""
-        return self.cache.exists(f"{_PGP_PUBKEY_PREFIX}{user_uid}")
+        return self.cache.get(f"{_PGP_PUBKEY_PREFIX}{user_uid}", str) is not None
 
     def delete_keypair(self, user_uid: str) -> None:
         """Delete a user's PGP keypair."""

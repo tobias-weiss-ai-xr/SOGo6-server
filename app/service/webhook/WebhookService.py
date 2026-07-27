@@ -16,7 +16,7 @@ import time
 import urllib.request
 from typing import Any, Callable
 
-from app.service.cache.sogo_cache import sogo_cache
+from app.service import sogo_cache
 from app.utils.logger.logger import logger_api
 
 _WEBHOOK_PREFIX: str = "webhook:"

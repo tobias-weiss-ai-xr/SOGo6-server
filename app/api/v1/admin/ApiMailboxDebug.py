@@ -18,7 +18,14 @@ from app.utils.logger.logger import logger_api
 from app.module.mail.ModuleMail import ModuleMail
 from app.config.settings.DomainSettings import MailSettingsObj
 from app.config.settings.ProcessSetting import ProcessSetting
-from app.auth.User import AnonymousUser
+from app.auth.User import User
+
+
+class AnonymousUser(User):
+    """Minimal anonymous user for debug endpoints."""
+    def __init__(self):
+        self.uid = ""; self.cn = ""; self.mail = ""
+        self.authenticated = False; self.password = ""; self.domain = ""
 
 if TYPE_CHECKING:
     from app.auth.User import User

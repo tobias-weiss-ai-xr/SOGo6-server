@@ -21,7 +21,7 @@ from marshmallow import Schema, fields
 
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-from app.service.cache.sogo_cache import sogo_cache
+from app.service import sogo_cache
 
 if TYPE_CHECKING:
     from app.auth.User import User

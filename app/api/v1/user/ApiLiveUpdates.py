@@ -14,7 +14,7 @@ from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
-from app.service.cache.sogo_cache import sogo_cache
+from app.service import sogo_cache
 from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
