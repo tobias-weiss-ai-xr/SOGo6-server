@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
-from app.utils.logger.logger import logger_admin
+from app.utils.logger.logger import logger_api as logger_admin
 from app.utils.maths.sogo_hash import generate_uuid
 from app.utils.db.Condition import EqualCondition
 
