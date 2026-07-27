@@ -7,7 +7,18 @@ from .ApiDnsWizard import blp as admin_dns_wizard_api_blueprint
 from .ApiSharedMailbox import blp as admin_shared_mailbox_api_blueprint
 from .ApiAdminCalendar import blp as admin_calendar_api_blueprint
 
+from .ApiAuditLog import blp as audit_log_api
+from .ApiDomainBranding import blp as domain_branding_api
+from .ApiHealthDashboard import blp as health_dashboard_api
+from .ApiUsageQuotas import blp as usage_quotas_api
+from .ApiBulkUsers import blp as bulk_users_api
+
 admin_apis : list[Blueprint] = [
+    audit_log_api,
+    domain_branding_api,
+    health_dashboard_api,
+    usage_quotas_api,
+    bulk_users_api,
     admin_auth_api_blueprint,
     admin_config_api_blueprint,
     admin_user_api_blueprint,
