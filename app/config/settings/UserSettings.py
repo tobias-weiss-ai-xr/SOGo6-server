@@ -49,6 +49,24 @@ class UserGeneralSettings(SogoSchema):
                                         validate=validate.OneOf(('default', 'gravatar', 'libravatar', 'usersource'))) #Source of the profile picture: default sogo avatar, gravatar, libravatar, usersource (set by admin)
 
 
+class UserGeneralSettingsObj(SettingsObj):
+    """
+    Object with UserGeneralSettings params as attributes
+    """
+
+    SOGO_U_LANGUAGE: str = "English"
+    SOGO_U_TIMEZONE: str = "UTC"
+    SOGO_U_TIME_FORMAT: str = "HH:mm"
+    SOGO_U_LONG_DATE: str = ""
+    SOGO_U_SHORT_DATE: str = ""
+    SOGO_U_FIRST_MODULE: str = "mail"
+    SOGO_U_REFRESH_MAIL_VIEW: int = 0
+    SOGO_U_UNDO_SEND_SECONDS: int = 0
+    SOGO_U_BROWSER_NOTIF: bool = False
+    SOGO_U_EXT_AVATAR_ENABLED: bool = False
+    SOGO_U_PROFILE_PICTURE: str = "default"
+
+
 class UserSecuritySettings(SogoSchema):
     """
     Schema for user security settings
