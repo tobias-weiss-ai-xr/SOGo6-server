@@ -4,8 +4,9 @@ Triggered when the user sets ``send_at`` on ``POST /mail/send``. The job is
 enqueued with ``eta=send_at`` so Celery delivers it at (or soon after) that
 timestamp.
 
-The job payload mirrors the fields that ``InterfaceApiMailSend._execute_send``
-needs: ``account_id``, ``mail_data``, ``extra_headers``, ``tmp_draft_key``.
+The job payload stores every field that ``InterfaceApiMailSend.send_mail``
+extracted before the scheduling decision: ``account_id``, ``mail_data``,
+``extra_headers``, ``tmp_draft_key``.
 """
 from __future__ import annotations
 
@@ -14,20 +15,16 @@ from typing import Any, ClassVar
 
 from app.agent.jobs.Job import Job, agent_job
 from app.agent.jobs.JobRequest import JobRequest
-from app.module.mail.ModuleMail import ModuleMail
-from app.manager.mail.ClientImap import RequestException
-from app.interface.mail.InterfaceApiMailSend import InterfaceApiMailSend
-from app.config.settings.ProcessSetting import ProcessSetting
 from app.config.settings.DomainSettings import MailSettingsObj
-from app.auth.User import AnonymousUser
+from app.config.settings.ProcessSetting import ProcessSetting
+from app.module.mail.ModuleMailOutgoing import ModuleMailOutgoing
 from app.utils.logger.logger import logger_agent
-from app.utils import errors as err
 
 
 class ScheduleSendRequest(JobRequest):
     """Request to deliver an email that was scheduled for later delivery.
 
-    .. code: python
+    .. code:: python
 
         req = ScheduleSendRequest(
             account_id="0",
@@ -35,12 +32,12 @@ class ScheduleSendRequest(JobRequest):
             extra_headers=None,
             tmp_draft_key=None,
         )
-        agent.start(req)
+        agent.enqueue(req, eta=send_at_dt)
     """
     name: ClassVar[str] = "schedule_send"
     max_try: ClassVar[int] = 3
     soft_timeout_seconds: ClassVar[int] = 120
-    max_concurrent: ClassVar[int] = 0  # Allow multiple scheduled sends
+    max_concurrent: ClassVar[int] = 0  # Allow multiple concurrent scheduled sends
 
     account_id: str
     mail_data: dict
@@ -58,7 +55,7 @@ class ScheduleSendRequest(JobRequest):
 
 @agent_job
 class ScheduleSendJob(Job):
-    """Deliver a scheduled email by calling ``_execute_send``."""
+    """Deliver a scheduled email by calling the outgoing mail module directly."""
 
     request_class = ScheduleSendRequest
 
@@ -73,45 +70,21 @@ class ScheduleSendJob(Job):
             account_id, mail_data.get("subject", ""),
         )
 
-        # Build minimal process/domain settings from the payload (set at enqueue time)
-        # In production these would come from the user's session — for async delivery
-        # we reconstruct them from stored context.
+        # Ensure send_at is stripped (should already be removed by the caller)
+        mail_data.pop("send_at", None)
+
+        # Build minimal process & mail settings for sending
         process_settings = ProcessSetting()
         mail_settings = MailSettingsObj()
 
-        # Create a lightweight interface that can execute the send
-        # We reuse InterfaceApiMailSend._execute_send by setting up the
-        # minimal required context.
-        from flask import g
-        from app.auth.User import User
-
-        # Build anonymous user with the scheduling metadata
-        user = AnonymousUser()
-        user.uid = mail_data.get("from", "scheduled@localhost")
-        user.login_mail_server = mail_data.get("from", "")
-
-        # We need the mail module to call _execute_send
-        module_mail = ModuleMail(
+        outgoing = ModuleMailOutgoing(
             process_settings=process_settings,
             mail_settings=mail_settings,
-            user=user,
         )
-
-        interface = InterfaceApiMailSend(
-            process_settings=process_settings,
-            user_domain={},
-            user=user,
-        )
-
-        # Remove send_at before forwarding to _execute_send (it has already been consumed)
-        mail_data.pop("send_at", None)
-
-        result, status = interface._execute_send(
-            account_id, mail_data, extra_headers, tmp_draft_key,
-        )
+        message = outgoing.send_mail(account_id, mail_data, extra_headers=extra_headers)
 
         logger_agent.info(
-            "ScheduleSendJob: delivery complete (account=%s, status=%s)",
-            account_id, status,
+            "ScheduleSendJob: delivery complete (account=%s, uid=%s)",
+            account_id, message.get("uid", "?"),
         )
-        return {"status": status, "result": result}
+        return {"status": "sent", "uid": message.get("uid", "")}

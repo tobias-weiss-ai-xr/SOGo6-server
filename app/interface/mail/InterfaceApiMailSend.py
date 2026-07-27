@@ -19,6 +19,8 @@ from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import constants as cs
 from app.utils.logger.logger import logger_api
 from app.utils.maths.sogo_hash import generate_uuid
+from app.agent.jobs.ScheduleSendJob import ScheduleSendRequest
+from app.manager.agent.ClientAgent import ClientAgent
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
@@ -124,6 +126,58 @@ class InterfaceApiMailSend:
         else:
             extra_headers = {}
 
+        # ── Schedule Send ────────────────────────────────────────
+        send_at_raw: str | None = mail_data.pop("send_at", None)
+        if send_at_raw:
+            try:
+                send_at_dt = datetime.fromisoformat(send_at_raw.replace("Z", "+00:00"))
+                if send_at_dt.tzinfo is None:
+                    send_at_dt = send_at_dt.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                if send_at_dt <= now:
+                    # send_at in the past — send immediately (not an error)
+                    logger_api.info(
+                        "send_at %s is in the past for user %s — sending immediately",
+                        send_at_raw, self.user.uid,
+                    )
+                else:
+                    # Schedule via Celery agent
+                    process_settings: ProcessSetting = self._process
+                    agent = ClientAgent(process_settings)
+                    request = ScheduleSendRequest(
+                        account_id=account_id,
+                        mail_data=mail_data,
+                        extra_headers=extra_headers or None,
+                        tmp_draft_key=key,
+                    )
+                    job_id: str = agent.enqueue(request, eta=send_at_dt)
+                    logger_api.info(
+                        "Schedule Send: scheduled %s for %s (job=%s)",
+                        mail_data.get("subject", ""), send_at_raw, job_id,
+                    )
+                    return create_api_base_response({
+                        "status": "scheduled",
+                        "scheduled_at": send_at_raw,
+                        "job_id": job_id,
+                    })
+            except (ValueError, TypeError):
+                logger_api.warning(
+                    "Invalid send_at format '%s' for user %s",
+                    send_at_raw, self.user.uid,
+                )
+                return create_api_base_response(
+                    None, err.ERROR_MAIL_SCHEDULE_INVALID_DATE,
+                )
+            except RequestException as ex:
+                logger_api.error(
+                    "Failed to schedule send for user %s: %s",
+                    self.user.uid, str(ex),
+                )
+                return create_api_base_response(
+                    None, err.ERROR_MAIL_SCHEDULE_SEND_FAILED,
+                )
+
+        # ── Undo Send ────────────────────────────────────────────
         undo_seconds: int = self._user_undo_seconds()
 
         if undo_seconds > 0:
