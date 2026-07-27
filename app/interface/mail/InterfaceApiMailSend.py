@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.config.settings.DomainSettings import (
     UserModuleSettings, UserModuleSettingsObj, MailSettings, MailSettingsObj,
@@ -134,6 +134,27 @@ class InterfaceApiMailSend:
                 if send_at_dt.tzinfo is None:
                     send_at_dt = send_at_dt.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
+
+                # Enforce max delay (default: 30 days, configurable via domain settings)
+                max_delay_days: int = 30
+                try:
+                    mail_settings: MailSettingsObj = self.mail_settings
+                    max_delay_days = int(
+                        getattr(mail_settings, 'SOGO_D_SCHEDULE_SEND_MAX_DELAY_DAYS', 30)
+                        or 30
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    max_delay_days = 30
+
+                if send_at_dt > now + timedelta(days=max_delay_days):
+                    logger_api.warning(
+                        "send_at %s exceeds max delay of %d days for user %s",
+                        send_at_raw, max_delay_days, self.user.uid,
+                    )
+                    return create_api_base_response(
+                        None, err.ERROR_MAIL_SCHEDULE_MAX_DELAY,
+                    )
+
                 if send_at_dt <= now:
                     # send_at in the past — send immediately (not an error)
                     logger_api.info(

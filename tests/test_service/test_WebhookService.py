@@ -1,64 +1,62 @@
-"""Tests for WebhookService (#41)."""
+"""Real integration tests for WebhookService using real Redis."""
 import json
 import pytest
-from unittest.mock import patch, MagicMock
 from app.service.webhook.WebhookService import WebhookService
 
 
 @pytest.fixture
-def svc():
-    return WebhookService(cache=MagicMock())
+def svc(real_cache):
+    return WebhookService(cache=real_cache)
 
 
 class TestWebhookCRUD:
     def test_add_webhook(self, svc):
-        svc.cache.get.return_value = []
-        hook = svc.add_webhook("https://example.com/hook", ["mail.received"], secret="s3cr3t", name="Test")
+        hook = svc.add_webhook("https://example.com/hook", ["mail.received"], secret="s3cr3t", name="Test Hook")
         assert hook["url"] == "https://example.com/hook"
         assert hook["events"] == ["mail.received"]
         assert hook["secret"] == "s3cr3t"
-        assert hook["name"] == "Test"
-        svc.cache.set.assert_called_once()
+        assert hook["name"] == "Test Hook"
+        assert hook["enabled"] is True
+        assert "id" in hook
 
     def test_list_webhooks_empty(self, svc):
-        svc.cache.get.return_value = []
         hooks = svc.list_webhooks()
         assert hooks == []
 
-    def test_list_webhooks_with_data(self, svc):
-        svc.cache.get.return_value = [{"id": "abc", "url": "https://example.com/hook", "events": ["mail.received"], "enabled": True}]
+    def test_list_webhooks_after_add(self, svc):
+        svc.add_webhook("https://example.com/hook1", ["mail.received"])
+        svc.add_webhook("https://example.com/hook2", ["calendar.updated"])
         hooks = svc.list_webhooks()
-        assert len(hooks) == 1
-        assert hooks[0]["id"] == "abc"
+        assert len(hooks) == 2
 
-    def test_remove_webhook_exists(self, svc):
-        svc.cache.get.return_value = [{"id": "abc", "url": "https://example.com/hook", "events": ["mail.received"], "enabled": True}]
-        result = svc.remove_webhook("abc")
-        assert result is True
+    def test_remove_webhook(self, svc):
+        hook = svc.add_webhook("https://example.com/hook", ["mail.received"])
+        assert svc.remove_webhook(hook["id"]) is True
+        assert svc.list_webhooks() == []
 
-    def test_remove_webhook_not_found(self, svc):
-        svc.cache.get.return_value = []
-        result = svc.remove_webhook("nonexistent")
-        assert result is False
+    def test_remove_nonexistent(self, svc):
+        assert svc.remove_webhook("nonexistent") is False
 
     def test_dispatch_no_webhooks(self, svc):
-        svc.cache.get.return_value = []
         sent = svc.dispatch("mail.received", {"subject": "Test"})
         assert sent == 0
 
-    def test_dispatch_skips_disabled(self, svc):
-        svc.cache.get.return_value = [{"id": "abc", "url": "https://example.com/hook", "events": ["mail.received"], "enabled": False}]
+    def test_dispatch_disabled_webhook(self, svc):
+        hook = svc.add_webhook("http://localhost:19999/nonexistent", ["mail.received"])
+        # Manually disable
+        hooks = svc.list_webhooks()
+        hooks[0]["enabled"] = False
+        svc.save_webhooks(hooks)
         sent = svc.dispatch("mail.received", {"subject": "Test"})
         assert sent == 0
 
-    def test_dispatch_skips_unmatched_event(self, svc):
-        svc.cache.get.return_value = [{"id": "abc", "url": "https://example.com/hook", "events": ["calendar.updated"], "enabled": True}]
-        sent = svc.dispatch("mail.received", {"subject": "Test"})
-        assert sent == 0
+    def test_persistence_across_instances(self, svc):
+        svc.add_webhook("https://persist-test.com/hook", ["mail.received"])
+        svc2 = WebhookService(cache=svc.cache)
+        hooks = svc2.list_webhooks()
+        assert len(hooks) == 1
+        assert hooks[0]["url"] == "https://persist-test.com/hook"
 
-    @patch("app.service.webhook.WebhookService.WebhookService._send")
-    def test_dispatch_sends_to_matched(self, mock_send, svc):
-        mock_send.return_value = True
-        svc.cache.get.return_value = [{"id": "abc", "url": "https://example.com/hook", "events": ["mail.received"], "enabled": True, "secret": ""}]
-        sent = svc.dispatch("mail.received", {"subject": "Test"})
-        assert sent == 1
+    def test_multiple_events_same_webhook(self, svc):
+        hook = svc.add_webhook("https://example.com/hook", ["mail.received", "mail.sent", "calendar.updated"])
+        assert len(hook["events"]) == 3

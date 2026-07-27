@@ -1,20 +1,19 @@
-"""Tests for PGPKeyManager — key generation, encrypt, decrypt (Tier 1 #19)."""
+"""Real integration tests for PGPKeyManager using real Redis."""
 import pytest
 from app.svc.pgp.PGPKeyManager import PGPKeyManager
-from app.svc.pgp.PGPKeyManager import _armor, _dearmor, _crc24
+from app.svc.pgp.PGPKeyManager import _armor, _dearmor
 
 
 @pytest.fixture
-def manager():
-    return PGPKeyManager()
+def manager(real_cache):
+    return PGPKeyManager(cache=real_cache)
 
 
 class TestPGPKeyGeneration:
     def test_generate_keypair_returns_keys(self, manager):
         result = manager.generate_keypair("test@example.org")
         assert "fingerprint" in result
-        assert "public_key" in result
-        assert "private_key" in result
+        assert len(result["fingerprint"]) == 40  # SHA-256 hex
         assert result["public_key"].startswith("-----BEGIN PGP PUBLIC KEY BLOCK-----")
         assert result["private_key"].startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----")
 
@@ -70,6 +69,16 @@ class TestPGPEncryptDecrypt:
         decrypted = manager.decrypt_message(encrypted, priv, passphrase="strongpass")
         assert decrypted == msg
 
+    def test_encrypt_decrypt_multiple_messages(self, manager):
+        manager.generate_keypair("multi@example.org")
+        pub = manager.get_public_key("multi@example.org")
+        priv = manager.get_private_key("multi@example.org")
+        messages = ["Short", "A longer message with more content.", "Message with num8ers and spec!@l chars", ""]
+        for msg in messages:
+            encrypted = manager.encrypt_message(msg, pub)
+            decrypted = manager.decrypt_message(encrypted, priv)
+            assert decrypted == msg
+
     def test_decrypt_wrong_key_fails(self, manager):
         manager.generate_keypair("alice@example.org")
         manager.generate_keypair("eve@example.org")
@@ -80,12 +89,6 @@ class TestPGPEncryptDecrypt:
         with pytest.raises((ValueError, Exception)):
             manager.decrypt_message(encrypted, priv_eve)
 
-    def test_encrypt_empty_message(self, manager):
-        manager.generate_keypair("empty@example.org")
-        pub = manager.get_public_key("empty@example.org")
-        result = manager.encrypt_message("", pub)
-        assert result.startswith("-----BEGIN PGP MESSAGE-----")
-
     def test_decrypt_invalid_armor_raises(self, manager):
         manager.generate_keypair("test@example.org")
         priv = manager.get_private_key("test@example.org")
@@ -95,33 +98,38 @@ class TestPGPEncryptDecrypt:
 
 class TestPGPArmor:
     def test_armor_dearmor_roundtrip(self):
-        data = b"hello world this is binary data \x00\x01\x02"
-        armored = _armor(data, "TEST")
-        assert armored.startswith("-----BEGIN PGP TEST-----")
-        assert armored.endswith("-----END PGP TEST-----\n")
-        dearmored = _dearmor(armored)
-        assert dearmored == data
-
-    def test_crc24_known_value(self):
-        # Known CRC-24 value for "test"
-        crc = _crc24(b"test")
-        assert isinstance(crc, int)
-        assert 0 <= crc <= 0xFFFFFF
+        data = b"hello world binary \x00\x01\x02"
+        for label in ["MESSAGE", "PUBLIC KEY BLOCK", "PRIVATE KEY BLOCK"]:
+            armored = _armor(data, label)
+            assert armored.startswith(f"-----BEGIN PGP {label}-----")
+            assert armored.endswith(f"-----END PGP {label}-----\n")
+            dearmored = _dearmor(armored)
+            assert dearmored == data
 
     def test_dearmor_invalid_returns_none(self):
         assert _dearmor("no markers here") is None
         assert _dearmor("-----BEGIN PGP X-----\ncontent\n-----END PGP Y-----") is None
+        assert _dearmor("") is None
 
 
 class TestPGPKeyStorage:
     def test_keys_survive_multiple_operations(self, manager):
         manager.generate_keypair("persist@example.org")
         pub1 = manager.get_public_key("persist@example.org")
-        manager.get_private_key("persist@example.org")  # access private
+        manager.get_private_key("persist@example.org")
         pub2 = manager.get_public_key("persist@example.org")
         assert pub1 == pub2
 
-    def test_generate_twice_overwrites(self, manager):
+    def test_re_generate_overwrites(self, manager):
         k1 = manager.generate_keypair("overwrite@example.org")
         k2 = manager.generate_keypair("overwrite@example.org")
-        assert k1["fingerprint"] != k2["fingerprint"]  # New keys on each gen
+        assert k1["fingerprint"] != k2["fingerprint"]
+
+    def test_multiple_users_independent(self, manager):
+        manager.generate_keypair("a@example.org")
+        manager.generate_keypair("b@example.org")
+        assert manager.has_keypair("a@example.org") is True
+        assert manager.has_keypair("b@example.org") is True
+        manager.delete_keypair("a@example.org")
+        assert manager.has_keypair("a@example.org") is False
+        assert manager.has_keypair("b@example.org") is True

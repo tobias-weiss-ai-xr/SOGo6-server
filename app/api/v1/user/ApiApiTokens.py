@@ -244,8 +244,8 @@ def verify_api_token(token: str) -> tuple[str, dict] | None:
     # Check expiration
     expires_at = data.get("expires_at")
     if expires_at and time.time() > expires_at:
-        cache.set(f"{_API_TOKEN_HASH_PREFIX}{token_hash}", "", ttl=0)  # delete
-        cache.set(f"{_API_TOKEN_PREFIX}{user_uid}:{token_id}", "{}", ttl=0)
+        cache.delete(f"{_API_TOKEN_HASH_PREFIX}{token_hash}")
+        cache.delete(f"{_API_TOKEN_PREFIX}{user_uid}:{token_id}")
         return None
 
     # Update last used

@@ -165,6 +165,41 @@ class TestSendMailScheduleSend:
         sent_data = self.outgoing.send_mail.call_args[0][1]
         assert "send_at" not in sent_data
 
+    # ── send_at beyond max delay ──────────────────────────────────
+
+    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    def test_send_mail_with_send_at_beyond_max_delay(self, mock_client_agent):
+        """send_at >30 days from now → 400 max delay error."""
+        mock_agent = MagicMock()
+        mock_agent.enqueue.return_value = "job-uuid"
+        mock_client_agent.return_value = mock_agent
+
+        far_future = (datetime.now(timezone.utc) + timedelta(days=31)).isoformat()
+        result, status = self.iface.send_mail(
+            "0", _mail_data({"send_at": far_future})
+        )
+
+        assert status == 400
+        assert result["error_code"] == "S000389"
+        assert "Exceeds Maximum Allowed Delay" in result["error_msg"]
+
+    # ── send_at exactly at max delay boundary ──────────────────────
+
+    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    def test_send_mail_with_send_at_at_max_delay_boundary(self, mock_client_agent):
+        """send_at exactly 30 days from now → accepted (boundary test)."""
+        mock_agent = MagicMock()
+        mock_agent.enqueue.return_value = "job-uuid-boundary"
+        mock_client_agent.return_value = mock_agent
+
+        boundary = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        result, status = self.iface.send_mail(
+            "0", _mail_data({"send_at": boundary})
+        )
+
+        assert status == 200
+        assert result["data"]["status"] == "scheduled"
+
 
 class TestSendMailUndoSend:
     """Tests for Undo Send (existing behaviour preserved)."""
@@ -246,3 +281,78 @@ class TestScheduleSendJob:
     def test_schedule_send_request_name(self):
         """ScheduleSendRequest.name matches the registered job name."""
         assert ScheduleSendRequest.name == "schedule_send"
+
+    @patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing")
+    def test_schedule_send_job_process_calls_execute_send(self, mock_outgoing_cls):
+        """ScheduleSendJob.process() calls outgoing.send_mail with correct data."""
+        from app.agent.jobs.ScheduleSendJob import ScheduleSendJob
+
+        mock_outgoing = MagicMock()
+        mock_outgoing.send_mail.return_value = {"uid": "sent-42"}
+        mock_outgoing_cls.return_value = mock_outgoing
+
+        job = ScheduleSendJob()
+        payload = {
+            "account_id": "0",
+            "mail_data": {"from": "a@b.com", "to": ["c@d.com"], "subject": "Test", "body": "Hello"},
+            "extra_headers": None,
+            "tmp_draft_key": None,
+        }
+        result = job.process(payload)
+
+        assert result["status"] == "sent"
+        assert result["uid"] == "sent-42"
+        mock_outgoing.send_mail.assert_called_once()
+        sent_data = mock_outgoing.send_mail.call_args[0][1]
+        assert "send_at" not in sent_data
+
+    @patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing")
+    def test_schedule_send_job_process_strips_send_at(self, mock_outgoing_cls):
+        """ScheduleSendJob.process() strips send_at from mail_data if present."""
+        from app.agent.jobs.ScheduleSendJob import ScheduleSendJob
+
+        mock_outgoing = MagicMock()
+        mock_outgoing.send_mail.return_value = {"uid": "sent-99"}
+        mock_outgoing_cls.return_value = mock_outgoing
+
+        job = ScheduleSendJob()
+        payload = {
+            "account_id": "0",
+            "mail_data": {
+                "from": "a@b.com",
+                "to": ["c@d.com"],
+                "subject": "Test",
+                "body": "Hello",
+                "send_at": "2026-08-01T14:00:00Z",  # should be stripped
+            },
+            "extra_headers": None,
+            "tmp_draft_key": None,
+        }
+        result = job.process(payload)
+
+        assert result["status"] == "sent"
+        sent_data = mock_outgoing.send_mail.call_args[0][1]
+        assert "send_at" not in sent_data, "send_at leaked through to outgoing.send_mail"
+
+    @patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing")
+    def test_schedule_send_job_process_with_extra_headers(self, mock_outgoing_cls):
+        """ScheduleSendJob.process() forwards extra_headers to outgoing.send_mail."""
+        from app.agent.jobs.ScheduleSendJob import ScheduleSendJob
+
+        mock_outgoing = MagicMock()
+        mock_outgoing.send_mail.return_value = {"uid": "sent-77"}
+        mock_outgoing_cls.return_value = mock_outgoing
+
+        job = ScheduleSendJob()
+        payload = {
+            "account_id": "0",
+            "mail_data": {"from": "a@b.com", "to": ["c@d.com"], "subject": "Test", "body": "Hello"},
+            "extra_headers": {"References": "<msgid@example>"},
+            "tmp_draft_key": None,
+        }
+        result = job.process(payload)
+
+        assert result["status"] == "sent"
+        mock_outgoing.send_mail.assert_called_once()
+        call_kwargs = mock_outgoing.send_mail.call_args[1]
+        assert call_kwargs.get("extra_headers") == {"References": "<msgid@example>"}

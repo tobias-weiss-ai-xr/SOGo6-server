@@ -24,6 +24,9 @@ flask-debugtoolbar>=0.14.0
 httpx>=0.24.0
 requests-mock>=1.10.0
 
+# Property-based testing
+hypothesis>=6.0.0
+
 # Database tools
 psycopg2-binary>=2.9.0
 redis[hiredis]>=4.5.0
