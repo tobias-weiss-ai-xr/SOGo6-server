@@ -119,6 +119,13 @@ ERROR_MAIL_SCHEDULE_IN_DELIVERY      = E("S000388", "Scheduled Send Is Currently
 ERROR_MAIL_SCHEDULE_MAX_DELAY        = E("S000389", "Scheduled Date Exceeds Maximum Allowed Delay", HTTPStatus.BAD_REQUEST)
 ERROR_MAIL_SCHEDULE_INVALID_DATE     = E("S000391", "Invalid Scheduled Date Format — expected ISO 8601", HTTPStatus.BAD_REQUEST)
 
+# PGP / End-to-End Encryption
+ERROR_PGP_KEY_ALREADY_EXISTS          = E("S000500", "PGP Key Already Exists", HTTPStatus.CONFLICT)
+ERROR_PGP_KEY_NOT_FOUND               = E("S000501", "PGP Key Not Found", HTTPStatus.NOT_FOUND)
+ERROR_PGP_RECIPIENT_KEY_NOT_FOUND     = E("S000502", "Recipient PGP Key Not Found", HTTPStatus.NOT_FOUND)
+ERROR_PGP_ENCRYPT_FAILED              = E("S000503", "PGP Encryption Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PGP_DECRYPT_FAILED              = E("S000504", "PGP Decryption Failed — Invalid Key Or Corrupted Message", HTTPStatus.BAD_REQUEST)
+
 # tmp_draft
 ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
 ERROR_TMP_DRAFT_LOCKED          = E("S000371", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
