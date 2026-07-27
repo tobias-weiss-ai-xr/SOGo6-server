@@ -121,6 +121,7 @@ ERROR_MAIL_SCHEDULE_SEND_FAILED = E("S000386", "Failed To Schedule Send For Late
 ERROR_MAIL_SCHEDULE_NOT_FOUND        = E("S000387", "Scheduled Send Not Found Or Already Delivered", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_SCHEDULE_IN_DELIVERY      = E("S000388", "Scheduled Send Is Currently Being Delivered", HTTPStatus.CONFLICT)
 ERROR_MAIL_SCHEDULE_MAX_DELAY        = E("S000389", "Scheduled Date Exceeds Maximum Allowed Delay", HTTPStatus.BAD_REQUEST)
+ERROR_MIGRATION_NOT_FOUND             = E("S000390", "Migration Job Not Found", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_SCHEDULE_INVALID_DATE     = E("S000391", "Invalid Scheduled Date Format — expected ISO 8601", HTTPStatus.BAD_REQUEST)
 
 # PGP / End-to-End Encryption

@@ -18,6 +18,8 @@ from .ApiBulkUsers import blp as bulk_users_api
 from .ApiWebhooks import blp as webhooks_api
 from .ApiBackup import blp as backup_api
 from .ApiDbMigration import blp as db_migration_api
+from .ApiMigration import blp as migration_api
+from .ApiConfigAsCode import blp as config_as_code_api
 
 admin_apis : list[Blueprint] = [
     audit_log_api,
@@ -30,6 +32,8 @@ admin_apis : list[Blueprint] = [
     webhooks_api,
     backup_api,
     db_migration_api,
+    migration_api,
+    config_as_code_api,
     admin_auth_api_blueprint,
     admin_config_api_blueprint,
     admin_user_api_blueprint,
