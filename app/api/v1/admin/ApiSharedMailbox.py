@@ -8,6 +8,7 @@ from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
 
 from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
+from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.exceptions import RequestException
 
@@ -111,7 +112,7 @@ class ApiSharedMailboxDetail(MethodView):
         module = _get_module()
         mailbox = module.get_by_id(mailbox_id)
         if not mailbox:
-            return create_api_base_response(None, {"code": "S000314", "msg": "Shared Mailbox Not Found"})
+            return create_api_base_response(None, err.ERROR_SHARED_MAILBOX_NOT_FOUND)
         return create_api_base_response(mailbox)
 
     @blp.arguments(SharedMailboxUpdateSchema, error_status_code=400)
