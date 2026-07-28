@@ -18,8 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=off
 
-# Install pip packages in one layer
-COPY requirements.txt ./requirements.txt 2>/dev/null || true
+# Install pip packages in one layer (uses pyproject.toml for deps)
 COPY pyproject.toml ./
 
 # Install all runtime dependencies
@@ -71,9 +70,9 @@ USER sogo
 
 EXPOSE 5000
 
-# Health check
+# Health check — use 127.0.0.1 (not localhost, Alpine resolves ::1 IPv6)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:5000/api/user/v1/health || exit 1
+    CMD curl -f http://127.0.0.1:5000/api/user/v1/health || exit 1
 
 # Run with gunicorn in production
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", \
