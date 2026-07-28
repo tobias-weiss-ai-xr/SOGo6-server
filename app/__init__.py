@@ -1,8 +1,11 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
+import os
 from json import loads, dumps
 from json.decoder import JSONDecodeError
+import time
+import uuid
 
 from flask import Flask, request, g, Response, current_app
 from flask.typing import ResponseReturnValue
@@ -36,6 +39,52 @@ from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
 __version__ = "6.0.0-alpha1"
 
 
+# ---------------------------------------------------------------------------
+# Request ID injection (runs before all blueprints)
+# ---------------------------------------------------------------------------
+
+_USE_X_REQUEST_ID = os.environ.get("SOGO_PROPAGATE_REQUEST_ID", "0") == "1"
+
+
+def _inject_request_id() -> None:
+    """Ensure ``g.request_id`` is set (from ``X-Request-Id`` header or generated)."""
+    if _USE_X_REQUEST_ID:
+        g.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
+    else:
+        g.request_id = uuid.uuid4().hex
+
+
+# ---------------------------------------------------------------------------
+# Structured access-log handler
+# ---------------------------------------------------------------------------
+
+def _log_access(response: Response) -> Response:
+    """Log a structured access line after every request."""
+    duration_ms = (time.time() - g.get("_request_start", time.time())) * 1000
+    logger_api.info(
+        "%s %s %s %s %.1fms",
+        request.method,
+        request.path,
+        response.status_code,
+        request.user_agent or "-",
+        duration_ms,
+        extra={
+            "http_method": request.method,
+            "path": request.path,
+            "status": response.status_code,
+            "duration_ms": round(duration_ms, 1),
+            "user_agent": str(request.user_agent or "-"),
+            "ip": request.remote_addr or "-",
+            "content_length": response.content_length or 0,
+        },
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# App factory
+# ---------------------------------------------------------------------------
+
 def create_app(sogo_state: int) -> Flask:
     """
     Create and configure the Flask application
@@ -47,7 +96,7 @@ def create_app(sogo_state: int) -> Flask:
     # memory. See app.utils.constants.MAX_HTTP_REQUEST_BYTES for the rationale.
     app.config["MAX_CONTENT_LENGTH"] = cs.MAX_HTTP_REQUEST_BYTES
 
-    # Enable structured JSON logging when SOGO_JSON_LOG=1
+    # Enable structured JSON logging (auto-detects production)
     enable_json_logging()
 
     # Store the process config reference for health-check access
@@ -69,6 +118,21 @@ def create_app(sogo_state: int) -> Flask:
         else:
             logger.warning("Custom Swagger UI template not found at %s", template_path)
 
+    # --- App-level middleware (runs before/after ALL requests, incl. non-API) ---
+
+    @app.before_request
+    def _start_request() -> None:
+        _inject_request_id()
+        g._request_start = time.time()
+
+    @app.after_request
+    def _after_request(response: Response) -> Response:
+        # Inject request ID into response headers for debugging
+        if hasattr(g, "request_id"):
+            response.headers.setdefault("X-Request-Id", g.request_id)
+        return _log_access(response)
+
+    # --- Blueprint registration ---
 
     flask_api = Api(app, config_prefix="BASIC_") # type: ignore [call-arg]
     admin_api = Api(app, config_prefix="ADMIN_") # type: ignore [call-arg]
@@ -85,7 +149,7 @@ def create_app(sogo_state: int) -> Flask:
 
     CORS(app, resources={r"/api/*": {"origins": allowed_origins,
                                      "allow_headers": ["authorization", "content-type"],
-                                     "expose_headers": ["X-Pagination"],
+                                     "expose_headers": ["X-Pagination", "X-Request-Id"],
                                      "supports_credentials": True}})
 
     return app
@@ -131,14 +195,9 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
     """
 
     @base_blueprint.before_request
-    def log_entry() -> ResponseReturnValue | None:  # pylint: disable=too-many-return-statements
-        """
-        Only used in debug to log request received
-        """
-
-        # Log the information
-        logger_api.info("Received: \"%s %s %s\"", request.method, request.path, request.environ.get('SERVER_PROTOCOL', 'Unknown'))
-        return None
+    def _attach_endpoint() -> None:
+        """Tag the g object with the matched endpoint name for access-log enrichment."""
+        g.endpoint = request.endpoint
         
     @base_blueprint.before_request
     def check_content_type() -> ResponseReturnValue | None:  # pylint: disable=too-many-return-statements

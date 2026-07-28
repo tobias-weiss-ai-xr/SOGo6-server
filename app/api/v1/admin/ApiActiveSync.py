@@ -313,12 +313,11 @@ class EasStatus(MethodView):
     def get(self) -> ResponseReturnValue:
         """Admin endpoint: ActiveSync server status."""
         cache = sogo_cache()
-        # Count provisioned devices
+        # Count provisioned devices using the shared ClientRedis instance
+        # (avoid creating a separate raw Redis connection)
         keys = []
         try:
-            import redis
-            r = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-            keys = r.keys(f"{_EAS_POLICY_PFX}*")
+            keys = cache.redis.keys(f"{_EAS_POLICY_PFX}*")
         except Exception:
             keys = []
         return create_api_base_response(data={

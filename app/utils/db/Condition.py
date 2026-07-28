@@ -74,7 +74,8 @@ class LogicCondition(Condition):
         self.conditions = list(conditions)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({f" {self._op} ".join(x.__repr__() for x in self.conditions)})"
+        op = self._op
+        return f"{self.__class__.__name__}({op.join(x.__repr__() for x in self.conditions)})"
 
 class TrueCondition(Condition):
     """
@@ -111,6 +112,8 @@ class OrCondition(LogicCondition):
 class LessOrEqualCondition(CompareCondition):
     """Check if a named parameter is less than or equal to a value."""
     _op = "<="
+
+LessThanOrEqualCondition = LessOrEqualCondition  # alias for consistency
 
 class GreaterOrEqualCondition(CompareCondition):
     """Check if a named parameter is greater than or equal to a value."""

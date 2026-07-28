@@ -24,6 +24,7 @@ from marshmallow import Schema, fields
 
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
+from app.utils.exceptions import AggravatedException
 from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
@@ -32,13 +33,24 @@ if TYPE_CHECKING:
 blp = Blueprint("OpenCloud Integration", __name__, url_prefix="/opencloud")
 
 _INTERCOM_URL = os.getenv("INTERCOM_URL", "http://sogo6-nubusintercom:8100")
-_INTERCOM_SECRET = os.getenv("INTERCOM_SHARED_SECRET", "change-me-in-production")
+_INTERCOM_SECRET = os.getenv("INTERCOM_SHARED_SECRET", "")
+
+
+def _require_intercom_secret() -> str:
+    """Return the intercom shared secret or raise if not configured."""
+    if not _INTERCOM_SECRET:
+        raise AggravatedException(
+            "INTERCOM_SHARED_SECRET is not set. "
+            "Set the environment variable to a shared secret known to nubusintercom."
+        )
+    return _INTERCOM_SECRET
 
 
 def _sign_payload(payload: dict) -> str:
     """Sign a payload with the shared intercom secret."""
+    secret = _require_intercom_secret()
     body = json.dumps(payload, sort_keys=True)
-    return hmac.new(_INTERCOM_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
 
 
 def _call_intercom(path: str, method: str = "GET", body: dict | None = None, token: str | None = None) -> dict | None:

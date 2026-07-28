@@ -66,10 +66,12 @@ COPY --from=builder /build/app /app/app
 COPY --from=builder /build/migrations /app/migrations
 COPY --from=builder /build/process.docker.conf /app/process.conf
 
-# Create non-root user
-RUN addgroup --system --gid 1001 sogo && \
+# Create log directory and non-root user
+RUN mkdir -p /var/log/sogo && \
+    addgroup --system --gid 1001 sogo && \
     adduser --system --uid 1001 --ingroup sogo --home /app sogo && \
-    chown -R sogo:sogo /app
+    chown -R sogo:sogo /app && \
+    chown -R sogo:sogo /var/log/sogo
 
 USER sogo
 

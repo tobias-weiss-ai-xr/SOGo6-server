@@ -6,7 +6,6 @@ from email import message_from_bytes
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 import imaplib
-from logging import WARNING
 import re
 from socket import timeout as sock_timeout, gaierror
 from ssl import SSLError
@@ -18,12 +17,10 @@ from app.utils import errors as err
 from app.utils import constants as cs
 from app.utils.strings import quote, imap_join_folders
 
-# Maximum debug output from imaplib
-#TODO all imap are logged, including login/auth password used SecretString (on ldap branch not in develoope now)
-if logger_imap.level < WARNING:
-    imaplib.Debug = 4  # type: ignore[attr-defined]
-else:
-    imaplib.Debug = 0 # type: ignore[attr-defined]
+# IMAP debug logging is configured centrally in ``app.utils.logger.logger``.
+# ``imaplib.Debug`` is forced to 0 there to prevent credential leakage.
+# If you need IMAP protocol tracing, set ``SOGO_LOG_LEVEL=DEBUG`` *and*
+# temporarily override ``imaplib.Debug`` locally — never in production.
 
 P = ParamSpec("P")
 R = TypeVar("R")

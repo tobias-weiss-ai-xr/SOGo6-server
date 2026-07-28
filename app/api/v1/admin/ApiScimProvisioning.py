@@ -31,15 +31,22 @@ _SCIM_PREFIX: str = "scim_user:"
 
 
 def _verify_scim_token() -> bool:
-    """Verify SCIM bearer token from incoming request."""
+    """Verify SCIM bearer token from incoming request.
+
+    The ``SCIM_BEARER_TOKEN`` environment variable **must** be set to a
+    non-empty value for SCIM requests to succeed.  When it is unset or empty,
+    all requests are rejected — there is no "open" fallback.
+    """
+    configured_token = os.environ.get("SCIM_BEARER_TOKEN", "")
+    if not configured_token:
+        # SCIM is not configured — reject all requests with a clear error
+        return False
+
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if not token:
         return False
-    # In production: validate against configured IdP shared secret
-    configured_token = os.getenv("SCIM_BEARER_TOKEN", "")
-    if configured_token:
-        return hmac.compare_digest(token, configured_token)
-    return True
+
+    return hmac.compare_digest(token, configured_token)
 
 
 def _scim_error(status: int, scim_code: str, detail: str) -> ResponseReturnValue:

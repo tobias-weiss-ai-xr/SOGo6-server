@@ -100,7 +100,7 @@ All queries will have WHERE uid = <uid>
 # acl_received: acl received from users
 # delegation_given: delegation given to users
 # delegation_received: delegation received from users
-COL_USER_UID              = Column(name="uid", data_type="str", extra_args={"max_len": 512}, is_unique=True)
+COL_USER_UID              = Column(name="uid", data_type="str", extra_args={"max_len": 255}, is_unique=True)
 COL_USER_DEFAULTS         = Column(name="preferences", data_type="dict")
 COL_USER_FOLDERS          = Column(name="folders", data_type="dict")
 COL_USER_MAIN_ACCOUNT     = Column(name="main_account", data_type="dict")

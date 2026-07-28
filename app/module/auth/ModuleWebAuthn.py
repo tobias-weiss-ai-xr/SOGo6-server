@@ -25,6 +25,7 @@ from app.config.settings.ProcessSetting import process_config
 from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
 from app.utils import errors as err
+from app.utils.exceptions import AggravatedException, BugException
 from app.utils.logger.logger import logger_api
 from app.utils.module.importManager import import_and_instantiate_manager
 
@@ -230,7 +231,7 @@ class ModuleWebAuthn:
                 condition=EqualCondition("user_uid", user_uid),
             ))
             return [self._row_to_dict(r) for r in rows]
-        except Exception as exc:
+        except (AggravatedException, BugException) as exc:
             logger_api.error("Failed to get WebAuthn creds for %s: %s", user_uid, exc)
             return []
 
@@ -245,7 +246,7 @@ class ModuleWebAuthn:
                 condition=EqualCondition("credential_id", credential_id),
             ))
             return self._row_to_dict(rows[0]) if rows else None
-        except Exception as exc:
+        except (AggravatedException, BugException) as exc:
             logger_api.error("Failed to get WebAuthn credential %s: %s", credential_id[:16], exc)
             return None
 

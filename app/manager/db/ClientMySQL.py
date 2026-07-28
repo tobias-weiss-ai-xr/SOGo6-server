@@ -61,10 +61,12 @@ data_type_mysql_to_sogo: dict[str, str] = {
     "char":       "str",
     "text":       "text",
     "mediumtext": "text",
-    "int": "int",
-    "integer": "int",
-    "bigint": "int",
+    "longtext":   "text",  # MariaDB uses LONGTEXT for JSON type
+    "int":        "int",
+    "integer":    "int",
+    "bigint":     "int",
     "smallint":   "int8",
+    "tinyint":    "bool",  # MariaDB reports TINYINT(1) as tinyint
     "tinyint(1)": "bool",
     "datetime":   "datetime",
     "tinyint": "int",
@@ -113,7 +115,7 @@ def table_to_query(table: Table) -> str:
         pk = ", ".join(f"`{p}`" for p in table.primary_keys)
         sql_all_column.append(f"PRIMARY KEY ({pk})")
 
-    sql_query = f"CREATE TABLE `{table.name}` ({', '.join(sql_all_column)}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    sql_query = f"CREATE TABLE `{table.name}` ({', '.join(sql_all_column)}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC"
     return sql_query
 
 

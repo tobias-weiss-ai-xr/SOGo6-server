@@ -17,6 +17,7 @@ from app.config.settings.ProcessSetting import process_config
 from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
 from app.utils import errors as err
+from app.utils.exceptions import AggravatedException, BugException
 from app.utils.logger.logger import logger_api
 from app.utils.module.importManager import import_and_instantiate_manager
 
@@ -98,7 +99,7 @@ class ModuleTOTP:
             if rows:
                 return self._row_to_dict(rows[0])
             return None
-        except Exception as exc:
+        except (AggravatedException, BugException) as exc:
             logger_api.error("Failed to get TOTP config for %s: %s", user_uid, exc)
             return None
 

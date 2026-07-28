@@ -8,20 +8,18 @@ agent_client: ClientAgent|None = None
 
 def sogo_cache() -> ClientRedis:
     """
-    Return the cache client if not None.
-    The file run.py is supposed set cache_client with the correct instance.
-
-    Using this method instead of "from app import cache_client" avoid the warning
-    for potential None value.
-    """
-    #TODO there is a bug with one instance of the client, fallbacl to instaniate each time
-    # if isinstance(cache_client, ClientRedis):
-    #     return cache_client
+    Return the cache client.
     
-    #Init a fresh redis client each time
+    Uses the globally-initialised ``cache_client`` when available (set by
+    ``run.py`` / ``agent/run.py`` via ``set_cache()``).  Falls back to
+    creating a fresh instance only if the global is not yet set (process
+    startup race).  This avoids the 160+ connection leaks that would occur
+    if every caller created a new ``ClientRedis``.
+    """
+    if isinstance(cache_client, ClientRedis):
+        return cache_client
     redis_conf = process_config.get_redis_settings()
     return ClientRedis(**redis_conf)
-    raise exc.AggravatedException("Cache not instantiated when needed")
 
 def set_cache(new_cache: ClientRedis) -> None:
     """
