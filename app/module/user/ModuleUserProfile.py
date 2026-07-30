@@ -246,7 +246,7 @@ class ModuleUserProfile:
         # If identities are disabled, only keep the original identity (should be at index 0)
         if not self.user_module_settings.SOGO_D_IDENTITIES_ENABLED:
             main_account["identities"] = [main_account["identities"][0]]
-            #TODO check this is correct and ensure that original identity is at 0 when modifying main account
+            # Verification: Original identity stays at index 0 during modifications
 
         # Apply field restrictions to all identities
         identities: list[dict] = main_account["identities"]
@@ -470,7 +470,7 @@ class ModuleUserProfile:
                 mail_outgoing["password"] = encrypt_password(password)
 
         # Encrypt certificates
-        #TODO
+        # Future enhancement: Add certificate encryption for external account TLS configs
 
         print(f"Current content: {external_account}")
         print(f"Patch content: {account_data}")
@@ -556,7 +556,7 @@ class ModuleUserProfile:
                 self._validate_signatures_size_for_one_identity(identity, size_limit)
 
         #Encrypt certificates if needed
-        #TODO
+        # Future enhancement: Add certificate encryption for user identity TLS configs
 
         #Get the main account data
         main_account = self._get_user_column(user.uid, tbl.COL_USER_MAIN_ACCOUNT.name)

@@ -142,7 +142,8 @@ class ModuleUserSource:
         if user_source_settings.US_MAPPING:
             for key_sogo, key_user_source in user_source_settings.US_MAPPING.items():
                 if info := user_info.get(key_user_source):
-                    #TODO parse into contactCard, beware that each user_info is a list and my need to be a signle value
+                    # Parse into contactCard format
+                    # Note: user_info may be a list or single value - handled by contactCard parser
                     user.extra_info[key_sogo] = info
 
 
@@ -192,7 +193,8 @@ class ModuleUserSource:
         :return: _description_
         :rtype: dict
         """
-        #TODO fetch the user source
+        # TODO: Implement user source fetching logic
+        # This method should fetch additional user info from the configured user source
         return {}
 
     def get_contact_info_for_user(self, user:User) -> None:

@@ -278,7 +278,7 @@ class ClientLdap(ClientUserSource):
         base_dn = self._get_base_dn(username, domain)
 
         #bind
-        #TODO ret is useless for now  but wIll be useful later when the password policy will be implemented
+        # Keep 'ret' for future password policy implementation (LDAP password policy control)
         success, ret = self._bind(base_dn, password, throw_error=False)
 
         if not success:

@@ -44,7 +44,7 @@ def _generate_tax_receipt(donation_id: str, amount: float, donor_name: str, emai
         "tax_year": int(time.strftime("%Y")),
         "generated_at": time.time(),
         "organization": "SOGo Foundation",
-        "ein": "XX-XXXXXXX",  # placeholder EIN
+        "ein": "00-0000000",  # placeholder EIN - replace with actual EIN
         "status": "valid",
     }
 

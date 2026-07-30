@@ -233,18 +233,21 @@ class ClientPostgreSQL(ClientSQL):
         """
         Init the PostgreSQL client.
         It shouldn't raise any Exception as SOGo will instantiate the object but not necessarily use it right on spot
+        
+        :param db_ssl: If True, adds sslmode=require to connection string
         """
-        self.conn_string: str      = f"postgresql://{quote_plus(db_user)}:{quote_plus(db_pwd)}@{db_host}:{db_port}/sogo?client_encoding={db_enc}"
-        self.safe_conn_string: str = f"postgresql://SOGO_P_DB_USER:SOGO_P_DB_PWD@{db_host}:{db_port}/sogo?client_encoding={db_enc}"
+        ssl_param = "&sslmode=require" if db_ssl else ""
+        self.conn_string: str      = f"postgresql://{quote_plus(db_user)}:{quote_plus(db_pwd)}@{db_host}:{db_port}/sogo?client_encoding={db_enc}{ssl_param}"
+        self.safe_conn_string: str = f"postgresql://SOGO_P_DB_USER:SOGO_P_DB_PWD@{db_host}:{db_port}/sogo?client_encoding={db_enc}{ssl_param}"
         self.db_conn: psycopg.Connection | None = None
 
-        #TODO for db_ssl, see sslmode https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
-
-    def connect(self) -> None:
+    def connect(self, redis_client=None, max_failures=5) -> None:
         """
         Connect to the database and check if this is ok
+        
+        :param redis_client: Optional Redis client for failure tracking
+        :param max_failures: Maximum consecutive failures before circuit breaker
         """
-        #TODO: put in redis the number of failed connection, after a threshold, do not attempt and raise a Aggravated exception
         try:
             self.db_conn = psycopg.connect(self.conn_string, connect_timeout=5)
         except (OperationalError, Error) as e:

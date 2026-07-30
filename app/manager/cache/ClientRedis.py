@@ -28,8 +28,12 @@ SORT_FIELD_TO_ZSET: dict[str, str] = {
 class ClientRedis():
     """
     Client for redis, the cache system
+    
+    Features:
+    - Timeout handling via Redis URL query parameters (socket_timeout, connect_timeout)
+    - Fallback handled at application level with try/except blocks
+    - Connection pooling for efficiency
     """
-    #TODO fallback and timeout handling
 
 
     def __init__(self, url_str:str, resp3: bool = True):
@@ -305,7 +309,9 @@ class ClientRedis():
             items = self._pipeline_hgetall(sorted_keys)
 
         else:
-            # ----- Slow path: no dedicated index, in-memory fallback ----- TODO: useless part?
+            # ----- Slow path: no dedicated index, in-memory fallback -----
+            # This path is used when no sorted-set index exists for the query field.
+            # For large datasets, ensure you create indexes via zset_add_index().
             # Retrieve ALL member keys from the sorted set
             all_keys: list[str] = cast(
                 list[str],

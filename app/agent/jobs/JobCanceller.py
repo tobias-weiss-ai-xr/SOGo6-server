@@ -51,9 +51,9 @@ class JobCanceller:
             return
         logger_agent.info("JobCanceller: SIGTERM job_id=%s grace=%.1fs", job_id, soft_wait_seconds)
         self._agent.cancel(job_id, signal="SIGTERM")
-        # TODO: this blocks the caller thread for up to ``soft_wait_seconds``. Acceptable
-        # for admin API calls today; if it ever becomes hot, move the SIGKILL escalation
-        # to a system job (client_agent.start("admin.kill_if_alive", ...)).
+        # Note: This blocks the caller thread for up to ``soft_wait_seconds``.
+        # Acceptable for admin API calls today. If performance becomes an issue,
+        # consider moving SIGKILL escalation to a system job.
         deadline: float = time.monotonic() + soft_wait_seconds
         while time.monotonic() < deadline:
             current: JobState | None = self._persistency.get(job_id)

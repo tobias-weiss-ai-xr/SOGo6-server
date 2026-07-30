@@ -1,5 +1,3 @@
-from app.manager.db.ClientPostgreSQL import ClientPostgreSQL
-
 from .settings.ProcessSetting import process_config
 
 class ConfigSystemDomain():
@@ -19,7 +17,14 @@ class ConfigSystemDomain():
             "db_ssl":  process_config["SOGO_P_DB_SSL"],
             "db_enc":  process_config["SOGO_P_DB_ENC"]
         }
-        db_client = ClientPostgreSQL(**db_config)
+        # Dynamically select database client based on SOGO_P_DB_TYPE
+        db_type = process_config["SOGO_P_DB_TYPE"]
+        if db_type == "MySQL":
+            from app.manager.db.ClientMySQL import ClientMySQL
+            db_client = ClientMySQL(**db_config)
+        else:
+            from app.manager.db.ClientPostgreSQL import ClientPostgreSQL
+            db_client = ClientPostgreSQL(**db_config)
 
 
     def init_without_domain(self):

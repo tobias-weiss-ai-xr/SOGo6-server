@@ -1,4 +1,5 @@
 from typing import Any
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.utils.exceptions import BugException
@@ -140,11 +141,11 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_VOUCHER_SECRET: str #Fernet key must be 32 char string in utf-8.
     SOGO_AES_ENC_KEY: str #32 bytes key for AES-256
 
-    SOGO_P_DB_TYPE: str = "PostgreSQL"
+    SOGO_P_DB_TYPE: str = "MySQL"  # Database type
     SOGO_P_DB_USER: str = "admin"     #TODO test all that...
     SOGO_P_DB_PASS: str = "admin"
-    SOGO_P_DB_HOST: str = "localhost"
-    SOGO_P_DB_PORT: int = 5432
+    SOGO_P_DB_HOST: str = os.environ.get("SOGO_P_DB_HOST", "sogo6-mariadb")
+    SOGO_P_DB_PORT: int = int(os.environ.get("SOGO_P_DB_PORT", "3306"))
     SOGO_P_DB_SSL: bool = False
     SOGO_P_DB_ENC: str  = "utf8" #encoding, needed or autodetected ?
 

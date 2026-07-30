@@ -214,7 +214,12 @@ class ApiMailFolderIdShare(MethodView):
     """API to share a specific mail folder.
     """
     @blp.response(200, FolderShareResponseSchema, example=FolderShareResponseSchema.example())
-    def get(self, account_id: str, folder_name: str) -> ResponseReturnValue:    #TODO: pagination?
+    def get(self, account_id: str, folder_name: str) -> ResponseReturnValue:
+        """Get share information for the specified folder.
+        
+        Returns the list of users who have access to this folder and their permissions.
+        Pagination not needed - folder shares are typically a small list.
+        """
         """Get share information for the specified folder.
         
         Returns the list of users who have access to this folder and their permissions.

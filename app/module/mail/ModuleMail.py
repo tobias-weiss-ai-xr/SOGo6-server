@@ -102,7 +102,8 @@ class ModuleMail:
                 "encryption": ext_account_config["encryption"],
                 "auth_mech": ext_account_config["auth_mech"]
             }
-            #TODO How to handle folder type for external account ?? By name?
+            # Folder type mapping for external accounts uses IMAP settings
+            # Future enhancement: Allow custom folder type mapping per external account
             user_mail_conf["args"]["folders_map"] = self.mail_settings.get_mail_server_settings_for_type("imap")["folders_map"]
 
         return user_mail_conf
@@ -233,7 +234,7 @@ class ModuleMail:
         # # Update folder type if provided
         # if folder_type:
         #     updated_details["type"] = folder_type
-        #     #TODO: Manager BDD update quand on l'aura
+        #     # Folder type update will be implemented when BDD manager is available
 
         # return updated_details
 
@@ -344,7 +345,8 @@ class ModuleMail:
 
         for user_entry in share_data:
             # Extract user identifier (uid or c_email)
-            #TODO in fact, we need the user.login_mail_server
+            # Note: For mail server operations, we should use user.login_mail_server when available
+            # For now, using c_email as the identifier for ACL operations
             identifier = user_entry["c_email"]
             rights_dict = user_entry.get("rights", {})
 

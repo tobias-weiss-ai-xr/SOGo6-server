@@ -95,7 +95,8 @@ def _convert_imap_to_rights(imap_rights: str) -> dict[str, int]:
     :rtype: dict[str, int]
     """
     # Initialize all rights to 0
-    #TODO refactor folder acl, too much details for commoner.
+    # Note: This function has complex IMAP->SOGo right mappings.
+    # Future refactoring could extract this to a dedicated ACL module.
     sogo_rights: dict[str, int] = {
         cs.USER_CAN_VIEW_FOLDER: 0,
         cs.USER_CAN_READ_MAILS: 0,
