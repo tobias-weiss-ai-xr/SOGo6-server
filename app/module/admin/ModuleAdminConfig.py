@@ -498,6 +498,9 @@ class ModuleAdminConfig:
             ret = self.sogo_db_manager.insert_in_table(table_name=tbl.TABLE_SETTINGS.name,
                                                column_tuple=(tbl.COL_SETTINGS_UNIQUE.name, tbl.COL_SETTINGS_SYSTEM.name,tbl.COL_SETTINGS_DOMAIN_DEFAULT.name,tbl.COL_SETTINGS_THEME.name),
                                                values_tuple=[values_tuple])
+            if ret != 1:
+                logger.error("Something went wrong when inserting the system settings, rows inserted: %s, should be 1", ret)
+                raise BugException(f"Something went wrong when inserting the system settings, rows inserted: {ret}, should be 1", err.ERROR_TABLE_SYSTEM_NOT_UNIQUE)
         if size == 1:
             #Merge the new data and check it
             current_settings: dict = result[0][0]
@@ -517,10 +520,11 @@ class ModuleAdminConfig:
                                                column_tuple=(column_name,),
                                                values_list=[values],
                                                condition=cond_update)
-        if ret != 1:
-            #Only one row is supposed to be updated
-            logger.error("Something went wrong when updating the system settings, rows updated: %s, should be 1", ret)
-            raise BugException(f"Something went wrong when updating the system settings, rows updated: {ret}, should be 1", err.ERROR_TABLE_SYSTEM_NOT_UNIQUE)
+            # For UPDATE, ret can be 0 if no rows were actually changed (data already matches)
+            # This is valid behavior, not an error (MySQL returns 0 when no data changes)
+            if ret < 0:
+                logger.error("Something went wrong when updating the system settings, rows updated: %s", ret)
+                raise BugException(f"Something went wrong when updating the system settings, rows updated: {ret}", err.ERROR_TABLE_SYSTEM_NOT_UNIQUE)
 
         return err.ERROR_NO_ERROR.c, values
 
