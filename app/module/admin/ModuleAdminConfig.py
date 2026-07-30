@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Type, Callable
 
 from marshmallow import EXCLUDE
-import json
+import json as json_module
 from app.config.db import tables as tbl
 from app.config.settings.SystemSettings import get_all_system_schemas
 from app.config.settings.DomainSettings import get_all_domain_schemas
@@ -97,6 +97,19 @@ class ModuleAdminConfig:
             return ret
 
         ret = result[0]
+
+        # MySQL/MariaDB returns JSON columns as strings, PostgreSQL returns parsed dicts.
+        # Normalize to dict for consistent behavior across database backends.
+        parsed = []
+        for value in ret:
+            if isinstance(value, str):
+                try:
+                    parsed.append(json_module.loads(value))
+                except (json_module.JSONDecodeError, TypeError):
+                    parsed.append(value)
+            else:
+                parsed.append(value)
+        ret = tuple(parsed)
 
         return ret
 
@@ -488,6 +501,12 @@ class ModuleAdminConfig:
         if size == 1:
             #Merge the new data and check it
             current_settings: dict = result[0][0]
+            # MySQL/MariaDB returns JSON columns as strings, normalize to dict
+            if isinstance(current_settings, str):
+                try:
+                    current_settings = json_module.loads(current_settings)
+                except (json_module.JSONDecodeError, TypeError):
+                    current_settings = {}
             merge_patch(new_param, current_settings)
 
             values = check_data_for_sogo_schemas(current_settings, get_schema)
