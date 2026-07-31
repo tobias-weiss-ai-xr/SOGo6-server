@@ -6,6 +6,7 @@ import logging
 
 from redis import Redis, exceptions as rexc, ConnectionPool
 from redis.cache import CacheConfig
+from redis.retry import Retry
 from yarl import URL
 
 from app.utils.exceptions import AggravatedException, BugException
@@ -31,16 +32,21 @@ class ClientRedis():
     
     Features:
     - Timeout handling via Redis URL query parameters (socket_timeout, connect_timeout)
+    - Automatic reconnection with exponential backoff (configurable retries)
     - Fallback handled at application level with try/except blocks
     - Connection pooling for efficiency
     """
 
 
-    def __init__(self, url_str:str, resp3: bool = True):
+    def __init__(self, url_str:str, resp3: bool = True, max_retries: int = 3):
         """
         Initialize the client.
         It's initiated with a url to avoid having a lof of parameters.
         That wats all parameters are in the query
+
+        Features:
+        - Automatic reconnection on connection errors (configurable via max_retries)
+        - Fallback handled at application level with try/except blocks
 
         SOGo force the decode_responses=True.
         SOGo will use RESP3 that allow caching (needs REDIS 6.0)
@@ -51,22 +57,55 @@ class ClientRedis():
 
         :param redis_url: Url for redis
         :type redis_url: str
+        :param resp3: Whether to use RESP3 protocol (enables server-side caching)
+        :type resp3: bool
+        :param max_retries: Maximum number of reconnection attempts before giving up
+        :type max_retries: int
         """
         super().__init__()
+        
+        self.url_str = url_str
+        self.resp3 = resp3
+        self.max_retries = max_retries
+        self._connection_attempts = 0
 
-        redis_url = URL(url_str)
+        
+    def _connect(self) -> None:
+        """
+        Establish connection to Redis server.
+        Configures automatic retry on connection errors.
+        :raises AggravatedException: If connection cannot be established after max_retries
+        """
+        redis_url = URL(self.url_str)
         redis_url = redis_url.update_query(decode_responses="Yes")
         self.cache = False
-        if resp3:
+        
+        # Configure retry: retry on connection errors with exponential backoff
+        # backoff=0.5 means: 0.5s, 1s, 2s delays between retries
+        retry = Retry(
+            backoff=[0.5, 1.0, 2.0],  # Exponential backoff delays
+            retries=3  # Max 3 retry attempts
+        )
+        
+        if self.resp3:
             redis_url = redis_url.update_query(protocol=3)
             self.cache = True
             redis_connstring = str(redis_url)
-            logger_cache.info("Setting Redis client with cache for %s", redis_connstring)
-            self.redis = Redis.from_url(redis_connstring, cache_config=CacheConfig())
+            logger_cache.info("Setting Redis client with cache and retry for %s", redis_connstring)
+            self.redis = Redis.from_url(
+                redis_connstring, 
+                cache_config=CacheConfig(),
+                retry=retry,
+                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
+            )
         else:
             redis_connstring = str(redis_url)
-            logger_cache.info("Setting Redis client for %s", redis_connstring)
-            self.redis = Redis.from_url(redis_connstring)
+            logger_cache.info("Setting Redis client with retry for %s", redis_connstring)
+            self.redis = Redis.from_url(
+                redis_connstring,
+                retry=retry,
+                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
+            )
 
     def ping(self) -> None:
         """
@@ -108,8 +147,8 @@ class ClientRedis():
 
         if ttl < 1:
             #redis.set() raise redis.exceptions.ResponseError if time is 0 or less
-            logger_cache.error("TTL for redis is below 1: %s", ttl)
-            raise BugException(f"TTL for redis is below 1: {ttl}", err.ERROR_CACHE_TTL_BELOW_0)
+            logger_cache.error("TTL for redis is below 1")
+            raise BugException("TTL for redis is below 1", err.ERROR_CACHE_TTL_BELOW_0)
 
         try:
             result = self.redis.set(name=key, value=value, ex=ttl, nx=nx)
@@ -121,7 +160,8 @@ class ClientRedis():
             logger_cache.info("Key '%s' already exists (nx=True), not set", key)
             return False
 
-        logger_cache.info("Set cached value '%s' for key '%s'", value, key)
+        # Don't log full cache value at INFO level - could contain sensitive data
+        logger_cache.debug("Set cached value for key '%s' (value length: %d)", key, len(value))
         return True
 
     def get(self, key: str, expected_type: Type[str]|Type[list]|Type[dict]) -> str|list|dict|None:
@@ -140,7 +180,8 @@ class ClientRedis():
 
         result_str = cast(str|None, self.redis.get(key))
         if result_str is not None:
-            logger_cache.info("Get cached value '%s' for key '%s'", result_str, key)
+            # Don't log full cache value at INFO level - could contain sensitive data
+            logger_cache.debug("Get cached value for key '%s' (value length: %d)", key, len(result_str))
             #If we expect a string directly return it
             if expected_type == str:
                 return result_str
@@ -177,7 +218,8 @@ class ClientRedis():
         self.redis.hset(key, mapping=data)
         if ttl > 0:
             self.redis.expire(key, ttl)
-        logger_cache.info("Hashset cached value '%s' for key '%s'", data, key)
+        # Don't log full hash data at INFO level - could contain sensitive data
+        logger_cache.debug("Hashset cached for key '%s' (data length: %d)", key, len(data))
         return True
 
     def hashget(self, key:str) -> dict|None:
@@ -192,9 +234,10 @@ class ClientRedis():
         logger_cache.info("Hashget cached for key '%s'", key)
         ret = cast(dict|None, self.redis.hgetall(key))
         if ret:
-            logger_cache.info("Hashget cached value '%s' for key '%s'", ret, key)
+            # Don't log full hash data at INFO level - could contain sensitive data
+            logger_cache.debug("Hashget cached value for key '%s' (data length: %d)", key, len(ret))
         else:
-            logger_cache.info("Hashget no cached value for key '%s'", key)
+            logger_cache.debug("Hashget no cached value for key '%s'", key)
         return ret
 
 

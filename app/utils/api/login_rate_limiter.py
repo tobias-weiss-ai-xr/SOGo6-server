@@ -5,11 +5,13 @@ Uses the same Redis connection as the session cache, keyed under a
 dedicated namespace.
 
 Settings (from domain AuthSettings):
-  SOGO_D_LOGIN_CHECK_MAX_ATTEMPT — max failed attempts before blocking
-  SOGO_D_LOGIN_CHECK_TIME_SPAN   — window (seconds) for counting failures
-  SOGO_D_LOGIN_CHECK_BLOCK_TIME  — how long (seconds) the block lasts
+  SOGO_D_LOGIN_CHECK_MAX_ATTEMPT — max failed attempts before blocking (per UID)
+  SOGO_D_LOGIN_CHECK_TIME_SPAN   — window (seconds) for counting failures (per UID)
+  SOGO_D_LOGIN_CHECK_BLOCK_TIME  — how long (seconds) the block lasts (per UID)
 
-When MAX_ATTEMPT == 0 (the default), the limiter is disabled.
+Additionally, per-IP rate limiting is always active with configurable limits.
+
+When MAX_ATTEMPT == 0 (the default), UID-based tracking is disabled.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ if TYPE_CHECKING:
 # Redis key prefixes
 _PREFIX_FAIL = "login:fail:"
 _PREFIX_BLOCK = "login:block:"
+_PREFIX_IP = "login:ip:"
 
 
 class LoginRateLimiter:
@@ -73,6 +76,26 @@ class LoginRateLimiter:
         val = self._r.get(self._fail_key(uid))
         return int(val) if val else 0
 
+    # ── Per-IP Rate Limiting ──────────────────────────────────────────────
+
+    def is_ip_rate_limited(self, ip: str, max_attempts: int = 20, window_seconds: int = 60) -> bool:
+        """Check if an IP address is currently rate-limited.
+        
+        :param ip: IP address to check
+        :param max_attempts: Maximum number of attempts allowed (default: 20)
+        :param window_seconds: Time window in seconds (default: 60)
+        :return: True if the IP is rate-limited
+        """
+        key = self._ip_key(ip)
+        count = self._r.incr(key)
+        if count == 1:
+            self._r.expire(key, window_seconds)
+        return count > max_attempts
+
+    def reset_ip_rate_limit(self, ip: str) -> None:
+        """Clear the rate limit counter for an IP address."""
+        self._r.delete(self._ip_key(ip))
+
     # ── Helpers ────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -82,3 +105,7 @@ class LoginRateLimiter:
     @staticmethod
     def _block_key(uid: str) -> str:
         return f"{_PREFIX_BLOCK}{uid}"
+
+    @staticmethod
+    def _ip_key(ip: str) -> str:
+        return f"{_PREFIX_IP}{ip}"

@@ -78,10 +78,10 @@ def decrypt_password(encrypted_password: str, account_id: str | None = None) -> 
 
     try:
         encrypted_data = base64.b64decode(encrypted_password, validate=True)
-    except Exception as e:
-        account_info = f" for account '{account_id}'" if account_id else ""
-        logger.error("Failed to base64 decode encrypted password%s: %s", account_info, e)
-        raise RequestException(error=ERROR_INVALID_ENCRYPTED_DATA) from e
+    except Exception:
+        # Don't log sensitive information - use generic error
+        logger.error("Failed to base64 decode encrypted password")
+        raise RequestException(error=ERROR_INVALID_ENCRYPTED_DATA)
 
     try:
         # Extract IV (first 16 bytes)
@@ -103,6 +103,6 @@ def decrypt_password(encrypted_password: str, account_id: str | None = None) -> 
         decrypted = unpadder.update(decrypted_padded) + unpadder.finalize()
 
         return decrypted.decode('utf-8')
-    except Exception as e:
-        # In case of decryption error, we can log but not return the password
-        raise ValueError(f"Failed to decrypt password: {e}") from e
+    except Exception:
+        # In case of decryption error, use generic message to avoid leaking info
+        raise ValueError("Failed to decrypt password")

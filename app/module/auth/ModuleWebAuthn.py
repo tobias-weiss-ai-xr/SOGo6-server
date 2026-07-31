@@ -183,7 +183,7 @@ class ModuleWebAuthn:
                 True, now, now,
             ]],
         )
-        logger_api.info("WebAuthn credential stored for user=%s id=%s", user_uid, credential_id[:16])
+        logger_api.info("WebAuthn credential stored for user=%s", user_uid)
 
     def get_credentials(self, user_uid: str) -> list[dict[str, Any]]:
         rows = list(self._db.select_from_table(
@@ -199,7 +199,7 @@ class ModuleWebAuthn:
             condition=EqualCondition("credential_id", credential_id)
             & EqualCondition("user_uid", user_uid),
         )
-        logger_api.info("WebAuthn credential deleted id=%s user=%s", credential_id[:16], user_uid)
+        logger_api.info("WebAuthn credential deleted for user=%s", user_uid)
 
     def has_enabled_credentials(self, user_uid: str) -> bool:
         creds = self._get_credentials(user_uid)
@@ -247,7 +247,7 @@ class ModuleWebAuthn:
             ))
             return self._row_to_dict(rows[0]) if rows else None
         except (AggravatedException, BugException) as exc:
-            logger_api.error("Failed to get WebAuthn credential %s: %s", credential_id[:16], exc)
+            logger_api.error("Failed to get WebAuthn credential for user=%s: %s", user_uid, exc)
             return None
 
     def _update_sign_count(self, credential_id: str, new_count: int) -> None:

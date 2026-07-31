@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from base64 import b64decode, b64encode
+from defusedxml import ElementTree as DefusedET
+from defusedxml.common import DefusedXmlException
 from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -174,7 +176,10 @@ class ModuleSAML2:
         """
         try:
             xml_bytes = b64decode(saml_response_b64)
-            root = ET.fromstring(xml_bytes)
+            try:
+                root = DefusedET.fromstring(xml_bytes)
+            except DefusedXmlException as dxc:
+                raise RequestException(f"SAML: potential XXE attack detected: {dxc}") from dxc
         except Exception as exc:
             raise RequestException(f"SAML: failed to decode/parse response: {exc}") from exc
 

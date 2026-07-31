@@ -17,6 +17,37 @@ from app.utils import errors as err
 from app.utils import constants as cs
 from app.utils.strings import quote, imap_join_folders
 
+
+def validate_mail_uid(uid: str | int) -> str:
+    """Validate and normalize a mail UID.
+    
+    IMAP UIDs must be positive integers (RFC 3501: non-zero unsigned 32-bit).
+    This function validates the UID format and returns it as a string.
+    
+    :param uid: The UID to validate (string or int)
+    :type uid: str | int
+    :return: Validated UID as string
+    :rtype: str
+    :raises RequestException: If the UID is invalid (ERROR_MAIL_UID_INVALID)
+    """
+    if isinstance(uid, int):
+        uid_str = str(uid)
+    elif isinstance(uid, str):
+        uid_str = uid.strip()
+    else:
+        raise RequestException(f"Mail UID must be a string or integer, got {type(uid).__name__}", err.ERROR_MAIL_UID_INVALID)
+    
+    # Check if it's a valid positive integer
+    if not uid_str.isdigit():
+        raise RequestException(f"Mail UID must be a positive integer, got '{uid_str}'", err.ERROR_MAIL_UID_INVALID)
+    
+    # Check if it's within valid range (1 to 2^32-1)
+    uid_int = int(uid_str)
+    if uid_int < 1 or uid_int > 4294967295:
+        raise RequestException(f"Mail UID must be between 1 and 4294967295, got {uid_int}", err.ERROR_MAIL_UID_INVALID)
+    
+    return uid_str
+
 # IMAP debug logging is configured centrally in ``app.utils.logger.logger``.
 # ``imaplib.Debug`` is forced to 0 there to prevent credential leakage.
 # If you need IMAP protocol tracing, set ``SOGO_LOG_LEVEL=DEBUG`` *and*
@@ -382,12 +413,12 @@ class ClientImap(ClientMailServer):
             else:
                 raise BugException(f"Unsupported imap authentication mechanism: {self.auth_mech}", err.ERROR_IMAP_UNKNWON_AUTH_MECH)
             if not success:
-                #errors are in datas
-                logger_imap.error("Cannot login to IMAP server: %s, for account %s", datas, username)
+                #errors are in datas - don't log sensitive information
+                logger_imap.error("Cannot login to IMAP server")
                 first_error = datas[0] if isinstance(datas[0], str) else datas[0].decode()
                 if first_error.startswith("[AUTHENTICATIONFAILED]"):
-                    raise RequestException(f"Failed to login to IMAP server: {datas} ", err.ERROR_IMAP_UNAUTHORIZED)
-                raise RequestException(f"Cannot login to IMAP server: {datas}", err.ERROR_IMAP_FAILED)
+                    raise RequestException("Failed to login to IMAP server - authentication failed", err.ERROR_IMAP_UNAUTHORIZED)
+                raise RequestException("Cannot login to IMAP server - connection failed", err.ERROR_IMAP_FAILED)
             self.authenticated = True
 
             #Get capabilities
@@ -587,6 +618,9 @@ class ClientImap(ClientMailServer):
         if self.connection is not None and self.authenticated:
             if not folder_path.isascii():
                 raise RequestException(f"Mailbox name is not ascii: {folder_path}", err.ERROR_IMAP_NOT_ASCII)
+            # Check for control characters that would break IMAP protocol
+            if '\n' in folder_path or '\r' in folder_path:
+                raise RequestException(f"Mailbox name contains invalid control characters: {repr(folder_path)}", err.ERROR_IMAP_INVALID_CHARS)
             folder_path = quote(folder_path)
 
             success, datas = self._exec_imap4_method(self.connection.create, folder_path)
@@ -1487,36 +1521,39 @@ class ClientImap(ClientMailServer):
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
 
-    def fetch_mail_raw(self, folder_path: str, mail_uid: str) -> str:
+    def fetch_mail_raw(self, folder_path: str, mail_uid: str | int) -> str:
         """Fetch a mail from a specific mailbox using UID.
 
         :param mailbox: The mailbox containing the mail
         :type mailbox: str
-        :param mail_uid: The UID of the mail to fetch (int)
-        :type mail_uid: int
-        :raises RequestException: If the operation fails
+        :param mail_uid: The UID of the mail to fetch (string or int)
+        :type mail_uid: str | int
+        :raises RequestException: If the operation fails or UID is invalid
         :return: The raw bytes of the fetched mail
         :rtype: bytes
         """
-        logger_imap.debug("Fetching mail UID '%s' from '%s'", mail_uid, folder_path)
+        # Validate the mail UID
+        validated_uid = validate_mail_uid(mail_uid)
+        
+        logger_imap.debug("Fetching mail UID '%s' from '%s'", validated_uid, folder_path)
         if self.connection is not None and self.authenticated:
             if not folder_path.isascii():
                 raise RequestException(f"Mailbox name is not ascii: {folder_path}", err.ERROR_IMAP_NOT_ASCII)
             folder_path = quote(folder_path)
             self.select_mailbox(folder_path)
 
-            success, datas = self._exec_imap4_method(self.connection.uid, 'FETCH', mail_uid, '(RFC822)')
+            success, datas = self._exec_imap4_method(self.connection.uid, 'FETCH', validated_uid, '(RFC822)')
             if not success:
-                raise RequestException(f"Failed to expunge mailbox {folder_path}", err.ERROR_IMAP_FAILED)
+                raise RequestException(f"Failed to fetch mail from mailbox {folder_path}", err.ERROR_IMAP_FAILED)
             if not datas or not isinstance(datas[0], tuple):
-                raise RequestException(f"Mail UID {mail_uid} not found in {folder_path}.", err.ERROR_MAIL_UID_NOT_FOUND)
+                raise RequestException(f"Mail UID {validated_uid} not found in {folder_path}.", err.ERROR_MAIL_UID_NOT_FOUND)
             #datas = [(b'UID X RFC822 {3723}', b'full_eml')]
             full_eml: bytes = datas[0][1]
             return full_eml.decode()
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
-    def fetch_mail(self, folder_path: str, mail_uid: str) -> dict[str, Any]:
+    def fetch_mail(self, folder_path: str, mail_uid: str | int) -> dict[str, Any]:
         """Fetch a mail with additional metadata (flags, size) from a specific mailbox using UID.
 
         ```    
@@ -1530,24 +1567,27 @@ class ClientImap(ClientMailServer):
 
         :param folder_path: The folder containing the mail
         :type folder_path: str
-        :param mail_uid: The UID of the mail to fetch
-        :type mail_uid: str
-        :raises RequestException: If the operation fails
+        :param mail_uid: The UID of the mail to fetch (string or int)
+        :type mail_uid: str | int
+        :raises RequestException: If the operation fails or UID is invalid
         :return: A dict containing raw_message (bytes), flags (dict), and size (int)
         :rtype: dict[str, Any]
         """
-        logger_imap.debug("Fetching mail detail for UID '%s' from '%s'", mail_uid, folder_path)
+        # Validate the mail UID
+        validated_uid = validate_mail_uid(mail_uid)
+        
+        logger_imap.debug("Fetching mail detail for UID '%s' from '%s'", validated_uid, folder_path)
         if self.connection is not None and self.authenticated:
             if not folder_path.isascii():
                 raise RequestException(f"Mailbox name is not ascii: {folder_path}", err.ERROR_IMAP_NOT_ASCII)
             folder_path = quote(folder_path)
             self.select_mailbox(folder_path)
             # Fetch full message and FLAGS (size is included in RFC822 response)
-            success, datas = self._exec_imap4_method(self.connection.uid, 'FETCH', mail_uid, '(BODY.PEEK[] FLAGS UID)')
+            success, datas = self._exec_imap4_method(self.connection.uid, 'FETCH', validated_uid, '(BODY.PEEK[] FLAGS UID)')
             if not success:
-                raise RequestException(f"Failed to fetch mail {mail_uid} in folder {folder_path}", err.ERROR_IMAP_FAILED)
+                raise RequestException(f"Failed to fetch mail {validated_uid} in folder {folder_path}", err.ERROR_IMAP_FAILED)
             if not datas or not isinstance(datas[0], tuple):
-                raise RequestException(f"Mail UID {mail_uid} not found in {folder_path}.", err.ERROR_MAIL_UID_NOT_FOUND)
+                raise RequestException(f"Mail UID {validated_uid} not found in {folder_path}.", err.ERROR_MAIL_UID_NOT_FOUND)
 
             return self._parse_mail_with_content_fetching(datas[0])
         else:

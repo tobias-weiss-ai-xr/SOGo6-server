@@ -94,6 +94,10 @@ class AuthSettings(SogoSchema):
     SOGO_D_LOGIN_CHECK_MAX_ATTEMPT = fields.Integer(load_default=0, dump_default=0,validate=validate.Range(min=0)) #Number of failed attempt during SOGO_D_LOGIN_CHECK_TIME_SPAN before blocking
     SOGO_D_LOGIN_CHECK_TIME_SPAN   = fields.Integer(load_default=10, dump_default=10,validate=validate.Range(min=5)) #Time span when user can do SOGO_D_LOGIN_CHECK_MAX_ATTEMPT failed login attempt
     SOGO_D_LOGIN_CHECK_BLOCK_TIME  = fields.Integer(load_default=300, dump_default=300,validate=validate.Range(min=5)) #Time span where a user is forbidden to login after too many fail attempt.
+    
+    # Per-IP rate limiting (applied before UID-based rate limiting)
+    SOGO_D_LOGIN_IP_MAX_ATTEMPT    = fields.Integer(load_default=20, dump_default=20, validate=validate.Range(min=0)) #Max login attempts per IP per SOGO_D_LOGIN_IP_TIME_SPAN seconds (0 to disable)
+    SOGO_D_LOGIN_IP_TIME_SPAN      = fields.Integer(load_default=60, dump_default=60, validate=validate.Range(min=1)) #Time span for per-IP rate limiting
 
     SOGO_D_PWD_RECOVERY = fields.Boolean(load_default=True, dump_default=True) #Enable or not users to set a method for password recovery
     SOGO_D_PWD_RECOVERY_METHOD = fields.List(fields.String(), validate=validate.ContainsOnly(('secretQuestion', 'secondaryEmail', 'apiCall')))
@@ -126,6 +130,8 @@ class AuthSettingsObj(SettingsObj):
     SOGO_D_LOGIN_CHECK_MAX_ATTEMPT: int = 0
     SOGO_D_LOGIN_CHECK_TIME_SPAN: int = 10
     SOGO_D_LOGIN_CHECK_BLOCK_TIME: int = 300
+    SOGO_D_LOGIN_IP_MAX_ATTEMPT: int = 20
+    SOGO_D_LOGIN_IP_TIME_SPAN: int = 60
     SOGO_D_PWD_RECOVERY: bool = True
     SOGO_D_PWD_RECOVERY_METHOD: list[str] = []
     SOGO_D_PWD_RECOVERY_FORCE: bool = False

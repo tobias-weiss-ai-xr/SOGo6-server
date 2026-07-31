@@ -102,7 +102,21 @@ class PstAnalyze(MethodView):
         pst_path = body.get("pst_path", "")
         if not pst_path:
             return create_api_base_response(error_code="E000003", error_msg="pst_path required", success=False)
-        result = _parse_pst_headers(pst_path)
+        
+        # Security check: prevent path traversal
+        import os.path
+        # Normalize the path and check it doesn't contain dangerous patterns
+        normalized_path = os.path.normpath(pst_path)
+        # Re-normalize in case normpath didn't catch everything
+        normalized_path = os.path.normpath(normalized_path)
+        # Check for path traversal and absolute paths
+        if ('..' in normalized_path or 
+            normalized_path.startswith('/') or
+            normalized_path.startswith('\\') or
+            ':' in normalized_path):  # Prevent Windows drive letters
+            return create_api_base_response(error_code="E000004", error_msg="Invalid file path", success=False)
+        
+        result = _parse_pst_headers(normalized_path)
         if not result.get("exists"):
             return create_api_base_response(error_code="E000008", error_msg="PST file not found", success=False)
         est = _estimate_import_time(result.get("estimated_messages", 0))
@@ -119,13 +133,26 @@ class PstImport(MethodView):
         folders = body.get("folders", [])  # empty = all
         if not pst_path or not target_user:
             return create_api_base_response(error_code="E000003", error_msg="pst_path and target_user required", success=False)
+        
+        # Security check: prevent path traversal
+        import os.path
+        normalized_path = os.path.normpath(pst_path)
+        # Re-normalize in case normpath didn't catch everything
+        normalized_path = os.path.normpath(normalized_path)
+        # Check for path traversal and absolute paths
+        if ('..' in normalized_path or 
+            normalized_path.startswith('/') or
+            normalized_path.startswith('\\') or
+            ':' in normalized_path):  # Prevent Windows drive letters
+            return create_api_base_response(error_code="E000004", error_msg="Invalid file path", success=False)
+        
         cache = sogo_cache()
         job_id = secrets.token_hex(10)
-        pst_info = _parse_pst_headers(pst_path)
+        pst_info = _parse_pst_headers(normalized_path)
         job = {
             "id": job_id,
             "type": "pst",
-            "pst_path": pst_path,
+            "pst_path": normalized_path,
             "target_user": target_user,
             "folders": folders,
             "total_messages": pst_info.get("estimated_messages", 0),

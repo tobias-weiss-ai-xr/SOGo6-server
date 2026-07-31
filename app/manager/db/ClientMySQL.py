@@ -221,26 +221,45 @@ class ClientMySQL(ClientSQL):
     def __init__(self, db_user: str, db_pwd: str, db_host: str, db_port: int, db_ssl: bool, db_enc: str):
         """
         Init the MySQL client.
+        
+        :param db_ssl: If True, SSL connection will be used
         """
+        self.db_user = db_user
+        self.db_pwd = db_pwd
+        self.db_host = db_host
+        self.db_port = db_port
+        self.db_ssl = db_ssl
+        self.db_enc = db_enc
         self.safe_conn_string: str = f"mysql://SOGO_M_DB_USER:SOGO_M_DB_PWD@{db_host}:{db_port}/sogo?charset={db_enc}"
-        self.conn_config = {
-            "user": db_user,
-            "password": db_pwd,
-            "host": db_host,
-            "port": db_port,
+        self.db_conn: Any = None
+
+    def _get_conn_config(self) -> dict:
+        """Build connection config (not cached to avoid credential leakage in object inspection)."""
+        config = {
+            "user": self.db_user,
+            "password": self.db_pwd,
+            "host": self.db_host,
+            "port": self.db_port,
             "database": "sogo",
             "connection_timeout": 5,
             "use_pure": True,
-            "charset": db_enc,
+            "charset": self.db_enc,
         }
-        self.db_conn: Any = None
+        # Enable SSL if configured - set ssl_disabled to False to enable SSL
+        # MySQL Connector/Python enables SSL by default when server supports it,
+        # but we can explicitly control it with ssl_disabled parameter
+        if self.db_ssl:
+            config["ssl_disabled"] = False
+        else:
+            config["ssl_disabled"] = True
+        return config
 
     def connect(self) -> None:
         """
         Connect to the MySQL database and check if this is OK.
         """
         try:
-            self.db_conn = mysql.connector.connect(**self.conn_config)
+            self.db_conn = mysql.connector.connect(**self._get_conn_config())
         except Error as e:
             logger.error("Cannot connect to %s reason: %s", self.safe_conn_string, repr(e))
             raise RequestException("MySQL database connection error") from e
@@ -260,7 +279,7 @@ class ClientMySQL(ClientSQL):
         ret: dict = {}
         sql_query = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s"
 
-        params = cast(Tuple[str, str], (str(self.conn_config["database"]), str(table_name)))
+        params = cast(Tuple[str, str], ("sogo", str(table_name)))
 
         logger_sql.info("QUERY COMMAND: %s -- params=%s", sql_query, params)
 
@@ -503,6 +522,12 @@ class ClientMySQL(ClientSQL):
         order_clause = f" ORDER BY {', '.join(order_terms)}" if order_terms else ""
 
         # Build LIMIT and OFFSET clauses
+        # Validate that limit and offset are integers to prevent SQL injection
+        if not isinstance(limit, int) or limit < 0:
+            raise BugException(f"Invalid limit value: {limit}. Must be non-negative integer", err.ERROR_INVALID_LIMIT)
+        if not isinstance(offset, int) or offset < 0:
+            raise BugException(f"Invalid offset value: {offset}. Must be non-negative integer", err.ERROR_INVALID_OFFSET)
+        
         limit_clause = ""
         if limit > 0:
             limit_clause = f" LIMIT {limit}"

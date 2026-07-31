@@ -141,9 +141,9 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_VOUCHER_SECRET: str #Fernet key must be 32 char string in utf-8.
     SOGO_AES_ENC_KEY: str #32 bytes key for AES-256
 
-    SOGO_P_DB_TYPE: str = "MySQL"  # Database type
-    SOGO_P_DB_USER: str = "admin"     #TODO test all that...
-    SOGO_P_DB_PASS: str = "admin"
+    SOGO_P_DB_TYPE: str = "MySQL"  # Database type (MySQL or PostgreSQL)
+    SOGO_P_DB_USER: str = ""  # Database username - MUST be configured
+    SOGO_P_DB_PASS: str = ""  # Database password - MUST be configured
     SOGO_P_DB_HOST: str = os.environ.get("SOGO_P_DB_HOST", "sogo6-mariadb")
     SOGO_P_DB_PORT: int = int(os.environ.get("SOGO_P_DB_PORT", "3306"))
     SOGO_P_DB_SSL: bool = False
@@ -206,10 +206,11 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_TABLE_PWD_RESET_TOKENS: str = "sogo6_password_reset_tokens"
 
     # --- Admin Authentication ---
-    # SOGO_P_ADMIN: str = "" # Admin username
-    # SOGO_P_ADMIN_PWD: str = "" # Admin password
-    SOGO_P_ADMIN: str = "admin" # Admin username
-    SOGO_P_ADMIN_PWD: str = "admin" # Admin password
+    # WARNING: Default credentials are disabled for security. Must be set via environment or config file.
+    # SOGO_P_ADMIN: str = "" # Admin username (MUST be set)
+    # SOGO_P_ADMIN_PWD: str = "" # Admin password (MUST be set)
+    SOGO_P_ADMIN: str = "" # Admin username - MUST be configured
+    SOGO_P_ADMIN_PWD: str = "" # Admin password - MUST be configured
 
     def __getitem__(self, i:str) -> Any:
         if hasattr(self, i):

@@ -1293,11 +1293,54 @@ class ModuleMail:
         return parsed
 
     @staticmethod
+    def _sanitize_attachment_filename(filename: str) -> str:
+        """Sanitize an attachment filename to prevent security issues.
+        
+        Removes or replaces dangerous characters that could lead to:
+        - Path traversal attacks (../)
+        - Control character injection
+        - Excessively long filenames
+        
+        :param filename: The original filename
+        :type filename: str
+        :return: Sanitized filename
+        :rtype: str
+        """
+        if not filename:
+            return "unnamed_attachment"
+        
+        # Reject filenames that are too long (255 chars is a common filesystem limit)
+        max_length = 255
+        if len(filename) > max_length:
+            filename = filename[:max_length]
+        
+        # Remove dangerous characters
+        # - Path separators (/ and \\)
+        # - Null bytes
+        # - Control characters
+        # - Path traversal sequences
+        sanitized = filename.replace('/', '_').replace('\\', '_')
+        sanitized = sanitized.replace('\x00', '')
+        
+        # Remove other control characters
+        sanitized = ''.join(char for char in sanitized if char.isprintable() and ord(char) >= 32)
+        
+        # Remove leading/trailing dots and spaces
+        sanitized = sanitized.strip('. ')
+        
+        if not sanitized:
+            return "unnamed_attachment"
+        
+        return sanitized
+
+    @staticmethod
     def _resolve_attachment_filename(filename: str, existing_filenames: list[str]) -> str:
         """Return a unique filename by appending ``(n)`` before the extension if needed.
 
         If *filename* already exists in *existing_filenames*, tries ``name(1).ext``,
         ``name(2).ext``, etc. until a free name is found.
+        
+        The filename is sanitized first to prevent security issues.
 
         :param filename: The desired filename.
         :type filename: str
@@ -1306,6 +1349,9 @@ class ModuleMail:
         :return: A filename that does not collide with any entry in *existing_filenames*.
         :rtype: str
         """
+        # Sanitize the filename first
+        filename = ModuleMail._sanitize_attachment_filename(filename)
+        
         if filename not in existing_filenames:
             return filename
 

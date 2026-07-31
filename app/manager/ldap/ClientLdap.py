@@ -123,7 +123,7 @@ class ClientLdap(ClientUserSource):
 
         #bind
         self.bind_dn = ldap_bind_dn
-        self.bind_pwd = ldap_bind_pwd
+        self.bind_pwd = SecretString(ldap_bind_pwd)
         self.bind_as_user = ldap_bind_as_user
         self.pwd_policy = ldap_pwd_policy
         self.bind_fields = ldap_bind_fields
@@ -241,8 +241,8 @@ class ClientLdap(ClientUserSource):
         """
         #check that dn is correct
         if not ldap.dn.is_dn(bind_dn):
-            logger_ldap.error("Cannot bind with bind dn: %s. Because it's not a valid dn", bind_dn)
-            raise exc.RequestException(f"Cannot bind with bind dn: {bind_dn}. Because it's not a valid dn", error=err.ERROR_LDAP_BIND_WRONG_CRED)
+            logger_ldap.error("Cannot bind with bind dn: invalid dn format")
+            raise exc.RequestException("Cannot bind: invalid bind dn format", error=err.ERROR_LDAP_BIND_WRONG_CRED)
         
         #Censored the password for the log
         h_password = SecretString(bind_pwd)
@@ -259,14 +259,14 @@ class ClientLdap(ClientUserSource):
                 return True, ret
             except ldap.INVALID_CREDENTIALS as e:
                 if throw_error:
-                    logger_ldap.error("Invalid bind Credentials for bind dn: %s", bind_dn)
-                    raise exc.RequestException(f"Invalid bind Credentials for bind {bind_dn}", error=err.ERROR_LDAP_BIND_WRONG_CRED) from e
+                    logger_ldap.error("Invalid bind Credentials")
+                    raise exc.RequestException("Invalid bind Credentials", error=err.ERROR_LDAP_BIND_WRONG_CRED) from e
                 else:
-                    logger_ldap.warning("Invalid bind Credentials for bind dn: %s", bind_dn)
+                    logger_ldap.warning("Invalid bind Credentials")
                     return False, {}
             except ldap.LDAPError as e:
-                logger_ldap.error("Cannot bind with bind dn: %s. Because: %s", bind_dn, e)
-                raise exc.RequestException(f"Cannot bind with bind dn: {bind_dn}" , error=err.ERROR_LDAP_CANNOT_BIND) from e
+                logger_ldap.error("Cannot bind: %s", e)
+                raise exc.RequestException("Cannot bind to LDAP server" , error=err.ERROR_LDAP_CANNOT_BIND) from e
         raise exc.BugException("self.connection is still None, meaning self.connect() method didn't catch or raise correctly an error")
 
 

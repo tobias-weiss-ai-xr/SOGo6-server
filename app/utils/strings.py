@@ -162,13 +162,22 @@ def get_imap_config_from_url(imap_str: str) -> dict:
 
 def quote(input_str:str) -> str:
     """
-    Quote a string with "
+    Quote a string with " for use in IMAP commands.
+    
+    IMAP protocol (RFC 3501) requires that quoted strings do not contain
+    newlines (CR or LF). This function will raise a ValueError if the input
+    contains newlines, as they cannot be safely quoted for IMAP.
 
-    :param input: string to quote
-    :type input: str
+    :param input_str: string to quote
+    :type input_str: str
     :return: the string quoted
     :rtype: str
+    :raises ValueError: if input contains newlines or carriage returns
     """
+    # Check for newlines - these cannot be safely quoted for IMAP
+    if '\n' in input_str or '\r' in input_str:
+        raise ValueError(f"String contains newlines and cannot be safely quoted for IMAP: {repr(input_str)}")
+    
     # Check if the string is already wrapped in double quotes
     if input_str.startswith('"') and input_str.endswith('"'):
         return input_str

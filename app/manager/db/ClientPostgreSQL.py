@@ -237,9 +237,19 @@ class ClientPostgreSQL(ClientSQL):
         :param db_ssl: If True, adds sslmode=require to connection string
         """
         ssl_param = "&sslmode=require" if db_ssl else ""
-        self.conn_string: str      = f"postgresql://{quote_plus(db_user)}:{quote_plus(db_pwd)}@{db_host}:{db_port}/sogo?client_encoding={db_enc}{ssl_param}"
+        self.db_user = db_user
+        self.db_pwd = db_pwd
+        self.db_host = db_host
+        self.db_port = db_port
+        self.db_enc = db_enc
+        self.db_ssl = db_ssl
         self.safe_conn_string: str = f"postgresql://SOGO_P_DB_USER:SOGO_P_DB_PWD@{db_host}:{db_port}/sogo?client_encoding={db_enc}{ssl_param}"
         self.db_conn: psycopg.Connection | None = None
+
+    def _get_conn_string(self) -> str:
+        """Build connection string with credentials (not cached to avoid credential leakage)."""
+        ssl_param = "&sslmode=require" if self.db_ssl else ""
+        return f"postgresql://{quote_plus(self.db_user)}:{quote_plus(self.db_pwd)}@{self.db_host}:{self.db_port}/sogo?client_encoding={self.db_enc}{ssl_param}"
 
     def connect(self, redis_client=None, max_failures=5) -> None:
         """
@@ -249,7 +259,7 @@ class ClientPostgreSQL(ClientSQL):
         :param max_failures: Maximum consecutive failures before circuit breaker
         """
         try:
-            self.db_conn = psycopg.connect(self.conn_string, connect_timeout=5)
+            self.db_conn = psycopg.connect(self._get_conn_string(), connect_timeout=5)
         except (OperationalError, Error) as e:
             logger.error("Cannot connect to %s reason: %s", self.safe_conn_string, repr(e))
             raise RequestException("Postgresql database connection error") from e
@@ -494,6 +504,13 @@ class ClientPostgreSQL(ClientSQL):
             self.connect()
         if len(column_tuple) == 0:
             column_tuple = ("*",)
+        
+        # Validate that limit and offset are integers to prevent SQL injection
+        if not isinstance(limit, int) or limit < 0:
+            raise BugException(f"Invalid limit value: {limit}. Must be non-negative integer", err.ERROR_INVALID_LIMIT)
+        if not isinstance(offset, int) or offset < 0:
+            raise BugException(f"Invalid offset value: {offset}. Must be non-negative integer", err.ERROR_INVALID_OFFSET)
+        
         if limit == 0:
             limit_query = Composed([SQL("ALL")])
         else:

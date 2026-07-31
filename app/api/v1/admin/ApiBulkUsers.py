@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,32 @@ from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 from app.service import sogo_cache
 
+
+def sanitize_csv_field(value: str) -> str:
+    """Sanitize a CSV field value to prevent CSV injection attacks.
+    
+    Prefixes potentially dangerous strings with a single quote (') which
+    tells spreadsheet applications to treat the content as a literal string
+    rather than a formula or command.
+    
+    :param value: The string value to sanitize
+    :type value: str
+    :return: Sanitized string safe for CSV export
+    :rtype: str
+    """
+    if not isinstance(value, str):
+        return str(value)
+    
+    # Check if the value starts with characters that could trigger formula execution
+    # in spreadsheet applications (Excel, LibreOffice Calc, etc.)
+    csv_injection_pattern = re.compile(r'^[=@+\-]', re.IGNORECASE)
+    
+    if csv_injection_pattern.match(value):
+        # Prefix with single quote to neutralize formula interpretation
+        return f"'{value}"
+    
+    return value
+
 if TYPE_CHECKING:
     from app.auth.User import User
 
@@ -35,14 +62,26 @@ class ApiBulkExportCSV(MethodView):
     """Export users to CSV."""
 
     def get(self) -> ResponseReturnValue:
-        """Export all users as a CSV file."""
+        """Export all users as a CSV file.
+        
+        Sanitizes all fields to prevent CSV injection attacks.
+        """
         # In production, this would query the user source
         # For now, return a template with sample data
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["uid", "email", "cn", "sn", "mail", "uidNumber"])
-        writer.writerow(["maxmustermann@example.org", "maxmustermann@example.org", "Max Mustermann", "Mustermann", "maxmustermann@example.org", "2001"])
-        writer.writerow(["klaus.schmidt@example.org", "klaus.schmidt@example.org", "Prof. Dr. Schmidt", "Schmidt", "klaus.schmidt@example.org", "3001"])
+        
+        # Sanitize header row as well (defense in depth)
+        headers = ["uid", "email", "cn", "sn", "mail", "uidNumber"]
+        writer.writerow([sanitize_csv_field(h) for h in headers])
+        
+        # Sample data with sanitization
+        sample_users = [
+            ["maxmustermann@example.org", "maxmustermann@example.org", "Max Mustermann", "Mustermann", "maxmustermann@example.org", "2001"],
+            ["klaus.schmidt@example.org", "klaus.schmidt@example.org", "Prof. Dr. Schmidt", "Schmidt", "klaus.schmidt@example.org", "3001"],
+        ]
+        for user in sample_users:
+            writer.writerow([sanitize_csv_field(field) for field in user])
 
         return Response(
             output.getvalue(),
@@ -70,8 +109,22 @@ class ApiBulkImportCSV(MethodView):
     @blp.arguments(BulkImportSchema)
     @blp.response(200, BulkImportResultSchema)
     def post(self, body: dict) -> ResponseReturnValue:
-        """Import users from CSV."""
-        reader = csv.DictReader(io.StringIO(body["csv_data"]))
+        """Import users from CSV.
+        
+        Validates and sanitizes input to prevent injection attacks.
+        """
+        csv_data = body.get("csv_data", "")
+        
+        # Security check: limit CSV data size to prevent DoS via large CSV
+        max_csv_size = 10 * 1024 * 1024  # 10 MB
+        if len(csv_data) > max_csv_size:
+            return create_api_base_response(
+                error_code=err.ERROR_FILE_TOO_LARGE.c,
+                error_msg=f"CSV data exceeds maximum size of {max_csv_size // (1024*1024)}MB",
+                success=False
+            )
+        
+        reader = csv.DictReader(io.StringIO(csv_data))
         dry_run = body.get("dry_run", True)
         total = 0
         imported = 0
@@ -80,11 +133,32 @@ class ApiBulkImportCSV(MethodView):
 
         for row in reader:
             total += 1
-            uid = row.get("uid", "").strip()
+            
+            # Sanitize all fields in the row to prevent injection attacks
+            sanitized_row = {}
+            for key, value in row.items():
+                if isinstance(value, str):
+                    # Remove any leading/trailing single quotes that could bypass sanitization
+                    sanitized_value = value.strip().strip("'")
+                    # Remove potential formula prefixes
+                    if sanitized_value.startswith(("=", "@", "+", "-")):
+                        sanitized_value = sanitized_value[1:] if len(sanitized_value) > 1 else ""
+                    sanitized_row[key] = sanitized_value
+                else:
+                    sanitized_row[key] = value
+            
+            uid = sanitized_row.get("uid", "").strip()
             if not uid:
                 skipped += 1
                 errors.append(f"Row {total}: missing uid")
                 continue
+            
+            # Validate UID format (alphanumeric, dots, hyphens, underscores)
+            if not re.match(r'^[a-zA-Z0-9._-]+$', uid):
+                skipped += 1
+                errors.append(f"Row {total}: invalid uid format '{uid}'")
+                continue
+            
             if not dry_run:
                 # In production, create user in LDAP/user source
                 logger_api.info("Bulk import: would create user %s", uid)

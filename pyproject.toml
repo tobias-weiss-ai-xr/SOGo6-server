@@ -17,6 +17,7 @@ dependencies = [
     "celery",
     "click",
     "cryptography",
+    "defusedxml",
     "flask",
     "flask-compress",
     "flask-cors",

@@ -9,6 +9,7 @@ from app.config.settings.DomainSettings import (
     AuthSettingsObj,
     get_all_domain_schemas,
     UserSourceSettings,
+    UserSourceSettingsObj,
 )
 from app.module.user.ModuleUserProfile import ModuleUserProfile
 from app.utils.api.ApiBaseResponse import create_api_base_response
@@ -116,6 +117,23 @@ class InterfaceUserProfile:
             return create_api_base_response(
                 error=err.ERROR_PWD_CHANGE_REAUTH_FAILED,
             )
+
+        # 2.5. Validate new password against domain policy
+        user_source_settings_raw: dict = self.user_domain.get(UserSourceSettings.subparent, {})
+        user_source_settings = UserSourceSettingsObj(user_source_settings_raw)
+        
+        if user_source_settings.US_PWD_POLICY:
+            from app.utils.maths.password_policy import validate_password_policy
+            policy_errors = validate_password_policy(
+                new_password, user_source_settings
+            )
+            if policy_errors:
+                logger_api.warning("Password change failed for uid=%s: policy violation - %s", 
+                                    self.user.uid, ", ".join(policy_errors))
+                return create_api_base_response(
+                    error=err.ERROR_PWD_POLICY_VIOLATION,
+                    error_msg="; ".join(policy_errors)
+                )
 
         # 3. Update password using ModuleAdminUser (which has admin LDAP bind)
         try:

@@ -104,7 +104,9 @@ ERROR_IMAP_UNAIVALABLE       = E("S001301", "IMAP Command Failed Momenteraly, Tr
 ERROR_IMAP_FAILED            = E("S001302", "IMAP Command Failed, See Logs To Get More Details", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_UNKNWON_AUTH_MECH = E("S001303", "IMAP Auth Mechanism Unknown", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_NOT_ASCII         = E("S001304", "Name for imap command is not ascii", HTTPStatus.BAD_REQUEST)
-ERROR_IMAP_READONLY          = E("S001305", "Writting Command to a readonly folder", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_IMAP_INVALID_CHARS     = E("S001305", "Name for imap command contains invalid characters", HTTPStatus.BAD_REQUEST)
+ERROR_IMAP_READONLY          = E("S001306", "Writting Command to a readonly folder", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_MAIL_UID_INVALID       = E("S001307", "Mail UID Must Be A Valid Positive Integer", HTTPStatus.BAD_REQUEST)
 
 ERROR_MAIL_DOWNLOAD_FAILED          = E("S000360", "Mail Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_ZIP_FAILED               = E("S000361", "Mail Zip Archive Creation Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -112,6 +114,8 @@ ERROR_MAIL_ATTACHMENT_NOT_FOUND     = E("S000367", "Mail Attachment Not Found", 
 ERROR_MAIL_ATTACHMENT_DOWNLOAD_FAILED = E("S000368", "Mail Attachment Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_EDIT_FAILED       = E("S000366", "Failed To Open Mail For Editing", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_INVALID_ENCRYPTED_DATA = E("S000362", "Encrypted Password Is Not Valid Base64 Data", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_INVALID_LIMIT         = E("S000369", "Invalid Limit Value - Must Be Non-Negative Integer", HTTPStatus.BAD_REQUEST)
+ERROR_INVALID_OFFSET        = E("S000370", "Invalid Offset Value - Must Be Non-Negative Integer", HTTPStatus.BAD_REQUEST)
 ERROR_MAIL_SAVE_DRAFT_FAILED = E("S000365", "Mail Draft Save Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_SAVE_SENT_FAILED  = E("S000363", "Saving Sent Mail To Folder Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_DELETE_DRAFT_FAILED = E("S000364", "Deleting Draft Mail After Sending Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -309,6 +313,7 @@ ERROR_UNKOWN = E("S999999", "Undefined Error", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_PWD_CHANGE_DISABLED     = E("S001100", "Password Change Is Not Enabled For This Domain", HTTPStatus.FORBIDDEN)
 ERROR_PWD_CHANGE_REAUTH_FAILED = E("S001101", "Current Password Is Incorrect", HTTPStatus.UNAUTHORIZED)
 ERROR_PWD_CHANGE_FAILED        = E("S001102", "Failed To Change Password", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PWD_POLICY_VIOLATION     = E("S001103", "Password Does Not Meet Domain Security Requirements", HTTPStatus.BAD_REQUEST)
 
 # ── OIDC Authentication (S0012xx) ─────────────────────────────────────────────
 ERROR_OIDC_NOT_CONFIGURED     = E("S001200", "OIDC Is Not Configured For This Domain", HTTPStatus.PRECONDITION_FAILED)

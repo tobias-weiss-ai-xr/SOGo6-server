@@ -19,6 +19,7 @@ from app.utils.exceptions import RequestException
 from app.utils import errors as err
 from app.utils.exceptions import AggravatedException, BugException
 from app.utils.logger.logger import logger_api
+from app.utils.maths.crypto_utils import decrypt_password, encrypt_password
 from app.utils.module.importManager import import_and_instantiate_manager
 
 if TYPE_CHECKING:
@@ -83,7 +84,7 @@ class ModuleTOTP:
         return {
             "id": row[0],
             "user_uid": row[1],
-            "secret": row[2],
+            "secret": decrypt_password(row[2]),
             "enabled": row[3],
             "created_at": row[4],
         }
@@ -118,19 +119,20 @@ class ModuleTOTP:
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc)
+        encrypted_secret = encrypt_password(secret)
         if existing:
             # Update secret and reset enabled to False
             self._db.update_in_table(
                 self.TABLE_NAME,
                 column_tuple=("secret", "enabled", "created_at"),
-                values_list=[secret, False, now],
+                values_list=[encrypted_secret, False, now],
                 condition=EqualCondition("user_uid", user_uid),
             )
         else:
             self._db.insert_in_table(
                 self.TABLE_NAME,
                 column_tuple=("user_uid", "secret", "enabled", "created_at"),
-                values_tuple=[[user_uid, secret, False, now]],
+                values_tuple=[[user_uid, encrypted_secret, False, now]],
             )
 
     def enable(self, user_uid: str) -> None:

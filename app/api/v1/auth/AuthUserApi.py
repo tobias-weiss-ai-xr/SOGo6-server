@@ -70,13 +70,8 @@ class ApiAuthUserLogin(MethodView):
 
         client_ip = request.remote_addr or "unknown"
         limiter = LoginRateLimiter(sogo_cache())
-        ip_key = f"login:ip:{client_ip}"
-        r = limiter._r
-        count = r.incr(ip_key)
-        if count == 1:
-            r.expire(ip_key, 60)  # 1-minute window
-        if count > 20:  # Max 20 login attempts per minute per IP
-            logger_api.warning("Rate-limited login from IP=%s (count=%d)", client_ip, count)
+        if limiter.is_ip_rate_limited(client_ip, max_attempts=20, window_seconds=60):
+            logger_api.warning("Rate-limited login from IP=%s", client_ip)
             return create_api_base_response(None, err.ERROR_LOGIN_FAILED)
 
         interface_api : InterfaceAuthUser = g.inter

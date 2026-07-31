@@ -18,6 +18,61 @@ from app.utils.maths.sogo_hash import get_unique_token, HASH_SIZE_DOMAIN
 from app.utils import errors as err
 
 
+def _warn_insecure_domain_settings(settings: dict) -> None:
+    """Log warnings for potentially insecure domain settings.
+    
+    This function checks domain settings for common security misconfigurations
+    and logs warnings to help administrators identify and fix them.
+    
+    :param settings: Dictionary containing domain settings
+    :type settings: dict
+    """
+    # Check for plain authentication with no rate limiting
+    if settings.get('SOGO_D_AUTH_TYPE') == 'plain':
+        login_max_attempt = settings.get('SOGO_D_LOGIN_CHECK_MAX_ATTEMPT', 0)
+        if login_max_attempt == 0:
+            logger.warning(
+                "SECURITY WARNING: Domain uses 'plain' authentication without user-based rate limiting. "
+                "Consider setting SOGO_D_LOGIN_CHECK_MAX_ATTEMPT > 0 to protect against brute force attacks."
+            )
+    
+    # Check if password change is disabled
+    if settings.get('SOGO_D_PWD_CHANGE_ENABLED') is False:
+        logger.warning(
+            "SECURITY WARNING: Password change is disabled for this domain. "
+            "Users will not be able to change their passwords. "
+            "Consider enabling SOGO_D_PWD_CHANGE_ENABLED."
+        )
+    
+    # Check if MFA is not enforced
+    login_mfa_force = settings.get('SOGO_D_LOGIN_MFA_FORCE')
+    if login_mfa_force is False or login_mfa_force is None:
+        logger.warning(
+            "SECURITY WARNING: Multi-factor authentication (MFA) is not enforced for this domain. "
+            "Consider enabling SOGO_D_LOGIN_MFA_FORCE to require MFA for all logins."
+        )
+    
+    # Check for weak rate limiting settings
+    ip_max_attempt = settings.get('SOGO_D_LOGIN_IP_MAX_ATTEMPT', 20)
+    ip_time_span = settings.get('SOGO_D_LOGIN_IP_TIME_SPAN', 60)
+    if ip_max_attempt < 10 and ip_time_span < 300:
+        logger.warning(
+            "SECURITY WARNING: IP-based rate limiting may be too lenient. "
+            "Current settings: %d attempts per %d seconds. "
+            "Consider more restrictive settings for better protection against brute force attacks.",
+            ip_max_attempt, ip_time_span
+        )
+    
+    # Check for missing OpenID client secret (if OpenID is enabled)
+    if settings.get('SOGO_D_AUTH_TYPE') == 'openid':
+        client_secret = settings.get('SOGO_D_OPENID_CLIENT_SECRET', '')
+        if not client_secret:
+            logger.error(
+                "SECURITY ERROR: OpenID authentication is enabled but SOGO_D_OPENID_CLIENT_SECRET is not configured. "
+                "This will prevent authentication from working."
+            )
+
+
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.manager.db.ClientSQL import ClientSQL
@@ -131,8 +186,13 @@ class ModuleAdminConfig:
         :return: dict with current default domain settings
         :rtype: dict
         """
-
-        return self._get_setting_from_table_settings((tbl.COL_SETTINGS_DOMAIN_DEFAULT.name,))[0]
+        settings = self._get_setting_from_table_settings((tbl.COL_SETTINGS_DOMAIN_DEFAULT.name,))[0]
+        
+        # Check for insecure settings and log warnings
+        if isinstance(settings, dict):
+            _warn_insecure_domain_settings(settings)
+        
+        return settings
 
     def get_theme_settings(self) -> dict:
         """
@@ -376,7 +436,13 @@ class ModuleAdminConfig:
         for record in result:
             record_dict = dict(zip(column_names, record))
             if "settings" in record_dict:
-                record_dict["settings"] = json.loads(record_dict["settings"])  # si nécessaire
+                # MySQL/MariaDB returns JSON columns as strings, PostgreSQL returns parsed dicts.
+                # Normalize to dict for consistent behavior across database backends.
+                if isinstance(record_dict["settings"], str):
+                    try:
+                        record_dict["settings"] = json.loads(record_dict["settings"])
+                    except (json.JSONDecodeError, TypeError):
+                        record_dict["settings"] = {}
             ret.append(record_dict)
 
         return count, ret
@@ -430,6 +496,10 @@ class ModuleAdminConfig:
                 ret["settings"] = result[0][idx]
             else:
                 ret[col] = result[0][idx]
+
+        # Check for insecure settings and log warnings
+        if "settings" in ret and isinstance(ret["settings"], dict):
+            _warn_insecure_domain_settings(ret["settings"])
 
         return ret
 
