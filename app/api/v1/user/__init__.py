@@ -1,18 +1,14 @@
-from flask_smorest import Blueprint
+"""
+User API v1 - Blueprint registration and initialization.
 
-from .ApiUserPreferences import blp as user_preference_api
-from .ApiUserProfile import blp as user_profile_api
-from .ApiUserCustomization import blp as user_customization_api
-from .ApiAppPassword import blp as app_password_api
-from .ApiAI import blp as ai_api
-from .ApiApiTokens import blp as api_tokens_api
-from .ApiLiveUpdates import blp as live_updates_api
-from .ApiOAuthProvider import blp as oauth_provider_api
-from .ApiOpenCloud import blp as opencloud_api
-from .ApiSmartCalendar import blp as smart_calendar_api
-from .ApiSpamFilter import blp as spam_filter_api
-from .ApiTranscripts import blp as transcripts_api
-from .ApiPGP import blp as pgp_api
-from .ApiPushNotifications import blp as push_notifications_api
+This module contains all user-facing API endpoints for SOGo6 v1.
+"""
 
-user_profile_apis : list[Blueprint] = [user_profile_api, user_preference_api, user_customization_api, app_password_api, push_notifications_api, pgp_api, api_tokens_api, live_updates_api, oauth_provider_api, opencloud_api, smart_calendar_api, spam_filter_api, transcripts_api, ai_api]
+from flask_smorest import Api
+
+
+def register_user_blueprints(api: Api):
+    """Register all user v1 blueprints."""
+    # Import all user API modules to register them
+    from app.api.v1.user import ApiWebAuthn
+    ApiWebAuthn.register_webauthn_blueprints(api)

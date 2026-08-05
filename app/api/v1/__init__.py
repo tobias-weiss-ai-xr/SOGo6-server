@@ -11,6 +11,7 @@ from .calendar import calendar_apis
 from .jobs import job_apis
 from .contact import contact_apis
 from .health import health_apis
+from .user import ApiWebAuthn
 
 v1_basic_apis: list[Blueprint] = []
 v1_basic_apis += system_apis
@@ -22,6 +23,11 @@ v1_basic_apis += job_apis
 v1_basic_apis += contact_apis
 v1_basic_apis += health_apis
 
+# Register WebAuthn blueprints
+ApiWebAuthn.register_webauthn_blueprints(None)
+
+# Also add to basic APIs
+v1_basic_apis.extend([ApiWebAuthn.blp, ApiWebAuthn.blp_admin])
 
 v1_admin_apis: list[Blueprint] = []
 v1_admin_apis += admin_apis
