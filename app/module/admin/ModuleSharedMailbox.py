@@ -169,15 +169,31 @@ class ModuleSharedMailbox:
 
     @staticmethod
     def _row_to_dict(row: Any) -> dict[str, Any]:
-        """Convert a DB row (tuple) to a dict."""
+        """Convert a DB row (tuple) to a dict.
+        
+        Handles JSON column normalization between MariaDB (returns strings)
+        and PostgreSQL (returns parsed dicts/lists).
+        """
         if isinstance(row, dict):
             return row
+        
+        # Normalize member_uids: MariaDB returns JSON as string, PostgreSQL as list
+        import json as json_module
+        member_uids_raw = row[4]
+        if isinstance(member_uids_raw, str):
+            try:
+                member_uids_raw = json_module.loads(member_uids_raw)
+            except (json_module.JSONDecodeError, TypeError):
+                member_uids_raw = []
+        if not isinstance(member_uids_raw, list):
+            member_uids_raw = []
+        
         return {
             "id": row[0],
             "email": row[1],
             "name": row[2],
             "description": row[3],
-            "member_uids": row[4] if isinstance(row[4], list) else [],
+            "member_uids": member_uids_raw,
             "is_active": bool(row[5]) if row[5] else True,
             "created_at": str(row[6]) if row[6] else None,
             "updated_at": str(row[7]) if row[7] else None,
@@ -190,9 +206,9 @@ class ModuleSharedMailbox:
             from app.utils.db.Table import Column, Table
 
             cols = [
-                Column(name="id", data_type="text", extra_args={"max_len": 64}),
-                Column(name="email", data_type="text", is_unique=True, extra_args={"max_len": 256}),
-                Column(name="name", data_type="text", extra_args={"max_len": 256}),
+                Column(name="id", data_type="str", extra_args={"max_len": 64}),
+                Column(name="email", data_type="str", is_unique=True, extra_args={"max_len": 256}),
+                Column(name="name", data_type="str", extra_args={"max_len": 256}),
                 Column(name="description", data_type="text", is_nullable=True, extra_args={"max_len": 1024}),
                 Column(name="member_uids", data_type="json", is_nullable=True),
                 Column(name="is_active", data_type="bool", is_nullable=False),

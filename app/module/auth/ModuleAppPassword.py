@@ -28,12 +28,7 @@ from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
 
 # Cost factor for bcrypt (must match what the container's libs support)
-try:
-    import bcrypt
-
-    BCRYPT_AVAILABLE = True
-except ImportError:
-    BCRYPT_AVAILABLE = False
+import bcrypt
 
 APP_PASSWORD_PREFIX = "sogo-ap-"  # helps users visually identify app passwords
 
@@ -78,35 +73,16 @@ class ModuleAppPassword:
 
     @staticmethod
     def _hash_token(token: str) -> str:
-        """Return a bcrypt hash of the given token.
-
-        Falls back to SHA-256 (for development / testing) when bcrypt is
-        not available.
-        """
-        if BCRYPT_AVAILABLE:
-            return bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        # Fallback: deterministic SHA-256 with random salt
-        salt = secrets.token_hex(16)
-        return f"sha256${salt}${hashlib.sha256((salt + token).encode('utf-8')).hexdigest()}"
+        """Return a bcrypt hash of the given token."""
+        return bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     @staticmethod
     def _verify_token(token: str, stored_hash: str) -> bool:
-        """Verify a raw token against its stored hash."""
-        if stored_hash.startswith("$2"):
-            if not BCRYPT_AVAILABLE:
-                return False
-            try:
-                return bcrypt.checkpw(token.encode("utf-8"), stored_hash.encode("utf-8"))
-            except Exception:  # pylint: disable=broad-except
-                return False
-        if stored_hash.startswith("sha256$"):
-            parts = stored_hash.split("$")
-            if len(parts) != 3:
-                return False
-            _, salt, expected = parts
-            computed = hashlib.sha256((salt + token).encode("utf-8")).hexdigest()
-            return hmac.compare_digest(computed, expected)
-        return False
+        """Verify a raw token against its stored hash using constant-time comparison."""
+        try:
+            return bcrypt.checkpw(token.encode("utf-8"), stored_hash.encode("utf-8"))
+        except Exception:  # pylint: disable=broad-except
+            return False
 
     # ------------------------------------------------------------------
     # CRUD
@@ -202,6 +178,9 @@ class ModuleAppPassword:
     def verify(self, user_uid: str, token: str) -> bool:
         """Check whether ``token`` is a valid app password for ``user_uid``.
 
+        Uses constant-time per-token comparison and always iterates through
+        ALL stored tokens to prevent timing side-channel attacks.
+
         On success, updates ``last_used`` timestamp.
 
         :param user_uid: The user's email / UID.
@@ -217,20 +196,32 @@ class ModuleAppPassword:
             ("id", "hash", "expires_at"),
             condition=condition,
         ))
+        
+        # Always iterate through ALL tokens to prevent timing side-channels.
+        # We collect all valid matches first, then act after full scan.
+        matched_record_id = None
         for row in rows:
             record_id, stored_hash, expires_at = row[0], row[1], row[2]
-            if self._verify_token(token, stored_hash):
+            
+            # Use constant-time comparison (bcrypt.checkpw is constant-time)
+            is_match = self._verify_token(token, stored_hash)
+            
+            if is_match:
                 # Check expiration
                 if expires_at is not None and datetime.now(timezone.utc) > expires_at:
                     logger_api.info("App password %d expired for user=%s", record_id, user_uid)
                     continue
-                # Update last_used
-                from datetime import datetime, timezone
-                self._db.update_in_table(
-                    self.TABLE_NAME,
-                    column_tuple=("last_used",),
-                    values_list=[datetime.now(timezone.utc)],
-                    condition=EqualCondition("id", record_id),
-                )
-                return True
+                matched_record_id = record_id
+            # Always process all iterations (no early return)
+        
+        if matched_record_id is not None:
+            # Update last_used
+            from datetime import datetime, timezone
+            self._db.update_in_table(
+                self.TABLE_NAME,
+                column_tuple=("last_used",),
+                values_list=[datetime.now(timezone.utc)],
+                condition=EqualCondition("id", matched_record_id),
+            )
+            return True
         return False

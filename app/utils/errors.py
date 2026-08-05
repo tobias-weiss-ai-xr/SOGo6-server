@@ -105,7 +105,7 @@ ERROR_IMAP_FAILED            = E("S001302", "IMAP Command Failed, See Logs To Ge
 ERROR_IMAP_UNKNWON_AUTH_MECH = E("S001303", "IMAP Auth Mechanism Unknown", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_NOT_ASCII         = E("S001304", "Name for imap command is not ascii", HTTPStatus.BAD_REQUEST)
 ERROR_IMAP_INVALID_CHARS     = E("S001305", "Name for imap command contains invalid characters", HTTPStatus.BAD_REQUEST)
-ERROR_IMAP_READONLY          = E("S001306", "Writting Command to a readonly folder", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_IMAP_READONLY          = E("S001320", "Writting Command to a readonly folder", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_UID_INVALID       = E("S001307", "Mail UID Must Be A Valid Positive Integer", HTTPStatus.BAD_REQUEST)
 
 ERROR_MAIL_DOWNLOAD_FAILED          = E("S000360", "Mail Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -145,7 +145,7 @@ ERROR_POLL_CLOSED                     = E("S000530", "Scheduling Poll Is Closed"
 ERROR_POLL_PARTICIPANT_NOT_FOUND      = E("S000531", "Participant Not Found In Poll", HTTPStatus.NOT_FOUND)
 
 # tmp_draft
-ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
+ERROR_TMP_DRAFT_NOT_FOUND       = E("S000371", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
 ERROR_TMP_DRAFT_LOCKED          = E("S000371", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
 ERROR_TMP_DRAFT_OWNER_MISMATCH  = E("S000372", "Tmp Draft Does Not Belong To This User", HTTPStatus.FORBIDDEN)
 ERROR_TMP_DRAFT_INSERT_FAILED   = E("S000373", "Failed To Insert Tmp Draft", HTTPStatus.INTERNAL_SERVER_ERROR)

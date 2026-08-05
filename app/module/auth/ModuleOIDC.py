@@ -7,6 +7,7 @@ user-info retrieval for federated SSO via any standard OIDC provider.
 
 from __future__ import annotations
 
+import secrets
 from typing import Any
 from urllib.parse import urlencode, urljoin
 
@@ -63,6 +64,11 @@ class ModuleOIDC:
         self._session: OAuth2Session | None = None
         self._token: OAuth2Token | None = None
 
+        # PKCE code verifier (generated per authorization request)
+        self._code_verifier: str | None = None
+        # Nonce for ID token replay protection
+        self._expected_nonce: str | None = None
+
     # ------------------------------------------------------------------
     # Discovery
     # ------------------------------------------------------------------
@@ -112,6 +118,11 @@ class ModuleOIDC:
     ) -> str:
         """Build the authorisation URL to redirect the user's browser to.
 
+        Uses PKCE (Proof Key for Code Exchange) to protect against
+        authorization code interception attacks. The code verifier is
+        stored on the instance and must match the one used in
+        :meth:`fetch_token`.
+
         :param redirect_uri: Callback URL that the provider will redirect
             back to after authentication.
         :param state: Opaque value for CSRF protection (bound to the user's
@@ -119,6 +130,18 @@ class ModuleOIDC:
         :returns: Absolute URL pointing to the provider's authorisation
             endpoint with all required query parameters.
         """
+        import hashlib
+        import base64
+
+        # Generate PKCE code verifier and challenge (S256)
+        self._code_verifier = secrets.token_urlsafe(64)
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(self._code_verifier.encode("ascii")).digest()
+        ).rstrip(b"=").decode("ascii")
+
+        # Generate nonce for ID token replay protection
+        self._expected_nonce = secrets.token_urlsafe(32)
+
         auth_endpoint = self._get_metadata("authorization_endpoint", "")
         if not auth_endpoint:
             # Fallback: construct from issuer
@@ -130,10 +153,13 @@ class ModuleOIDC:
             "redirect_uri": redirect_uri,
             "scope": self._scope,
             "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "nonce": self._expected_nonce,
         }
 
         authorization_url = f"{auth_endpoint}?{urlencode(params)}"
-        logger_api.debug("OIDC authorization URL built: %s", authorization_url)
+        logger_api.debug("OIDC authorization URL built (PKCE+S256+nonce)")
         return authorization_url
 
     # ------------------------------------------------------------------
@@ -147,11 +173,22 @@ class ModuleOIDC:
     ) -> dict[str, Any]:
         """Exchange the authorisation ``code`` for an access / ID token.
 
+        Uses PKCE code verifier generated during :meth:`create_authorization_url`
+        to prove possession of the original authorization request.
+
         :param code: The authorisation code returned by the provider.
         :param redirect_uri: Must match the redirect URI used in the
             authorisation request.
         :returns: Decoded token response (access_token, id_token, …).
+        :raises RequestException: If no PKCE code verifier was generated
+            (i.e., create_authorization_url was not called first).
         """
+        if not self._code_verifier:
+            raise RequestException(
+                "OIDC PKCE: no code verifier available. "
+                "create_authorization_url() must be called before fetch_token()."
+            )
+
         token_endpoint = self._get_metadata("token_endpoint", "")
         if not token_endpoint:
             token_endpoint = f"{self._issuer.rstrip('/')}/token"
@@ -162,14 +199,19 @@ class ModuleOIDC:
             scope=self._scope,
         )
 
-        logger_api.debug("OIDC token exchange: POST %s", token_endpoint)
+        logger_api.debug("OIDC token exchange: POST %s (PKCE enabled)", token_endpoint)
         token: OAuth2Token = session.fetch_token(
             token_endpoint,
             code=code,
             redirect_uri=redirect_uri,
+            code_verifier=self._code_verifier,
         )
         self._session = session
         self._token = token
+
+        # Clear PKCE verifier after use (one-time use)
+        self._code_verifier = None
+
         return dict(token)
 
     # ------------------------------------------------------------------
@@ -184,6 +226,7 @@ class ModuleOIDC:
         - ``iss`` matches the expected issuer
         - ``aud`` contains our client_id
         - Token is not expired (``exp``)
+        - ``nonce`` matches the expected nonce (replay protection)
 
         :param id_token: The raw JWT string (from the token response).
         :returns: Decoded claims if valid.
@@ -208,7 +251,18 @@ class ModuleOIDC:
         )
         claims.validate()  # raises on expiry / invalid claims
 
-        logger_api.debug("OIDC ID token validated for subject: %s", claims.get("sub"))
+        # Validate nonce (replay attack protection)
+        if self._expected_nonce is not None:
+            actual_nonce = claims.get("nonce")
+            if actual_nonce is None or not secrets.compare_digest(str(actual_nonce), self._expected_nonce):
+                raise RequestException("OIDC ID token nonce mismatch (possible replay attack)")
+            # Clear nonce after validation (one-time use)
+            self._expected_nonce = None
+
+        logger_api.debug(
+            "OIDC ID token validated for subject: %s (nonce OK)",
+            claims.get("sub"),
+        )
         return dict(claims)
 
     # ------------------------------------------------------------------

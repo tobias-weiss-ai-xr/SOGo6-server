@@ -179,19 +179,7 @@ class ModulePasswordReset:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=within_seconds)
         self.db.connect()
         try:
-            rows = list(
-                self.db.select_from_table(
-                    table_name=tbl.TABLE_PWD_RESET_TOKENS.name,
-                    column_tuple=(tbl.COL_ID.name,),
-                    condition=AndCondition(
-                        EqualCondition(tbl.COL_PWD_RESET_USER_UID.name, user_uid),
-                        # created_at >= cutoff
-                        # We'll use a simple check: assume datetime comparison works
-                    ),
-                )
-            )
-            # Filter by creation time (we can't do >= in Condition easily)
-            # Re-fetch with timestamp comparison
+            # Fetch all tokens for this user with their creation timestamps
             all_rows = list(
                 self.db.select_from_table(
                     table_name=tbl.TABLE_PWD_RESET_TOKENS.name,
@@ -251,15 +239,25 @@ class ModulePasswordReset:
         recipient_email: str,
         recipient_name: str,
         reset_link: str,
-        smtp_host: str = "sogo6-stalwart",
-        smtp_port: int = 20025,
+        smtp_host: str | None = None,
+        smtp_port: int | None = None,
     ) -> None:
         """Send a password-reset email via the configured SMTP relay.
 
         Falls back silently on failure (the API will still return success to
-        avoid leaking user information).
+        avoid leaking user information). SMTP host and port are read from
+        process settings when not explicitly provided.
         """
         from app.utils import errors as err
+        
+        # Read SMTP settings from process config if not overridden
+        if smtp_host is None:
+            smtp_host = getattr(self.process_settings, "SOGO_P_SMTP_SERVER", "sogo6-stalwart")
+        if smtp_port is None:
+            smtp_port = getattr(self.process_settings, "SOGO_P_SMTP_PORT", 20025)
+
+        # Read sender address from config or use default
+        from_addr = getattr(self.process_settings, "SOGO_P_SMTP_FROM", "noreply@sogo6.local")
 
         subject = "Password Reset — SOGo"
         body = (
@@ -274,13 +272,12 @@ class ModulePasswordReset:
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = "noreply@sogo6.local"
+        msg["From"] = from_addr
         msg["To"] = recipient_email
         msg.attach(MIMEText(body, "plain"))
 
         try:
             context = ssl.create_default_context()
-            # Stalwart dev SMTP typically does not require TLS
             with smtplib.SMTP(host=smtp_host, port=smtp_port, timeout=10) as server:
                 server.send_message(msg)
             logger_api.info(
