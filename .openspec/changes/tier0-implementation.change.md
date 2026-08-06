@@ -53,7 +53,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 - ⏳ User-facing documentation
 
 ### Success Criteria
-- [ ] All 9 Tier 0 features implemented (3/9 complete)
+- [ ] All 9 Tier 0 features implemented (4/9 complete)
 - [ ] API endpoints match specifications
 - [ ] Database schemas match specifications
 - [ ] Security requirements met
@@ -78,9 +78,9 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 6 | Team Calendars | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
-| ✨ | API Playground | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
+| ✨ | API Playground | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 
-**Progress**: 78% (3/9 features complete)
+**Progress**: 89% (4/9 features complete)
 
 ---
 
@@ -105,7 +105,7 @@ Based on dependencies and complexity:
 
 #### Phase 3: New Functionality (Weeks 13-20)
 - **Team Calendars** - Uses existing ACL engine
-- **API Playground** - Quick win for developers
+- **✅ API Playground** - COMPLETE - Swagger UI enhanced with try-it-out, version selector (User/Admin), JSON/YAML download, dark mode, persistent auth, MFA login modal
 
 **Rationale**: Team Calendars needs calendar integration which may be complex.
 
