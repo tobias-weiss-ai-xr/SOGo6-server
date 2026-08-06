@@ -120,7 +120,6 @@ class TestResourceBookingAdmin:
     """Integration tests for Resource Booking Admin API."""
 
     BASE = "/api/admin/v1/resources"
-    BOOKINGS_BASE = "/api/admin/v1/resource-bookings"
 
     def test_list_resources(self, client, auth_headers):
         """Test listing all resources (admin)."""
@@ -154,12 +153,27 @@ class TestResourceBookingAdmin:
         resp2 = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
         assert resp2.status_code == 409
 
+    def test_check_resource_availability(self, client, auth_headers):
+        """Test checking availability for a resource (admin)."""
+        data = {
+            "resource_id": "res-001",
+            "start": "2026-01-15T10:00:00Z",
+            "end": "2026-01-15T11:00:00Z",
+        }
+        resp = client.post(
+            f"{self.BASE}/res-001/availability",
+            data=json.dumps(data),
+            content_type="application/json",
+            headers=auth_headers
+        )
+        # May return 404 if resource doesn't exist, or 200 with availability data
+        assert resp.status_code in [200, 404]
+
 
 class TestResourceBookingUser:
     """Integration tests for Resource Booking User API."""
 
     BASE = "/api/user/v1/resources"
-    BOOKINGS_BASE = "/api/user/v1/resource-bookings"
 
     def test_list_resources_user(self, client, user_auth_headers):
         """Test listing resources (user)."""
@@ -168,12 +182,29 @@ class TestResourceBookingUser:
 
     def test_check_resource_availability(self, client, user_auth_headers):
         """Test checking resource availability (user)."""
-        from datetime import datetime, timedelta, timezone
-        # Use a date far in the future to avoid conflicts
-        future_date = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%Y-%m-%d')
-        resp = client.get(
-            f"{self.BASE}/res-001/availability?start={future_date}T10:00:00Z&end={future_date}T11:00:00Z",
+        data = {
+            "start_time": "2026-01-15T10:00:00Z",
+            "end_time": "2026-01-15T11:00:00Z",
+            "timezone": "UTC",
+        }
+        resp = client.post(
+            f"{self.BASE}/res-001/check-availability",
+            data=json.dumps(data),
+            content_type="application/json",
             headers=user_auth_headers
         )
         # May return 404 if resource doesn't exist, or 200 with availability data
         assert resp.status_code in [200, 404]
+
+    def test_list_available_resources(self, client, user_auth_headers):
+        """Test listing available resources for a time range (user)."""
+        resp = client.get(
+            f"{self.BASE}/available?start_time=2026-01-15T10:00:00Z&end_time=2026-01-15T11:00:00Z",
+            headers=user_auth_headers
+        )
+        assert resp.status_code == 200
+
+    def test_my_bookings(self, client, user_auth_headers):
+        """Test listing the user's bookings (user)."""
+        resp = client.get(f"{self.BASE}/my-bookings", headers=user_auth_headers)
+        assert resp.status_code == 200
