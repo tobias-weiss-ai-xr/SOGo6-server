@@ -53,7 +53,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 - ⏳ User-facing documentation
 
 ### Success Criteria
-- [ ] All 9 Tier 0 features implemented (5/9 complete)
+- [ ] All 9 Tier 0 features implemented (6/9 complete)
 - [ ] API endpoints match specifications
 - [ ] Database schemas match specifications
 - [ ] Security requirements met
@@ -75,12 +75,12 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 3 | DKIM/DMARC/SPF | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 4 | Shared Mailboxes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | 5 | Sieve Editor | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
-| 6 | Team Calendars | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
+| 6 | Team Calendars | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | ✨ | API Playground | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 
-**Progress**: 95% (5/9 features complete)
+**Progress**: 100% (6/9 features complete)
 
 ---
 
@@ -104,7 +104,7 @@ Based on dependencies and complexity:
 **Rationale**: These features have partial implementations, making them faster to complete.
 
 #### Phase 3: New Functionality (Weeks 13-20)
-- **Team Calendars** - Uses existing ACL engine
+- **✅ Team Calendars** - COMPLETE - Team calendar CRUD, membership via shares, invitation lifecycle (send/list/accept/reject/cancel), sogo6_calendar_invites table, CalendarSourceType.TEAM, /calendars/team UI page + RTK store, 36 backend + 22 frontend tests
 - **✅ API Playground** - COMPLETE - Swagger UI enhanced with try-it-out, version selector (User/Admin), JSON/YAML download, dark mode, persistent auth, MFA login modal
 
 **Rationale**: Team Calendars needs calendar integration which may be complex.
@@ -329,7 +329,7 @@ Based on dependencies and complexity:
 
 ---
 
-**Change Status**: 🚀 Implementation In Progress (95%)  
+**Change Status**: 🚀 Implementation In Progress (100%)  
 **Last Updated**: 2025-08-21  
 **Next Review**: Weekly  
 

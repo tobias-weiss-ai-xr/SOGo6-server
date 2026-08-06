@@ -6,7 +6,7 @@
 |-------|-------|
 | **Change ID** | team-calendars |
 | **Title** | Implement team calendars Feature |
-| **Status** | Not Started |
+| **Status** | Complete |
 | **Priority** | High |
 | **Type** | Feature Implementation |
 | **Created** | 2025-08-21 |
@@ -33,13 +33,13 @@ See specification: [team-calendars.spec.md](../specs/team-calendars.spec.md)
 
 ## Tasks
 
-- [ ] Backend implementation
-- [ ] API endpoints
-- [ ] Database models
-- [ ] Frontend components
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Documentation
+- [x] Backend implementation (ModuleTeamCalendar + RepositoryCalendarInvite)
+- [x] API endpoints (14: team CRUD, members, invitations)
+- [x] Database models (sogo6_calendar_invites table + CalendarSourceType.TEAM)
+- [x] Frontend components (/calendars/team page + RTK store)
+- [x] Unit tests (15 module + 21 structural + 22 frontend Jest)
+- [x] Integration tests (module-level with stub repos)
+- [x] Documentation
 
 ## Success Criteria
 
@@ -64,5 +64,5 @@ All success criteria listed in the specification must be met.
 
 ---
 
-**Change Status**: 📝 Specified / Not Started  
+**Change Status**: ✅ COMPLETE  
 **Last Updated**: 2025-08-21
