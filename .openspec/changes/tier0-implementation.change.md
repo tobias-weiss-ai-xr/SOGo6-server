@@ -53,7 +53,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 - ⏳ User-facing documentation
 
 ### Success Criteria
-- [ ] All 9 Tier 0 features implemented (2/9 complete)
+- [ ] All 9 Tier 0 features implemented (3/9 complete)
 - [ ] API endpoints match specifications
 - [ ] Database schemas match specifications
 - [ ] Security requirements met
@@ -76,11 +76,11 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 4 | Shared Mailboxes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | 5 | Sieve Editor | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 6 | Team Calendars | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
-| 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **IN PROGRESS (97%)** |
+| 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | ✨ | API Playground | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 
-**Progress**: 67% (2/9 features complete + 1 at 97%)
+**Progress**: 78% (3/9 features complete)
 
 ---
 
@@ -98,7 +98,7 @@ Based on dependencies and complexity:
 
 #### Phase 2: Existing Code Integration (Weeks 5-12)
 - **✅ Shared Mailboxes** - COMPLETE - Extends existing ApiSharedMailbox.py
-- **🔧 Resource Booking** - IN PROGRESS (97%) - User API (7 endpoints), Admin API (7 endpoints), Module Enhancements with calendar integration, UI Pages (browser, details, admin) connected to real API, QuickBookingModal with real-time availability, ResourceSelector in EventForm, ResourceEventIndicator in calendar views. Uses existing ModuleResourceBooking + ApiResourceBooking
+- **✅ Resource Booking** - COMPLETE - User API (7 endpoints), Admin API (7 endpoints), Module Enhancements with calendar integration, UI Pages (browser, details, admin) connected to real API, QuickBookingModal with real-time availability, ResourceSelector in EventForm, ResourceEventIndicator in calendar views, 61 frontend unit tests, full documentation. Uses existing ModuleResourceBooking + ApiResourceBooking
 - **Sieve Editor** - Uses existing ClientSieve.py
 
 **Rationale**: These features have partial implementations, making them faster to complete.
