@@ -31,7 +31,7 @@ Drag-and-Drop). This tracker covers the remaining work.
 |---|---------|---------|----------|-------|--------|
 | 9 | Conversation View | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 10 | Calendar Subscriptions | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
-| 11 | Working Hours / Location | ❌ | ❌ | ❌ | Not Started |
+| 11 | **Working Hours / Location** | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 12 | **Undo Send** | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 13 | Schedule Send | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 14 | Email Snooze | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
@@ -45,6 +45,18 @@ Drag-and-Drop). This tracker covers the remaining work.
 | 22 | Drag-and-Drop Attachments | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 
 ## Task Log
+
+### 2026-08-06 — Working Hours / Location COMPLETE (Tier 1 #11)
+
+- **Backend** (`sogo6-server`): added `SOGO_U_DEFAULT_LOCATION` to
+  `UserCalendarGeneralSettings` (default meeting location). `SOGO_U_WORKDAY_START_TIME` /
+  `SOGO_U_WORKDAY_END_TIME` / `SOGO_U_BUSY_OFF_HOURS` / `SOGO_U_NON_WORKING_WEEKDAYS` already
+  existed and were already honored by `FreeBusyEngine` via `FreeBusyPrefs`.
+- **Frontend** (`sogo6-ui`): added `nonWorkingWeekdays` multi-select + `defaultLocation` input
+  to the Calendar → General settings form; new fields wired through types, zod schema,
+  `calendar-utils` mapping, fakeApi, and i18n.
+- **Tests**: backend 879 passed (6 new `UserCalendarGeneralSettings` tests); frontend
+  1566 passed across calendar/user-settings/fakeApi.
 
 ### 2026-08-06 — Undo Send COMPLETE (Tier 1 #12)
 

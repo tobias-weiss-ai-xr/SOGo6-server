@@ -110,6 +110,10 @@ class UserCalendarGeneralSettings(SogoSchema):
         metadata={"description": "Days considered non-working for free/busy (0=Sunday, 6=Saturday). "
                                  "Defaults to weekend (Saturday, Sunday)."},
     )
+    SOGO_U_DEFAULT_LOCATION = fields.String(
+        load_default="", dump_default="",
+        metadata={"description": "Default meeting location pre-filled when creating new events."},
+    )
     SOGO_U_CALENDAR_DAYS_SHOWED = fields.List(fields.Integer(validate=validate.Range(min=0, max=6)),
                                               load_default=[0,1,2,3,4,5,6],
                                               dump_default=[0,1,2,3,4,5,6]) #Days to show in calendar view; 0 Sunday, 6 Saturday
