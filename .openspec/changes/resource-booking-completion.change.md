@@ -141,7 +141,7 @@ This change tracks the **complete implementation** of the Resource Booking featu
 
 **Frontend Total**: 100% (7/7 core tasks complete)
 
-**Overall Progress**: 94% (10/10 backend tasks + 9/9 frontend tasks complete, minus tests)
+**Overall Progress**: 97% (10/10 backend tasks + 11/11 frontend tasks complete, minus tests)
 
 ---
 
@@ -228,8 +228,12 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 - [x] `src/app/[locale]/(loggedin)/resources/[id]/page.tsx` - Resource details
 - [x] `src/app/[locale]/(loggedin)/admin_panel/resources/page.tsx` - Admin CRUD
 - [x] `src/features/calendar/components/resource-selector.tsx` - Resource picker
+- [x] `src/features/resources/components/resource-event-indicator.tsx` - Resource badges
 - [x] `src/features/resources/store/resources-api.ts` - RTK Query endpoints
 - [x] `src/features/resources/components/*` - Various UI components
+- [x] `src/features/calendars/components/calendar-view.tsx` - Modified for resource indicators
+- [x] `src/features/calendars/components/agenda-view.tsx` - Modified for resource indicators
+- [x] `src/features/calendars/components/mobile-day-view.tsx` - Modified for resource indicators
 - [x] Translations for all new UI
 
 ### Documentation
@@ -248,7 +252,8 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 | B | Calendar Integration (Backend) | 1 week | Phase A | ✅ 100% Complete |
 | C | Frontend Resource Browser + Booking | 2 weeks | Phase A | ✅ 100% Complete |
 | D | Frontend Admin UI | 1 week | Phase A | ✅ 100% Complete |
-| **Total** | **All** | **5-6 weeks** | None | **~92% Complete** |
+| E | Calendar UI Integration | 1 week | Phase A | ✅ 100% Complete |
+| **Total** | **All** | **5-6 weeks** | None | **~97% Complete** |
 
 ---
 
@@ -299,11 +304,15 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 
 #### Phase D: Calendar Integration
 - [x] #task-resource-cal-event Add resource selection to event creation flow
-- [ ] #task-resource-cal-view Show resource indicators in calendar view
+- [x] #task-resource-cal-view Show resource indicators in calendar view
 - [x] #task-resource-cal-conflict Preview conflicts when selecting resources
 
 #### Phase E: Translations
 - [x] #task-resource-i18n Add English translations for all new strings
+
+#### Phase F: Polish
+- [ ] #task-resource-tests Add unit tests for backend and frontend
+- [ ] #task-resource-docs Add API documentation, user guide, admin guide
 
 ---
 
@@ -313,10 +322,10 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 ✅ **All core implementation complete**
 
 ### Remaining Tasks (Priority Order)
-1. Add resource indicators in calendar view (visual cues for events with resources)
-2. Write unit tests for backend endpoints
-3. Write unit tests for frontend components
-4. Update API documentation
+1. ✅ Add resource indicators in calendar view (main, agenda, mobile views)
+2. Write unit tests for backend endpoints (7 user + 7 admin = 14 endpoints)
+3. Write unit tests for frontend components (6 hooks, 8 components)
+4. Update API documentation (14 endpoints)
 5. User guide for resource booking
 6. Admin guide for resource management
 
@@ -341,10 +350,10 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 | Metric | Target | Actual |
 |--------|--------|--------|
 | Backend Lines | ~500 | ~1,100 |
-| Frontend Lines | ~1,200 | ~2,200 |
+| Frontend Lines | ~1,200 | ~2,800 |
 | New Endpoints | 7 | 14 |
 | New Pages | 3 | 3 |
-| New Components | 5+ | 8 |
+| New Components | 5+ | 10 |
 | New Components | 5+ |
 | Test Coverage | 80%+ |
 
@@ -361,10 +370,11 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 | 2025-08-21 | 4.1.0 | Pi Coding Agent | Connected admin UI to real API. Progress: 88% |
 | 2025-08-21 | 4.2.0 | Pi Coding Agent | Added QuickBookingModal with real-time availability. Progress: 92% |
 | 2025-08-21 | 4.3.0 | Pi Coding Agent | Added ResourceSelector to EventForm with calendar integration. Progress: 94% |
+| 2025-08-21 | 4.4.0 | Pi Coding Agent | Added ResourceEventIndicator to calendar views (main, agenda, mobile). Progress: 97% |
 
 ---
 
-**Change Status**: 🚀 Implementation In Progress (94%)  
+**Change Status**: 🚀 Implementation In Progress (97%)  
 **Last Updated**: 2025-08-21  
 **Next Review**: Weekly
 
