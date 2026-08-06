@@ -314,6 +314,17 @@ ERROR_EMAIL_AUTH_DMARC_NOT_FOUND         = E("S000641", "DMARC Configuration Not
 ERROR_EMAIL_AUTH_SPF_NOT_FOUND           = E("S000642", "SPF Configuration Not Found", HTTPStatus.NOT_FOUND)
 ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH      = E("S000643", "Invalid DKIM Key Length", HTTPStatus.BAD_REQUEST)
 
+#the caldav server
+ERROR_CALDAV_PATH_NOT_FOUND          = E("S000644", "CalDAV Resource Not Found", HTTPStatus.NOT_FOUND)
+ERROR_CALDAV_CALENDAR_EXISTS         = E("S000645", "Calendar Collection Already Exists", HTTPStatus.CONFLICT)
+ERROR_CALDAV_PRECONDITION_FAILED     = E("S000646", "If-Match / If-None-Match Precondition Failed", HTTPStatus.PRECONDITION_FAILED)
+ERROR_CALDAV_SYNC_TOKEN_INVALID      = E("S000647", "Invalid CalDAV Sync Token", HTTPStatus.BAD_REQUEST)
+ERROR_CALDAV_INVALID_ICAL            = E("S000648", "Invalid iCalendar Body", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_CALDAV_NO_COMPONENT            = E("S000649", "iCalendar Body Has No Matching VEVENT/VTODO/VJOURNAL", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_CALDAV_AUTH_REQUIRED           = E("S000650", "CalDAV Authentication Required", HTTPStatus.UNAUTHORIZED)
+ERROR_CALDAV_PROP_READ_ONLY          = E("S000651", "Property Is Read-Only", HTTPStatus.FORBIDDEN)
+ERROR_CALDAV_REPORT_UNSUPPORTED      = E("S000652", "Unsupported CalDAV REPORT Type", HTTPStatus.BAD_REQUEST)
+
 #the contacts
 ERROR_CONTACT_JSON_PARSE_FAILED              = E("S000700", "Failed To Parse Contact JSON Content", HTTPStatus.UNPROCESSABLE_ENTITY)
 ERROR_CONTACT_ADDRESSBOOK_NOT_FOUND          = E("S000701", "Address Book Not Found", HTTPStatus.NOT_FOUND)

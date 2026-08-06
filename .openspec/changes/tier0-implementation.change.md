@@ -53,7 +53,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 - ⏳ User-facing documentation
 
 ### Success Criteria
-- [ ] All 9 Tier 0 features implemented (7/9 complete)
+- [ ] All 9 Tier 0 features implemented (9/9 complete)
 - [ ] API endpoints match specifications
 - [ ] Database schemas match specifications
 - [ ] Security requirements met
@@ -70,8 +70,8 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 
 | # | Feature | Spec | Design | Backend | Frontend | Tests | Docs | Status |
 |---|---------|------|--------|---------|----------|-------|------|--------|
-| 1 | CalDAV | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
-| 2 | CalDAV Server | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
+| 1 | CalDAV | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
+| 2 | CalDAV Server | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 3 | DKIM/DMARC/SPF | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 4 | Shared Mailboxes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | 5 | Sieve Editor | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
@@ -80,7 +80,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | ✨ | API Playground | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 
-**Progress**: 100% (7/9 features complete)
+**Progress**: 100% (9/9 features complete)
 
 ---
 
@@ -110,8 +110,8 @@ Based on dependencies and complexity:
 **Rationale**: Team Calendars needs calendar integration which may be complex.
 
 #### Phase 4: Complex Protocols (Weeks 21-32)
-- **CalDAV** - Client and Server implementation
-- **CalDAV Server** - Full CalDAV protocol server
+- **✅ CalDAV** - COMPLETE - ModuleCalDAV (RFC 4791/4918/6578 engine), /caldav/* WebDAV blueprint (PROPFIND/PROPPATCH/MKCALENDAR/MKCOL/OPTIONS + event PUT/GET/HEAD/DELETE), principal + calendar-home discovery, .well-known/caldav redirect, RTK store + CalDAV & Sync settings page. 36 module + 14 structural + 10 frontend tests.
+- **✅ CalDAV Server** - COMPLETE - Same /caldav server endpoint surface: RFC 6578 sync-collection (delta via sync-tokens + tombstones), calendar-query (time-range), calendar-multiget, free-busy-query (iCalendar response), conditional requests (If-Match/If-None-Match 412), 8 new error constants (S000644-652).
 
 **Rationale**: Most complex features, implement last when foundation is solid.
 

@@ -119,7 +119,7 @@ All 9 specifications follow a consistent, comprehensive structure:
 
 | Feature | Existing Code | API | Frontend | Status |
 |---------|----------------|-----|----------|--------|
-| CalDAV | Client-side only (fetch) | ❌ | ❌ | Needs: Server |
+| CalDAV | Client-side only (fetch) | ✅ /caldav/* | ✅ | ✅ COMPLETE |
 | DKIM/DMARC/SPF | Partial (key generation) | ❌ | ❌ | Needs: Full impl |
 | Shared Mailboxes | Partial (ApiSharedMailbox.py) | ✅ | ❌ | Needs: Extend |
 | Sieve Editor | Partial (ClientSieve.py) | ❌ | ✅ | Needs: API & backend |
@@ -196,8 +196,14 @@ Phase 4: Developer Tools (1-2 weeks)
 - Recurring event support (RRULE)
 
 **Existing Code**: Client-side calendar fetching only
-**Gap**: No CalDAV server implementation
+**Gap**: No CalDAV server implementation (CLOSED - ModuleCalDAV + /caldav blueprint)
 **Risk**: High - New protocol implementation
+
+**✅ Implementation (2025-08-21)**:
+- `app/module/caldav/ModuleCalDAV.py` — RFC 4791/4918/6578 engine (principals, calendar collections, event CRUD, ETags, sync-tokens, tombstones, free-busy)
+- `app/api/v1/caldav/ApiCalDAV.py` — raw Flask blueprint at `/caldav` (PROPFIND, PROPPATCH, MKCALENDAR, MKCOL, OPTIONS, PUT/GET/HEAD/DELETE, REPORT)
+- `/.well-known/caldav` → 301 redirect
+- 36 module + 14 structural interface + 10 frontend tests
 
 ### 2. CalDAV Server Specification
 **File**: `caldav-server.spec.md`  

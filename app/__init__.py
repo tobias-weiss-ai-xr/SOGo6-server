@@ -140,6 +140,19 @@ def create_app(sogo_state: int) -> Flask:
     register_route(flask_api, cs.API_BASIC, sogo_state)
     register_route(admin_api, cs.API_ADMIN, sogo_state)
 
+    # --- CalDAV protocol server (RFC 4791 / RFC 4918 / RFC 6578) ---
+    # Registered directly on the app (outside the smorest /api tree) so the
+    # WebDAV methods and XML/iCalendar media types are not constrained by the
+    # JSON content-type middleware. Includes the .well-known/caldav redirect
+    # required by CalDAV client discovery (RFC 6764).
+    from app.api.v1.caldav.ApiCalDAV import blp as caldav_blueprint
+    app.register_blueprint(caldav_blueprint)
+
+    @app.route("/.well-known/caldav")
+    def well_known_caldav() -> Response:
+        return Response(status=301, headers={"Location": "/caldav/"})
+
+
     allowed_origins = [
         process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000",
     ]

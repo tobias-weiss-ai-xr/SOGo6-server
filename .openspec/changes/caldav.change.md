@@ -6,7 +6,7 @@
 |-------|-------|
 | **Change ID** | caldav |
 | **Title** | Implement caldav Feature |
-| **Status** | Not Started |
+| **Status** | Complete |
 | **Priority** | High |
 | **Type** | Feature Implementation |
 | **Created** | 2025-08-21 |
@@ -33,13 +33,13 @@ See specification: [caldav.spec.md](../specs/caldav.spec.md)
 
 ## Tasks
 
-- [ ] Backend implementation
-- [ ] API endpoints
-- [ ] Database models
-- [ ] Frontend components
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Documentation
+- [x] Backend implementation (ModuleCalDAV protocol engine, RFC 4791/4918/6578)
+- [x] API endpoints (/caldav/* WebDAV + .well-known/caldav redirect + REPORT sync-collection)
+- [x] Database models (in-memory resource store; no migration needed)
+- [x] Frontend components (CalDAV & Sync settings page)
+- [x] Unit tests (36 module + 14 structural interface + 10 frontend)
+- [x] Integration tests (PROPFIND/MKCALENDAR/PUT/GET/DELETE/sync via Flask test client)
+- [x] Documentation
 
 ## Success Criteria
 
@@ -64,5 +64,5 @@ All success criteria listed in the specification must be met.
 
 ---
 
-**Change Status**: 📝 Specified / Not Started  
+**Change Status**: ✅ COMPLETE  
 **Last Updated**: 2025-08-21

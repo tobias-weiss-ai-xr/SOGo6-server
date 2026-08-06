@@ -6,7 +6,7 @@
 |-------|-------|
 | **Change ID** | caldav-server |
 | **Title** | Implement caldav server Feature |
-| **Status** | Not Started |
+| **Status** | Complete |
 | **Priority** | High |
 | **Type** | Feature Implementation |
 | **Created** | 2025-08-21 |
@@ -33,13 +33,14 @@ See specification: [caldav-server.spec.md](../specs/caldav-server.spec.md)
 
 ## Tasks
 
-- [ ] Backend implementation
-- [ ] API endpoints
-- [ ] Database models
-- [ ] Frontend components
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Documentation
+- [x] Backend implementation (ModuleCalDAV protocol engine)
+- [x] API endpoints (/caldav/*: PROPFIND, PROPPATCH, MKCALENDAR, MKCOL, REPORT, PUT/GET/HEAD/DELETE, OPTIONS; principal + calendar home discovery; RFC 6578 sync-collection + calendar-query + multiget + free-busy)
+- [x] .well-known/caldav discovery redirect
+- [x] Database models (in-memory resource store + ETag/sync-token ledger)
+- [x] Frontend components (CalDAV & Sync settings page)
+- [x] Unit tests (36 module + 14 structural + 10 frontend)
+- [x] Integration tests (event lifecycle, sync delta, conditional requests)
+- [x] Documentation
 
 ## Success Criteria
 
@@ -64,5 +65,5 @@ All success criteria listed in the specification must be met.
 
 ---
 
-**Change Status**: 📝 Specified / Not Started  
+**Change Status**: ✅ COMPLETE  
 **Last Updated**: 2025-08-21
