@@ -5,6 +5,7 @@ from typing import cast, Type
 import logging
 
 from redis import Redis, exceptions as rexc, ConnectionPool
+from redis.backoff import ExponentialBackoff
 from redis.cache import CacheConfig
 from redis.retry import Retry
 from yarl import URL
@@ -69,6 +70,11 @@ class ClientRedis():
         self.max_retries = max_retries
         self._connection_attempts = 0
 
+        # Establish the Redis connection eagerly so that ping()/set()/get()
+        # work right after construction (regression fix: _connect() was
+        # extracted but never called from __init__).
+        self._connect()
+
         
     def _connect(self) -> None:
         """
@@ -81,9 +87,9 @@ class ClientRedis():
         self.cache = False
         
         # Configure retry: retry on connection errors with exponential backoff
-        # backoff=0.5 means: 0.5s, 1s, 2s delays between retries
+        # base=0.5s, cap=2s → delays 0.5s, 1s, 2s between attempts
         retry = Retry(
-            backoff=[0.5, 1.0, 2.0],  # Exponential backoff delays
+            backoff=ExponentialBackoff(base=0.5, cap=2.0),
             retries=3  # Max 3 retry attempts
         )
         
