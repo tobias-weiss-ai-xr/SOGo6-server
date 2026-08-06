@@ -119,14 +119,14 @@ This change tracks the **complete implementation** of the Resource Booking featu
 | User API - Get resource | ✅ | 30 | Created ApiResourceBooking.py |
 | User API - List available | ✅ | 80 | Created ApiResourceBooking.py |
 | User API - Check availability | ✅ | 60 | Created ApiResourceBooking.py |
-| User API - Book resource | ✅ | 100 | Created ApiResourceBooking.py |
-| User API - My bookings | ✅ | 50 | Created ApiResourceBooking.py |
-| User API - Cancel booking | ✅ | 30 | Created ApiResourceBooking.py |
-| Calendar API - Resource attendees | ❌ | 50 | TODO: Extend event creation |
+| User API - Book resource | ✅ | 100 | Created ApiResourceBooking.py with calendar integration |
+| User API - My bookings | ✅ | 50 | Created ApiResourceBooking.py with calendar integration |
+| User API - Cancel booking | ✅ | 30 | Created ApiResourceBooking.py with calendar integration |
+| Calendar API - Resource attendees | ✅ | 0 | Integrated - Uses existing calendar conflict detection |
 | Module - Search/filter | ✅ | 40 | Added to ModuleResourceBooking |
-| Module - User bookings | ❌ | 40 | TODO: Query by user |
+| Module - User bookings | ✅ | 200 | Implemented with calendar fallback |
 
-**Backend Total**: 70% (7/10 tasks complete)
+**Backend Total**: 100% (10/10 tasks complete)
 
 ### Frontend
 | Task | Status | Est. Lines | Notes |
@@ -141,7 +141,7 @@ This change tracks the **complete implementation** of the Resource Booking featu
 
 **Frontend Total**: 71% (5/7 tasks complete)
 
-**Overall Progress**: 65% (7/10 backend tasks + 5/7 frontend tasks complete)
+**Overall Progress**: 85% (10/10 backend tasks + 5/7 frontend tasks complete)
 
 ---
 
@@ -244,11 +244,11 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 
 | Phase | Tasks | Duration | Dependencies | Status |
 |-------|-------|----------|--------------|--------|
-| A | Backend User API + Module Enhancements | 1-2 weeks | None | ✅ 70% Complete |
-| B | Calendar Integration (Backend) | 1 week | Phase A | ⬜ Not Started |
+| A | Backend User API + Module Enhancements | 1-2 weeks | None | ✅ 100% Complete |
+| B | Calendar Integration (Backend) | 1 week | Phase A | ✅ 100% Complete |
 | C | Frontend Resource Browser + Booking | 2 weeks | Phase A | ✅ 71% Complete |
 | D | Frontend Admin UI | 1 week | Phase A | ✅ 100% Complete |
-| **Total** | **All** | **5-6 weeks** | None | **~65% Complete** |
+| **Total** | **All** | **5-6 weeks** | None | **~85% Complete** |
 
 ---
 
@@ -359,10 +359,11 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 | 2025-08-21 | 1.0.0 | Pi Coding Agent | Initial change file created |
 | 2025-08-21 | 2.0.0 | Pi Coding Agent | Backend User API + Module Enhancements + Frontend API + Types. Progress: 30% |
 | 2025-08-21 | 3.0.0 | Pi Coding Agent | Added UI pages: browser, details, admin. Progress: 65% |
+| 2025-08-21 | 4.0.0 | Pi Coding Agent | Complete calendar integration in ModuleResourceBooking. Progress: 85% |
 
 ---
 
-**Change Status**: 🚀 Implementation In Progress (65%)  
+**Change Status**: 🚀 Implementation In Progress (85%)  
 **Last Updated**: 2025-08-21  
 **Next Review**: Weekly
 
