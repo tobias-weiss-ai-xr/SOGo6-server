@@ -76,11 +76,11 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 4 | Shared Mailboxes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | 5 | Sieve Editor | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 6 | Team Calendars | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
-| 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ⚠️ | ❌ | **IN PROGRESS** |
+| 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | **IN PROGRESS** |
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | ✨ | API Playground | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 
-**Progress**: 44% (2/9 features complete + 1 at 85%)
+**Progress**: 44% (2/9 features complete + 1 at 88%)
 
 ---
 
@@ -98,7 +98,7 @@ Based on dependencies and complexity:
 
 #### Phase 2: Existing Code Integration (Weeks 5-12)
 - **✅ Shared Mailboxes** - COMPLETE - Extends existing ApiSharedMailbox.py
-- **🔧 Resource Booking** - IN PROGRESS (85%) - User API, Module Enhancements with calendar integration, UI Pages (browser, details, admin). Uses existing ModuleResourceBooking + ApiResourceBooking
+- **🔧 Resource Booking** - IN PROGRESS (88%) - User API, Module Enhancements with calendar integration, UI Pages (browser, details, admin) connected to real API. Uses existing ModuleResourceBooking + ApiResourceBooking
 - **Sieve Editor** - Uses existing ClientSieve.py
 
 **Rationale**: These features have partial implementations, making them faster to complete.
@@ -299,6 +299,7 @@ Based on dependencies and complexity:
 | 2025-08-21 | 2.1.0 | Pi Coding Agent | Resource Booking started - Backend User API (70%) + Frontend API/Types (29% = 30% overall). 33% total progress |
 | 2025-08-21 | 2.2.0 | Pi Coding Agent | Resource Booking: Added UI pages (browser, details, admin). 65% complete. 44% total progress |
 | 2025-08-21 | 2.3.0 | Pi Coding Agent | Resource Booking: Complete calendar integration. 85% complete. 44% total progress |
+| 2025-08-21 | 2.4.0 | Pi Coding Agent | Resource Booking: Admin UI connected to real API. 88% complete. 44% total progress |
 
 ---
 
