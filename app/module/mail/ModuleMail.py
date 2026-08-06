@@ -70,7 +70,11 @@ class ModuleMail:
 
     def _get_user_conf(self, account_id: str) -> dict:
         user_mail_conf: dict = {}
-        if account_id == cs.DEFAULT_IDENTITY_KEY_VALUE:
+        
+        # Check if this is a shared mailbox (format: shared-{uuid})
+        if account_id.startswith("shared-"):
+            return self._get_shared_mailbox_conf(account_id)
+        elif account_id == cs.DEFAULT_IDENTITY_KEY_VALUE:
             #Get info of the main account
             user_mail_conf["username"] = self.user.login_mail_server
             user_mail_conf["password"] = self.user.password
@@ -106,6 +110,72 @@ class ModuleMail:
             # Future enhancement: Allow custom folder type mapping per external account
             user_mail_conf["args"]["folders_map"] = self.mail_settings.get_mail_server_settings_for_type("imap")["folders_map"]
 
+        return user_mail_conf
+
+    def _get_shared_mailbox_conf(self, account_id: str) -> dict:
+        """Get mail server configuration for a shared mailbox.
+        
+        Shared mailbox IDs have the format 'shared-{uuid}'. This method extracts
+        the UUID and fetches the corresponding shared mailbox configuration.
+        
+        :param account_id: The account identifier in format 'shared-{uuid}'
+        :type account_id: str
+        :return: Mail server configuration dictionary
+        :rtype: dict
+        :raises RequestException: If shared mailbox not found or user doesn't have access
+        """
+        # Extract the UUID from 'shared-{uuid}' format
+        shared_mailbox_id = account_id[7:]  # Remove 'shared-' prefix
+        
+        # Import here to avoid circular imports
+        from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
+        
+        # Get the shared mailbox module with database access
+        db = self._get_db()
+        shared_mailbox_module = ModuleSharedMailbox(db)
+        
+        # Import error constants
+        from app.utils import errors as err
+        
+        # Get the shared mailbox by ID
+        mailbox = shared_mailbox_module.get_by_id(shared_mailbox_id)
+        if not mailbox:
+            raise RequestException(
+                error=err.ERROR_SHARED_MAILBOX_NOT_FOUND,
+                m="Shared mailbox not found",
+                http_status=404
+            )
+        
+        # Verify current user has access to this shared mailbox
+        if self.user.uid not in mailbox.get("member_uids", []):
+            raise RequestException(
+                error=err.ERROR_SHARED_MAILBOX_NOT_FOUND,  # Reuse existing error for access denied too
+                m="Access denied - you are not a member of this shared mailbox",
+                http_status=403
+            )
+        
+        # For now, use the user's primary mail server settings
+        # In a production implementation, shared mailboxes should have their own
+        # IMAP server configuration. For this implementation, we reuse the domain's
+        # mail server settings since shared mailboxes are typically on the same server.
+        user_mail_conf = {}
+        user_mail_conf["username"] = mailbox.get("email", "")
+        user_mail_conf["password"] = self.user.password  # Use user's password for IMAP auth
+        user_mail_conf["type"] = self.mail_settings.SOGO_D_MAIL_SERVER_TYPE
+        user_mail_conf["args"] = self.mail_settings.get_mail_server_settings_for_type(
+            self.mail_settings.SOGO_D_MAIL_SERVER_TYPE
+        )
+        
+        # Add shared mailbox info to args for reference
+        user_mail_conf["args"]["shared_mailbox_id"] = shared_mailbox_id
+        user_mail_conf["args"]["shared_mailbox_email"] = mailbox.get("email", "")
+        user_mail_conf["args"]["shared_mailbox_name"] = mailbox.get("name", "")
+        
+        # Folder type mapping
+        user_mail_conf["args"]["folders_map"] = self.mail_settings.get_mail_server_settings_for_type(
+            "imap"
+        )["folders_map"]
+        
         return user_mail_conf
 
     def _open_client_for(self, account_id: str, do_login: bool = True) -> ClientMailServer:
