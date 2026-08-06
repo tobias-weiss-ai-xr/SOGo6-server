@@ -20,6 +20,7 @@ from app.utils import constants as cs
 from app.utils.logger.logger import logger_api
 from app.utils.maths.sogo_hash import generate_uuid
 from app.agent.jobs.ScheduleSendJob import ScheduleSendRequest
+from app.agent.jobs.UndoSendJob import UndoSendRequest
 from app.manager.agent.ClientAgent import ClientAgent
 
 if TYPE_CHECKING:
@@ -213,8 +214,32 @@ class InterfaceApiMailSend:
                 "extra_headers": extra_headers or None,
                 "tmp_draft_key": key,
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                # Full session + outgoing login so the UndoSendJob can rebuild
+                # the user and deliver the mail after the grace period.
+                "user_session": self.user.get_user_session(),
+                "login_mail_outgoing": self.user.login_mail_outgoing,
             }
-            cache.set(redis_key, json.dumps(payload), ttl=undo_seconds)
+            # Keep the entry slightly longer than the grace period so the
+            # delivery job (eta=now+undo_seconds) still finds it even when the
+            # worker is delayed. The cancel endpoint enforces the real window.
+            cache.set(redis_key, json.dumps(payload), ttl=undo_seconds + 300)
+
+            # Schedule the actual delivery after the undo window elapses.
+            try:
+                agent = ClientAgent(self._process)
+                agent.enqueue(
+                    UndoSendRequest(user_uid=self.user.uid, pending_key=pending_key),
+                    user_uid=self.user.uid,
+                    eta=datetime.now(timezone.utc) + timedelta(seconds=undo_seconds),
+                )
+            except RequestException as ex:
+                logger_api.error(
+                    "Undo Send: failed to enqueue delivery job for %s: %s",
+                    pending_key, str(ex),
+                )
+                # Fall back to an immediate send — never lose the email.
+                cache.delete(redis_key)
+                return self._execute_send(account_id, mail_data, extra_headers or None, key)
 
             logger_api.info(
                 "Undo Send: pending send %s for user %s (ttl=%ds)",

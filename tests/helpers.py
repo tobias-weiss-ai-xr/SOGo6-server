@@ -69,6 +69,14 @@ class InterfaceApiMailSendWithInjectedConf(InterfaceApiMailSend):
         self._process = MagicMock()
         self.user = MagicMock()
         self.user.uid = "testuser@example.org"
+        self.user.login_mail_outgoing = "testuser@example.org"
+        self.user.get_user_session.return_value = {
+            "uid": "testuser@example.org",
+            "password": "secret",
+            "domain": "example.org",
+            "mail": "testuser@example.org",
+            "source_id": "ldap",
+        }
         self.mail_settings = MagicMock()
         self.mail_settings.SOGO_D_SCHEDULE_SEND_MAX_DELAY_DAYS = 30
 

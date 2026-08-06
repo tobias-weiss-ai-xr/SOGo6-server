@@ -139,10 +139,12 @@ class TestSendMailUndoSend:
         self.fake_mail = self.iface.mail_module
 
     @patch("app.interface.mail.InterfaceApiMailSend.sogo_cache")
-    def test_undo_send_enabled_returns_pending(self, mock_cache):
-        """Undo Send enabled → status: pending."""
+    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    def test_undo_send_enabled_returns_pending(self, mock_client_agent, mock_cache):
+        """Undo Send enabled → status: pending + delivery job enqueued."""
         mock_redis = MagicMock()
         mock_cache.return_value = mock_redis
+        mock_client_agent.return_value.enqueue.return_value = "job-uuid"
 
         result, status = self.iface.send_mail("0", make_mail_data())
 
@@ -150,6 +152,12 @@ class TestSendMailUndoSend:
         assert result["data"]["status"] == "pending"
         assert "pending_key" in result["data"]
         mock_redis.set.assert_called_once()
+        # A delivery job must be enqueued with an eta in the future.
+        mock_client_agent.return_value.enqueue.assert_called_once()
+        enqueue_kwargs = mock_client_agent.return_value.enqueue.call_args[1]
+        assert "eta" in enqueue_kwargs
+        assert enqueue_kwargs["eta"] > datetime.now(timezone.utc)
+        assert enqueue_kwargs["user_uid"] == "testuser@example.org"
 
     @patch("app.interface.mail.InterfaceApiMailSend.sogo_cache")
     def test_undo_send_cancel_returns_cancelled(self, mock_cache):
