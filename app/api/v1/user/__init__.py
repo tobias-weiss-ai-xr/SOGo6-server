@@ -6,6 +6,7 @@ This module contains all user-facing API endpoints for SOGo6 v1.
 
 from flask_smorest import Api, Blueprint
 
+from .ApiResourceBooking import blp as resource_booking_blueprint
 from .ApiSharedMailboxes import blp as shared_mailboxes_blueprint
 from .ApiUserProfile import blp as user_profile_blueprint
 from .ApiUserPreferences import blp as user_preferences_blueprint
@@ -27,6 +28,7 @@ user_auth_apis: list[Blueprint] = []
 
 # User profile blueprints - basic APIs accessible to all users
 user_profile_apis: list[Blueprint] = [
+    resource_booking_blueprint,
     shared_mailboxes_blueprint,
     user_profile_blueprint,
     user_preferences_blueprint,

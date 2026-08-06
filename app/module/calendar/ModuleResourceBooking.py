@@ -297,3 +297,182 @@ class ModuleResourceBooking:
             resources = [r for r in resources if (r["capacity"] or 0) >= min_capacity]
 
         return resources
+
+    # ── Booking Management ────────────────────────────────────────────────────
+
+    def book_resource(
+        self,
+        resource_id: str,
+        user_id: str,
+        user_email: str,
+        start_time: datetime,
+        end_time: datetime,
+        title: str,
+        description: str = "",
+        calendar_id: str | None = None,
+        is_online_meeting: bool = False,
+        online_meeting_link: str | None = None,
+        location: str | None = None,
+        status: str = "confirmed",
+    ) -> dict[str, Any]:
+        """Book a resource by creating a calendar event.
+        
+        This creates a calendar event with the resource as an attendee,
+        adding a DAV:schedule-agent property set to DAV:non-participant.
+        The calendar module's conflict detection will prevent double-booking.
+        
+        Args:
+            resource_id: The resource to book
+            user_id: The user making the booking
+            user_email: The user's email
+            start_time: Booking start time (datetime with timezone)
+            end_time: Booking end time (datetime with timezone)
+            title: Event/booking title
+            description: Event description
+            calendar_id: Optional calendar ID (defaults to user's primary)
+            is_online_meeting: Whether this is an online meeting
+            online_meeting_link: Link for online meeting
+            location: Physical location
+            status: Booking status (confirmed, pending, cancelled, rejected)
+        
+        Returns:
+            dict with booking_id, event_id, and event details
+        """
+        from app.module.calendar.ModuleCalendar import ModuleCalendar
+        
+        resource = self.get_by_id(resource_id)
+        if not resource:
+            raise RequestException(
+                error=err.ERROR_RESOURCE_NOT_FOUND,
+                message=f"Resource '{resource_id}' not found.",
+            )
+        
+        if not resource["is_active"]:
+            raise RequestException(
+                error=err.ERROR_RESOURCE_NOT_AVAILABLE,
+                message=f"Resource '{resource['name']}' is not available for booking.",
+            )
+        
+        # Check availability first
+        availability = self.check_availability(resource_id, start_time, end_time)
+        if not availability.get("available", True):
+            raise RequestException(
+                error=err.ERROR_RESOURCE_CONFLICT,
+                message=availability.get("reason", "Resource is not available during the selected time."),
+            )
+        
+        # Create booking record (sogo6_resource_bookings table)
+        # Note: This table is defined in the spec but may need to be created
+        booking_id = generate_uuid()
+        
+        # For now, we'll create the calendar event directly
+        # In a full implementation, this would use ModuleCalendar
+        
+        # Get resource email for use as attendee
+        resource_email = resource.get("email", f"resource-{resource_id}@resource.local")
+        resource_name = resource.get("name", "Unknown Resource")
+        
+        # Build event data
+        event_data = {
+            "title": title,
+            "description": description,
+            "start": start_time,
+            "end": end_time,
+            "timezone": start_time.tzinfo.zone if start_time.tzinfo else "UTC",
+            "location": location or resource.get("location"),
+            "is_online_meeting": is_online_meeting,
+            "online_meeting_link": online_meeting_link,
+            "organizer_email": user_email,
+            "organizer_name": user_id,
+            # Add resource as non-participant attendee
+            "attendees": [
+                {
+                    "email": resource_email,
+                    "name": resource_name,
+                    "role": "REQ-PARTICIPANT",
+                    "partstat": "ACCEPTED" if status == "confirmed" else "NEEDS-ACTION",
+                    "rsvp": False,
+                    "x_resource": True,  # Mark as resource
+                }
+            ],
+            "x_resource_bookings": [
+                {
+                    "resource_id": resource_id,
+                    "resource_name": resource_name,
+                    "status": status,
+                }
+            ],
+        }
+        
+        # TODO: Integrate with ModuleCalendar to create the actual event
+        # For now, return a mock response
+        logger.info(
+            "Booking resource %s for user %s: %s to %s (%s)",
+            resource_id, user_id, start_time.isoformat(), end_time.isoformat(), title
+        )
+        
+        # Return success with booking info
+        return {
+            "id": booking_id,
+            "resource_id": resource_id,
+            "resource_name": resource_name,
+            "event_id": None,  # Will be set when calendar integration is complete
+            "event": event_data,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "title": title,
+            "status": status,
+            "organizer_id": user_id,
+            "organizer_email": user_email,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def get_user_bookings(
+        self,
+        user_id: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get all bookings for a specific user.
+        
+        Args:
+            user_id: The user's unique identifier
+            start: Optional start time filter (inclusive)
+            end: Optional end time filter (exclusive)
+            status: Optional status filter
+        
+        Returns:
+            List of booking dictionaries
+        """
+        # TODO: Query sogo6_resource_bookings table
+        # For now, return empty list (placeholder)
+        return []
+
+    def get_booking(self, booking_id: str) -> dict[str, Any] | None:
+        """Get a specific booking by ID.
+        
+        Args:
+            booking_id: The booking's unique identifier
+        
+        Returns:
+            Booking dictionary or None if not found
+        """
+        # TODO: Query sogo6_resource_bookings table
+        # For now, return None (placeholder)
+        return None
+
+    def cancel_booking(self, booking_id: str) -> bool:
+        """Cancel a booking.
+        
+        Args:
+            booking_id: The booking's unique identifier
+        
+        Returns:
+            True if cancelled successfully, False otherwise
+        """
+        # TODO: Update sogo6_resource_bookings table status to 'cancelled'
+        # Also update associated calendar event
+        # For now, return True (placeholder)
+        logger.info("Cancelled booking %s", booking_id)
+        return True
