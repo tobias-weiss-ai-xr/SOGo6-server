@@ -6,7 +6,7 @@
 |-------|-------|
 | **Change ID** | shared-mailboxes |
 | **Title** | Implement Shared Mailboxes Feature |
-| **Status** | 🟨 In Progress (85%) |
+| **Status** | 🟨 In Progress (92%) |
 | **Priority** | High |
 | **Type** | Feature Implementation |
 | **Created** | 2025-08-21 |
@@ -21,7 +21,7 @@
 
 Implementation of the Shared Mailboxes feature as specified in the OpenSpec framework. This is one of the 8 Tier 0 foundation features.
 
-**Current Status**: Admin UI completed. User-facing integration completed. Backend API already existed.
+**Current Status**: Admin UI completed. User-facing integration completed. Backend email access now supported.
 
 ---
 
@@ -37,12 +37,14 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 
 ### ✅ Completed
 
-#### Backend (100% - Already Existed)
+#### Backend (100% - Already Existed + Extended)
 - ✅ Database models (`sogo6_shared_mailboxes` table)
 - ✅ Module: `ModuleSharedMailbox.py` - Core business logic
+- ✅ Module: `ModuleMail.py` - Extended for shared mailbox support
 - ✅ API: `ApiSharedMailbox.py` - REST endpoints
 - ✅ CRUD operations (Create, Read, Update, Delete)
 - ✅ Member management (Add, Remove, List)
+- ✅ Shared mailbox account ID support (`shared-{uuid}` format)
 
 #### Backend API Endpoints (100% - Already Existed + New)
 - ✅ `GET /admin/v1/shared-mailboxes` - List all (admin)
@@ -55,6 +57,7 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 - ✅ `DELETE /admin/v1/shared-mailboxes/{id}/members/{user_uid}` - Remove member (admin)
 - ✅ `GET /user/v1/shared-mailboxes` - List user's accessible mailboxes (NEW)
 - ✅ `GET /user/v1/shared-mailboxes/{id}` - Get mailbox details (NEW)
+- ✅ All existing mail API endpoints now work with `shared-{id}` account IDs (NEW)
 
 #### Frontend Admin UI (100% - Newly Implemented)
 - ✅ Admin panel page: `app/[locale]/(loggedin)/admin_panel/shared-mailboxes/page.tsx`
@@ -82,9 +85,17 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 - ✅ Backend API endpoint `/user/v1/shared-mailboxes` for fetching accessible mailboxes
 - ✅ Translations added for "Shared" label
 
+#### Backend Email Access Support (100% - Newly Implemented)
+- ✅ ModuleMail.py now supports `shared-{uuid}` account IDs
+- ✅ Added `_get_shared_mailbox_conf()` method
+- ✅ Verifies user has access before allowing mail operations
+- ✅ All folder operations work with shared mailboxes
+- ✅ All mail operations work with shared mailboxes
+- ✅ Uses shared mailbox email as IMAP username
+
 ### 🟡 In Progress (0%)
 
-#### User-Facing Mailbox Features (0% - Not Started)
+#### User-Facing Mailbox Features (0% - Backend Ready, Frontend TODO)
 - [ ] Enable viewing emails from shared mailbox
 - [ ] Enable composing from shared mailbox
 - [ ] IMAP access to shared mailboxes
@@ -124,9 +135,10 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 #### Backend (sogo6-server)
 - **New Files**: 1
   - `app/api/v1/user/ApiSharedMailboxes.py` - ~100 lines
-- **Modified Files**: 1
+- **Modified Files**: 2
   - `app/api/v1/user/__init__.py` - Added blueprint registration
-- **Total NEW Lines**: ~113 lines
+  - `app/module/mail/ModuleMail.py` - Added shared mailbox support (~71 lines)
+- **Total NEW Lines**: ~184 lines
 
 #### Frontend (sogo6-ui)
 - **New Files**: 2
@@ -139,9 +151,10 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 - **Total NEW Lines**: ~960 lines
 
 ### API Endpoints
-- **Total Endpoints**: 10
+- **Total Endpoints**: 10 + existing mail endpoints
 - **Admin Endpoints**: 8 (already existed)
 - **User Endpoints**: 2 (newly added)
+- **Shared Mailbox Support**: All existing mail API endpoints now support `shared-{id}` format
 
 ---
 
@@ -149,9 +162,11 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 
 ### Primary Goals
 - ✅ Complete Admin UI: **100%**
-- ✅ User Access & Account Switching: **100%** (NEW!)
+- ✅ User Access & Account Switching: **100%**
+- ✅ Backend Email Access Support: **100%** (NEW!)
 - ❌ Collaboration Features: **0%**
-- ❌ IMAP Access: **0%**
+- ❌ Frontend Folder Display: **0%**
+- ❌ Compose from Shared Mailbox: **0%**
 - ✅ API Completion: **100%**
 
 ### Secondary Goals
@@ -167,8 +182,8 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 
 ### Repository: sogo6-server
 - **Branch**: dev
-- **Commit**: 85084b1
-- **Files Changed**: 2
+- **Commit**: d27548e
+- **Files Changed**: 3
 - **New Files**: 1 (ApiSharedMailboxes.py)
 
 ### Repository: sogo6-ui
@@ -182,10 +197,10 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 ## 🚀 Next Steps
 
 ### Phase 1: Complete User-Facing Features (High Priority)
-1. ✅ Enable viewing emails from shared mailbox (URL routing complete)
-2. TODO: Enable composing from shared mailbox
-3. TODO: Display shared mailbox folders in sidebar
-4. TODO: Folder management for shared mailboxes
+1. ✅ Backend support for email viewing from shared mailbox (ModuleMail.py updated)
+2. TODO: Frontend folder display for shared mailboxes in sidebar
+3. TODO: Enable composing from shared mailbox
+4. TODO: Folder management for shared mailboxes (create, delete, rename)
 
 ### Phase 2: Collaboration Features (Medium Priority)
 1. Implement email assignment system
@@ -204,6 +219,8 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 ## 📝 Recent Commits
 
 ### sogo6-server
+- `d27548e` - feat(shared-mailboxes): Add backend support for shared mailbox email access
+- `ac88605` - specs(shared-mailboxes): Update change tracking to 85% with user integration
 - `85084b1` - feat(shared-mailboxes): Add user-facing API endpoint for shared mailboxes
 
 ### sogo6-ui
@@ -211,9 +228,11 @@ Implementation of the Shared Mailboxes feature as specified in the OpenSpec fram
 - `e6ec39f` - feat(shared-mailboxes): Add admin UI for Shared Mailboxes management
 
 ### Root Repository
+- `e909c01` - feat(shared-mailboxes): Add backend support for email access
+- `060e214` - docs(shared-mailboxes): Add comprehensive implementation summary
 - `d9f48c3` - feat(shared-mailboxes): Complete admin UI and user integration
 
 ---
 
-**Change Status**: 🏗️ In Progress (85%)  
+**Change Status**: 🏗️ In Progress (92%)  
 **Last Updated**: 2025-08-21
