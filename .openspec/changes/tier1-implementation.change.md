@@ -6,7 +6,7 @@
 |-------|-------|
 | **Change ID** | tier1-implementation |
 | **Title** | Tier 1 Core Experience Features |
-| **Status** | In Progress |
+| **Status** | Complete |
 | **Priority** | High |
 | **Type** | Feature Implementation |
 | **Created** | 2026-08-06 |
@@ -37,7 +37,7 @@ Drag-and-Drop). This tracker covers the remaining work.
 | 14 | Email Snooze | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 15 | Push Notifications | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 16 | **Global Quick Search (Cmd+K)** | ✅ | ✅ | ✅ | **✅ COMPLETE** |
-| 17 | PWA / Mobile Web | ❌ | ❌ | ❌ | Not Started |
+| 17 | **PWA / Mobile Web** | — | ✅ | ✅ | **✅ COMPLETE** |
 | 18 | Keyboard Shortcuts | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 19 | PGP E2E Encryption | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 20 | Follow-Up Flags | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
@@ -45,6 +45,20 @@ Drag-and-Drop). This tracker covers the remaining work.
 | 22 | Drag-and-Drop Attachments | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 
 ## Task Log
+
+### 2026-08-06 — PWA / Mobile Web COMPLETE (Tier 1 #17 — Tier 1 DONE)
+
+- **Frontend** (`sogo6-ui`): PWA assets completed — generated 192/512 maskable
+  icons + 72px badge (were referenced but missing), fixed the web app manifest
+  (id, start_url /en, scope, display_override, app shortcuts for Mail /
+  Calendar / Contacts), rewrote `sw.js` (network-first navigation with offline
+  fallback, stale-while-revalidate for assets, never caches API, correct icon
+  paths, single navigation branch), added `/offline` fallback page, and pointed
+  the Apple touch icon at the generated 192px icon.
+- **Tests**: 16 new PWA structural tests (`src/app/__tests__/pwa.test.ts`)
+  verifying manifest/sw/offline-page/icon consistency. Frontend app suites
+  292 passed, tsc unchanged (459).
+- **Result**: Tier 1 (Core Experience) is now COMPLETE — all 14 features done.
 
 ### 2026-08-06 — Global Quick Search (Cmd+K) COMPLETE (Tier 1 #16)
 
