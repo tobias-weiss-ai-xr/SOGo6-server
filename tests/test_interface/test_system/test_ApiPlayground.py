@@ -123,13 +123,13 @@ class TestOpenApiRouting:
     )
     def test_config_values(self, key: str, expected: str):
         """Verify OpenAPI configuration values match the spec."""
-        from app.config.settings.ProcessSetting import ProcessSetting
-        assert getattr(ProcessSetting, key) == expected
+        from app.config.settings.ProcessSetting import process_config
+        assert getattr(process_config, key) == expected
 
     def test_swagger_enabled_by_default(self):
         """Spec: Swagger UI served at runtime (enabled by default)."""
-        from app.config.settings.ProcessSetting import ProcessSetting
-        assert ProcessSetting.DO_SWAGGER is True
+        from app.config.settings.ProcessSetting import process_config
+        assert process_config.DO_SWAGGER is True
 
     def test_custom_template_loaded_in_app(self):
         """The app loads the custom template when swagger is enabled."""

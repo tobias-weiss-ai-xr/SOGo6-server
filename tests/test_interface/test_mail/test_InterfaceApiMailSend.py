@@ -81,7 +81,7 @@ class TestSendMailScheduleSend:
             "0", make_mail_data({"send_at": "not-a-date"})
         )
         assert status == 400
-        assert result["error_code"] == "S000391"
+        assert result["error_code"] == "S000396"
 
     # ── send_at stripped before forwarding to execute_send ────────────────
 
@@ -109,7 +109,7 @@ class TestSendMailScheduleSend:
         )
 
         assert status == 400
-        assert result["error_code"] == "S000389"
+        assert result["error_code"] == "S000489"
         assert "Exceeds Maximum Allowed Delay" in result["error_msg"]
 
     # ── send_at exactly at max delay boundary ──────────────────────
@@ -178,7 +178,7 @@ class TestSendMailUndoSend:
         result, status = self.iface.cancel_pending_send("0", "missing-key")
 
         assert status == 404
-        assert result["error_code"] == "S000384"
+        assert result["error_code"] == "S000392"
 
 
 class TestScheduleSendJob:

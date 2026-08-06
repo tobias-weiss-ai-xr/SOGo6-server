@@ -145,9 +145,11 @@ class TestResourceGet:
 
 class TestResourceUpdate:
     def test_update_name(self, module: ModuleResourceBooking, mock_db: MagicMock):
+        updated_row = list(SAMPLE_RESOURCE_ROW)
+        updated_row[1] = "New Name"
         mock_db.select_from_table.side_effect = [
-            [SAMPLE_RESOURCE_ROW],  # get_by_id
-            [SAMPLE_RESOURCE_ROW],  # get_by_id in _row_to_dict after update
+            [SAMPLE_RESOURCE_ROW],  # get_by_id (existing resource)
+            [updated_row],  # get_by_id after update
         ]
         mock_db.update_in_table.return_value = None
 

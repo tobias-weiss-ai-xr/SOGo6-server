@@ -338,7 +338,7 @@ class ModuleMail:
 
         res = client.purge_folder(folder_path, before_date, apply_to_subfolders, permanently_delete)
 
-        logger_mail_server.info("Successfully purged %d folder(s), mails marked as deleted: %d", folder_path, res)
+        logger_mail_server.info("Successfully purged folder '%s', mails marked as deleted: %d", folder_path, res)
         return {"mails_deleted": res}
 
     def purge_all_folders(self, account_id: str, purge_data: dict[str, Any]) -> dict[str, int]:

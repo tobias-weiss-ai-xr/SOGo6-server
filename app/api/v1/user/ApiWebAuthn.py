@@ -22,7 +22,6 @@ from flask import request, g
 from flask.views import MethodView
 from flask_smorest import Blueprint
 
-from app.api.v1.user.api import is_user_api_active
 from app.utils import errors
 
 from app.module.auth.ModuleWebAuthn import (
@@ -132,10 +131,48 @@ class WebAuthnErrorResponseSchema(Schema):
 # Helper Functions
 # ---------------------------------------------------------------------------
 
+def login_required(func):
+    """Simple auth guard matching the app's global auth model.
+
+    The API-level before_request already rejects anonymous users on protected
+    endpoints; this decorator additionally guards the endpoint when invoked
+    directly (e.g. in tests) by checking ``g.user.authenticated``.
+    """
+    import functools
+    from flask import abort as flask_abort
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        user = getattr(g, "user", None)
+        if user is None or not getattr(user, "authenticated", False):
+            flask_abort(401, description="Authentication required")
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def admin_required(func):
+    """Guard for admin-only endpoints (used by the webauthn admin API)."""
+    import functools
+    from flask import abort as flask_abort
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        user = getattr(g, "user", None)
+        if user is None or not getattr(user, "authenticated", False):
+            flask_abort(401, description="Authentication required")
+        if not getattr(user, "is_admin", False) and getattr(user, "uid", "") not in getattr(g, "admin_uids", []):
+            flask_abort(403, description="Admin privileges required")
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 def get_current_user():
     """Get the current authenticated user from Flask g."""
-    if not hasattr(g, 'user'):
-        raise errors.Unauthorized(*errors.ERR_UNAUTHORIZED)
+    if not hasattr(g, 'user') or not getattr(g.user, 'authenticated', False):
+        from flask import abort as flask_abort
+        flask_abort(401, description="Authentication required")
     return g.user
 
 
@@ -168,7 +205,7 @@ class ApiWebAuthnStatus(MethodView):
     """
     
     @blp.response(200, WebAuthnSupportResponseSchema)
-    @blp.login_required
+    @login_required
     def get(self):
         """Check if WebAuthn is supported and get user status."""
         user = get_current_user()
@@ -198,7 +235,7 @@ class ApiWebAuthnRegistrationChallenge(MethodView):
     
     @blp.arguments(WebAuthnChallengeRequestSchema, location="query")
     @blp.response(200, WebAuthnRegistrationOptionsSchema)
-    @blp.login_required
+    @login_required
     def get(self, args):
         """Generate and return registration challenge."""
         user = get_current_user()
@@ -251,7 +288,7 @@ class ApiWebAuthnRegister(MethodView):
     
     @blp.arguments(WebAuthnRegisterRequestSchema)
     @blp.response(200, WebAuthnCredentialSchema)
-    @blp.login_required
+    @login_required
     def post(self, args):
         """Register a new passkey."""
         user = get_current_user()
@@ -437,7 +474,7 @@ class ApiWebAuthnCredentials(MethodView):
     """
     
     @blp.response(200, WebAuthnCredentialsResponseSchema)
-    @blp.login_required
+    @login_required
     def get(self):
         """List all credentials for the current user."""
         user = get_current_user()
@@ -452,7 +489,7 @@ class ApiWebAuthnCredentials(MethodView):
     
     @blp.arguments(WebAuthnRegisterRequestSchema)
     @blp.response(200, WebAuthnCredentialSchema)
-    @blp.login_required
+    @login_required
     def post(self, args):
         """Alternative endpoint to register a new passkey."""
         user = get_current_user()
@@ -494,7 +531,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
     """
     
     @blp.response(200, WebAuthnCredentialSchema)
-    @blp.login_required
+    @login_required
     def get(self, credential_id):
         """Get credential details."""
         user = get_current_user()
@@ -506,13 +543,13 @@ class ApiWebAuthnCredentialDetail(MethodView):
             raise WebAuthnCredentialNotFoundError()
         
         if credential.user_id != user_id:
-            raise errors.Unauthorized(*errors.ERR_UNAUTHORIZED)
+            from flask import abort as flask_abort; flask_abort(401, description="Authentication required")
         
         return credential.to_dict()
     
     @blp.arguments(WebAuthnCredentialUpdateSchema)
     @blp.response(200, WebAuthnCredentialSchema)
-    @blp.login_required
+    @login_required
     def put(self, args, credential_id):
         """Update credential properties."""
         user = get_current_user()
@@ -524,7 +561,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
             raise WebAuthnCredentialNotFoundError()
         
         if credential.user_id != user_id:
-            raise errors.Unauthorized(*errors.ERR_UNAUTHORIZED)
+            from flask import abort as flask_abort; flask_abort(401, description="Authentication required")
         
         # Update fields
         if "name" in args:
@@ -554,7 +591,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
         return updated_cred.to_dict()
     
     @blp.response(204)
-    @blp.login_required
+    @login_required
     def delete(self, credential_id):
         """Remove a credential."""
         user = get_current_user()
@@ -566,7 +603,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
             raise WebAuthnCredentialNotFoundError()
         
         if credential.user_id != user_id:
-            raise errors.Unauthorized(*errors.ERR_UNAUTHORIZED)
+            from flask import abort as flask_abort; flask_abort(401, description="Authentication required")
         
         # Remove the credential
         success = ModuleWebAuthn.remove_credential(credential_id, user_id)
@@ -624,8 +661,8 @@ class ApiAdminWebAuthnUsers(MethodView):
     """
     
     @blp.response(200, WebAuthnCredentialsResponseSchema(many=True))
-    @blp.login_required
-    @blp.roles_required([Acl.ROLE_ADMIN])
+    @login_required
+    @admin_required
     def get(self):
         """List all users with their passkeys."""
         # Get all users with credentials
@@ -673,8 +710,8 @@ class ApiAdminWebAuthnPolicies(MethodView):
         timeout_seconds = fields.Integer()
     
     @blp.response(200, PolicySchema)
-    @blp.login_required
-    @blp.roles_required([Acl.ROLE_ADMIN])
+    @login_required
+    @admin_required
     def get(self):
         """Get current policy."""
         policy = ModuleWebAuthn.get_policy()
@@ -688,8 +725,8 @@ class ApiAdminWebAuthnPolicies(MethodView):
     
     @blp.arguments(PolicySchema)
     @blp.response(200, PolicySchema)
-    @blp.login_required
-    @blp.roles_required([Acl.ROLE_ADMIN])
+    @login_required
+    @admin_required
     def post(self, args):
         """Update policy."""
         policy = ModuleWebAuthn.set_policy(args)
@@ -728,8 +765,8 @@ class ApiAdminWebAuthnAudit(MethodView):
     
     @blp.arguments(AuditQuerySchema, location="query")
     @blp.response(200, AuditEntrySchema(many=True))
-    @blp.login_required
-    @blp.roles_required([Acl.ROLE_ADMIN])
+    @login_required
+    @admin_required
     def get(self, args):
         """Get audit log entries."""
         audit_log = ModuleWebAuthn.get_audit_log(

@@ -36,16 +36,18 @@ from webauthn import (
     generate_authentication_options,
     verify_authentication_response,
     options_to_json,
-    base64url_to_bytes,
-    bytes_to_base64url,
 )
 from webauthn.helpers import (
     bytes_to_base64url,
     base64url_to_bytes,
 )
+from webauthn.helpers.structs import (
+    AuthenticationCredential,
+    AuthenticatorAssertionResponse,
+    PublicKeyCredentialUserEntity,
+)
 
-from app.orm import Acl, PydanticBaseModel, db_session
-from app.model.user.ModelRole import ModelRole
+from app.orm import PydanticBaseModel
 from app.utils.db.UtlDatabase import UtlDatabase as Db
 
 from app.utils import errors
@@ -346,13 +348,13 @@ class WebAuthnCredential(PydanticBaseModel):
             "created_at": self.created_at.isoformat(),
         }
     
-    def to_webauthn_credential(self) -> webauthn.PublicKeyCredential:
-        """Convert to webauthn library format."""
-        return webauthn.PublicKeyCredential(
-            id=bytes_to_base64url(self.credential_id),
-            public_key=bytes_to_base64url(self.public_key_cose),
-            sign_count=self.sign_count,
-        )
+    def to_webauthn_credential(self) -> dict:
+        """Convert to webauthn PublicKeyCredentialDescriptor format."""
+        return {
+            "id": bytes_to_base64url(self.credential_id),
+            "type": "public-key",
+            "transports": ["internal", "hybrid"],
+        }
 
 
 class WebAuthnChallenge(PydanticBaseModel):
@@ -429,13 +431,13 @@ class ModuleWebAuthn:
     # This will be set up with our configuration
     
     @staticmethod
-    def get_webauthn_instance() -> webauthn.WebAuthn:
-        """Get configured WebAuthn instance."""
-        return webauthn.WebAuthn(
-            rp_id=RP_ID,
-            rp_name=RP_NAME,
-            attestation_conveyance_preference="none",
-        )
+    def get_webauthn_instance() -> None:
+        """Backwards-compatibility stub for the old class-based webauthn API.
+
+        The webauthn library 3.x uses stateless functions instead of a
+        configured instance, so nothing needs to be constructed here.
+        """
+        return None
     
     @staticmethod
     def generate_registration_options(
@@ -463,7 +465,7 @@ class ModuleWebAuthn:
             Registration options as dict (ready for JSON serialization)
         """
         # Create user model for webauthn
-        webauthn_user = webauthn.User(
+        webauthn_user = PublicKeyCredentialUserEntity(
             id=user_id.encode('utf-8'),
             name=user_name,
             display_name=user_display_name,
@@ -473,7 +475,9 @@ class ModuleWebAuthn:
         options = generate_registration_options(
             rp_id=RP_ID,
             rp_name=RP_NAME,
-            user=webauthn_user,
+            user_name=user_name,
+            user_id=user_id.encode('utf-8'),
+            user_display_name=user_display_name,
             attestation=attestation,
             user_verification=user_verification,
             authenticator_selection=authenticator_selection or {
@@ -501,8 +505,8 @@ class ModuleWebAuthn:
                 {"type": "public-key", "alg": alg} for alg in options.pub_key_cred_params
             ],
             "timeout": options.timeout,
-            "attestation": options.attestation,
-            "userVerification": options.user_verification,
+            "attestation": options.attestation.value,
+            "userVerification": options.user_verification.value,
             "authenticatorSelection": {
                 "residentKey": "preferred",
                 "userVerification": user_verification,
@@ -768,17 +772,26 @@ class ModuleWebAuthn:
         if not stored_credential:
             raise WebAuthnCredentialNotFoundError()
         
-        # Get the webauthn instance
-        webauthn_instance = ModuleWebAuthn.get_webauthn_instance()
-        
         # Prepare verification data
-        verification = webauthn verify_authentication_response(
-            credential=webauthn_base64url_to_bytes(credential.get('id')),
-            original_challenge=webauthn_base64url_to_bytes(challenge.challenge),
+        auth_credential = AuthenticationCredential(
+            id=base64url_to_bytes(credential.get('id') or credential.get('credential_id')),
+            raw_id=base64url_to_bytes(credential.get('rawId') or credential.get('id') or credential.get('credential_id')),
+            type="public-key",
+            response=AuthenticatorAssertionResponse(
+                authenticator_data=base64url_to_bytes(credential.get('authenticatorData', '')),
+                client_data_json=base64url_to_bytes(credential.get('clientDataJSON', '')),
+                signature=base64url_to_bytes(credential.get('signature', '')),
+                user_handle=base64url_to_bytes(credential['userHandle']) if credential.get('userHandle') else None,
+            ),
+        )
+
+        verification = verify_authentication_response(
+            credential=auth_credential,
+            expected_challenge=challenge.challenge,
             expected_rp_id=RP_ID,
-            expected_origin=ORIGIN,  # Will be set later
-            public_key=webauthn_base64url_to_bytes(stored_credential.public_key_cose),
-            current_sign_count=stored_credential.sign_count,
+            expected_origin=[ORIGIN],
+            credential_public_key=stored_credential.public_key_cose,
+            credential_current_sign_count=stored_credential.sign_count,
             require_user_verification=False,
         )
         

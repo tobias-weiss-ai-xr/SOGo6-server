@@ -192,6 +192,7 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_TABLE_USERS:      str = "sogo6_sogo_user_profiles"
     SOGO_P_TABLE_CALENDARS: str = "sogo6_calendar_calendars"
     SOGO_P_TABLE_CALENDAR_SHARES: str = "sogo6_calendar_shares"
+    SOGO_P_TABLE_CALENDAR_INVITES: str = "sogo6_calendar_invites"
     SOGO_P_TABLE_EVENTS:    str = "sogo6_calendar_events"
     SOGO_P_TABLE_REMINDERS:  str = "sogo6_calendar_reminders"
     SOGO_P_TABLE_TMP_DRAFTS:  str = "sogo6_tmp_draft"

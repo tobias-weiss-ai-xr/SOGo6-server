@@ -774,6 +774,10 @@ class FilterReorderPayloadSchema(Schema):
     """Payload for PATCH /filters/reorder — desired filter names in order."""
     order = fields.List(fields.String(), required=True)
 
+    @classmethod
+    def example(cls) -> dict:
+        return {"order": ["Filter 1", "Copy to Archive"]}
+
 
 class FilterReorderResponseSchema(ApiBaseResponse):
     """Response for PATCH /filters/reorder."""

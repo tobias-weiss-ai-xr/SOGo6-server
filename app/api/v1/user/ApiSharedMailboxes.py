@@ -4,12 +4,11 @@ from typing import Any
 
 from flask import g
 from flask.views import MethodView
-from flask_smorest import Blueprint, Page, paginate
+from flask_smorest import Blueprint, Page
 from marshmallow import Schema, fields
 
 from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.decorators import requires_auth
 
 blp = Blueprint(
     "User Shared Mailboxes",
@@ -35,14 +34,13 @@ class SharedMailboxSchema(Schema):
 class UserSharedMailboxesList(MethodView):
     """List all shared mailboxes the current user has access to"""
 
-    @requires_auth
     @blp.response(200, SharedMailboxSchema(many=True))
     def get(self) -> list[dict[str, Any]]:
         """Get all shared mailboxes the user can access"""
         from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
 
         shared_mailbox_module = ModuleSharedMailbox(g.db)
-        user_uid = g.current_user.uid
+        user_uid = g.user.uid
 
         mailboxes = shared_mailbox_module.get_for_user(user_uid)
 
@@ -67,14 +65,13 @@ class UserSharedMailboxesList(MethodView):
 class UserSharedMailbox(MethodView):
     """Get details for a specific shared mailbox"""
 
-    @requires_auth
     @blp.response(200, SharedMailboxSchema)
     def get(self, mailbox_id: str) -> dict[str, Any]:
         """Get details for a shared mailbox the user has access to"""
         from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
 
         shared_mailbox_module = ModuleSharedMailbox(g.db)
-        user_uid = g.current_user.uid
+        user_uid = g.user.uid
 
         # Get the mailbox
         mailbox = shared_mailbox_module.get_by_id(mailbox_id)

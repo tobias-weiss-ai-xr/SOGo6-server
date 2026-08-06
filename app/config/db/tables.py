@@ -618,6 +618,50 @@ TABLE_CALENDAR_SHARE = Table(name=process_config.SOGO_P_TABLE_CALENDAR_SHARES, c
                              primary_keys=(COL_ID.name,),
                              indexes=[IDX_CAL_SHARE_CALENDAR_KEY, IDX_CAL_SHARE_USER_UID])
 
+# ============================
+# Table sogo6_calendar_invites #
+# ============================
+"""Team calendar membership invitations.
+
+Stores pending invitations for team calendars. When a user is invited to a team
+calendar they receive a row in this table with status 'pending'. Accepting the
+invitation creates/confirms a CalendarShare row; rejecting or cancelling removes
+or marks the row.
+
+Columns:
+- id: opaque invite id (same hashing pattern as other entities)
+- calendar_key: FK to sogo6_calendar_calendars.key — the team calendar
+- user_uid: uid of the invited user
+- invited_by: uid of the user who sent the invitation
+- status: 'pending' | 'accepted' | 'rejected' | 'cancelled'
+- share_level: default share level granted upon acceptance (e.g. 'view_all')
+- created_at / updated_at: UTC timestamps
+"""
+COL_CAL_INVITE_ID          = Column(name="id",               data_type="str",      is_unique=True, extra_args={"max_len": 64})
+COL_CAL_INVITE_CALENDAR_KEY = Column(name="calendar_key",    data_type="str",      extra_args={"max_len": 64})
+COL_CAL_INVITE_USER_UID    = Column(name="user_uid",         data_type="str",      extra_args={"max_len": 512})
+COL_CAL_INVITE_INVITED_BY  = Column(name="invited_by",       data_type="str",      extra_args={"max_len": 512})
+COL_CAL_INVITE_STATUS      = Column(name="status",           data_type="str",      is_nullable=False, extra_args={"max_len": 16})
+COL_CAL_INVITE_SHARE_LEVEL = Column(name="share_level",      data_type="str",      is_nullable=False, extra_args={"max_len": 32})
+COL_CAL_INVITE_CREATED_AT  = Column(name="created_at",       data_type="datetime")
+COL_CAL_INVITE_UPDATED_AT  = Column(name="updated_at",       data_type="datetime")
+
+ALL_CAL_INVITE_COL = [COL_CAL_INVITE_ID,
+                      COL_CAL_INVITE_CALENDAR_KEY,
+                      COL_CAL_INVITE_USER_UID,
+                      COL_CAL_INVITE_INVITED_BY,
+                      COL_CAL_INVITE_STATUS,
+                      COL_CAL_INVITE_SHARE_LEVEL,
+                      COL_CAL_INVITE_CREATED_AT,
+                      COL_CAL_INVITE_UPDATED_AT]
+
+IDX_CAL_INVITE_CALENDAR_KEY = Index(name="idx_calinvite_calendar_key", columns=(COL_CAL_INVITE_CALENDAR_KEY.name,))
+IDX_CAL_INVITE_USER_UID = Index(name="idx_calinvite_user_uid", columns=(COL_CAL_INVITE_USER_UID.name,))
+
+TABLE_CALENDAR_INVITE = Table(name=process_config.SOGO_P_TABLE_CALENDAR_INVITES, columns=ALL_CAL_INVITE_COL,
+                              primary_keys=(COL_CAL_INVITE_ID.name,),
+                              indexes=[IDX_CAL_INVITE_CALENDAR_KEY, IDX_CAL_INVITE_USER_UID])
+
 
 ######################
 # Table sogo_mfa_totp #
@@ -784,6 +828,7 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_FILE_STORAGE,
               TABLE_DRAFT_STATE,
               TABLE_CALENDAR_SHARE,
+              TABLE_CALENDAR_INVITE,
               TABLE_CONTACT_SHARE,
               TABLE_MFA_TOTP,
               TABLE_MFA_WEBAUTHN,

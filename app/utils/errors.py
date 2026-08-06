@@ -1,5 +1,33 @@
 from http import HTTPStatus
 
+
+class SOGo6Error(Exception):
+    """Base class for SOGo 6 domain errors.
+
+    Subclasses declare class attributes ``http_status``, ``error_code`` and
+    ``message`` (optionally an ``error_code_prefix``). The HTTP status defaults
+    to 500 when not overridden.
+    """
+
+    error_code_prefix: str = "SOGO"
+    http_status: int = HTTPStatus.INTERNAL_SERVER_ERROR
+    error_code: str = "SOGO_ERROR"
+    message: str = "An unexpected error occurred"
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or self.message)
+        if message is not None:
+            self.message = message
+
+    def to_dict(self) -> dict:
+        """Return the error as a serialisable dict."""
+        return {
+            "error_code": self.error_code,
+            "error_msg": self.message,
+            "http_status": self.http_status,
+        }
+
+
 class E:
     """
     Class to represent a SOGo 6 API error.
@@ -75,6 +103,7 @@ ERROR_LOGIN_FAILED             = E("S000208", "Login Failed: Invalid Credentials
 
 #API
 ERROR_VALIDATION_ERROR      = E("S000300", "Request Data Incorrect Format", HTTPStatus.BAD_REQUEST)
+ERROR_VALIDATION_FAILED      = ERROR_VALIDATION_ERROR  # alias kept for module callers
 ERROR_DOMAIN_NAME_TAKEN     = E("S000301", "Domain's Name Already Taken", HTTPStatus.BAD_REQUEST)
 ERROR_DOMAIN_NAME_NOT_FOUND = E("S000302", "Domain's Name Not Found", HTTPStatus.NOT_FOUND)
 
@@ -152,7 +181,7 @@ ERROR_POLL_PARTICIPANT_NOT_FOUND      = E("S000531", "Participant Not Found In P
 
 # tmp_draft
 ERROR_TMP_DRAFT_NOT_FOUND       = E("S000371", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
-ERROR_TMP_DRAFT_LOCKED          = E("S000371", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
+ERROR_TMP_DRAFT_LOCKED          = E("S000636", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
 ERROR_TMP_DRAFT_OWNER_MISMATCH  = E("S000372", "Tmp Draft Does Not Belong To This User", HTTPStatus.FORBIDDEN)
 ERROR_TMP_DRAFT_INSERT_FAILED   = E("S000373", "Failed To Insert Tmp Draft", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_TMP_DRAFT_UPDATE_FAILED   = E("S000374", "Failed To Update Tmp Draft", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -168,7 +197,7 @@ ERROR_USER_PROFILE_DUPLICATE         = E("S000314", "Multiple User Profiles Foun
 ERROR_USER_PROFILE_CREATION_FAILED   = E("S000315", "User Profile Creation Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_USER_PROFILE_INSERT_MISMATCH   = E("S000316", "User Profile Insert Row Count Mismatch", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_USER_PROFILE_NOT_FOUND         = E("S000317", "User Profile Not Found", HTTPStatus.NOT_FOUND)
-ERROR_FILTER_NOT_FOUND               = E("S000318", "Filter Not Found", HTTPStatus.NOT_FOUND)
+ERROR_FILTER_NOT_FOUND               = E("S000637", "Filter Not Found", HTTPStatus.NOT_FOUND)
 ERROR_USER_PROFILE_UPDATE_FAILED     = E("S000318", "User Profile Update Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_USER_PROFILE_NO_IDENTITY       = E("S000319", "Account must have at least wone identity", HTTPStatus.BAD_REQUEST)
 ERROR_USER_PROFILE_MISMATCH_CLASS_DB = E("S000326", "User profile colums differentiate from UserProfile class attributes", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -271,6 +300,11 @@ ERROR_CALENDAR_CALDAV_DISCOVERY_FAILED      = E("S000627", "CalDAV Calendar Disc
 ERROR_CALENDAR_MAINTENANCE_REQUIRE_TARGET    = E("S000628", "At Least One Of user_uid Or calendar_key Is Required", HTTPStatus.BAD_REQUEST)
 ERROR_CALENDAR_RESOURCE_CONFLICT              = E("S000629", "Resource Is Not Available At The Requested Time", HTTPStatus.CONFLICT)
 ERROR_CALENDAR_RESOURCE_NOT_FOUND             = E("S000630", "Resource Not Found", HTTPStatus.NOT_FOUND)
+ERROR_CALENDAR_INVITE_NOT_FOUND               = E("S000631", "Calendar Invitation Not Found", HTTPStatus.NOT_FOUND)
+ERROR_CALENDAR_INVITE_ALREADY_EXISTS          = E("S000632", "User Already Invited To This Calendar", HTTPStatus.CONFLICT)
+ERROR_CALENDAR_INVITE_INVALID_STATUS          = E("S000633", "Invitation Is Not In A Valid State For This Operation", HTTPStatus.CONFLICT)
+ERROR_CALENDAR_NOT_TEAM                       = E("S000634", "Calendar Is Not A Team Calendar", HTTPStatus.BAD_REQUEST)
+ERROR_CALENDAR_MEMBER_NOT_FOUND               = E("S000635", "Team Calendar Member Not Found", HTTPStatus.NOT_FOUND)
 
 #the contacts
 ERROR_CONTACT_JSON_PARSE_FAILED              = E("S000700", "Failed To Parse Contact JSON Content", HTTPStatus.UNPROCESSABLE_ENTITY)

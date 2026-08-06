@@ -42,6 +42,7 @@ def _build_interface():
     inter._lists_serializer = CardListsSerializerList()
     inter._list_deserializer = CardListDeserializerDict()
     inter._user_module_settings = MagicMock(SOGO_D_AUTOCOMPLETION_MIN_LEN=2)
+    inter._user_sources = None
     return inter
 
 
@@ -99,12 +100,13 @@ def test_get_contacts_translates_pagination_and_sort():
     assert kwargs == {
         "addressbook_key": None, "search": "bob",
         "offset": 10, "limit": 10, "sort_by": "last_name", "order": Order.DESC,
+        "user_sources": None,
     }
 
 
 def test_create_contact_deserializes_and_returns_201():
     inter = _build_interface()
-    inter.module.create_contact.side_effect = lambda user, ab_key, contact: contact
+    inter.module.create_contact.side_effect = lambda user, ab_key, contact, user_sources=None: contact
     _, code = inter.create_contact("k1", {"display_name": "Carol", "emails": [{"value": "c@x.com"}]})
     created = inter.module.create_contact.call_args.args[2]
     assert created.display_name == "Carol"
@@ -121,7 +123,7 @@ def test_create_contact_invalid_date_returns_parse_error():
 def test_patch_contact_merges_and_updates():
     inter = _build_interface()
     inter.module.get_contact.return_value = CardContact(uid="u1", key="c1", display_name="John", note="old")
-    inter.module.update_contact.side_effect = lambda user, ab_key, key, contact: contact
+    inter.module.update_contact.side_effect = lambda user, ab_key, key, contact, user_sources=None: contact
     inter.patch_contact("ab1", "c1", {"note": "new"})
     merged = inter.module.update_contact.call_args.args[3]
     assert merged.note == "new"
@@ -165,7 +167,7 @@ def test_get_list_serializes():
 
 def test_create_list_deserializes_and_returns_201():
     inter = _build_interface()
-    inter.module.create_list.side_effect = lambda user, ab_key, card_list: card_list
+    inter.module.create_list.side_effect = lambda user, ab_key, card_list, user_sources=None: card_list
     _, code = inter.create_list("ab1", {"name": "Team", "members": ["c1"]})
     created = inter.module.create_list.call_args.args[2]
     assert created.name == "Team"
@@ -183,7 +185,7 @@ def test_patch_list_merges_and_preserves_members():
     inter = _build_interface()
     inter.module.get_list.return_value = CardList(id=1, key="l1", uid="u1", addressbook_key="ab1",
                                                   name="Old", members=["c1", "c2"])
-    inter.module.update_list.side_effect = lambda user, ab_key, key, card_list: card_list
+    inter.module.update_list.side_effect = lambda user, ab_key, key, card_list, user_sources=None: card_list
     inter.patch_list("ab1", "l1", {"name": "New"})
     merged = inter.module.update_list.call_args.args[3]
     assert merged.name == "New"

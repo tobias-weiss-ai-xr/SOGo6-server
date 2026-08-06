@@ -81,12 +81,12 @@ class TestSieveEditorSchemas:
         from app.api.v1.mail.schemas.filter import FilterReorderPayloadSchema
         import marshmallow
         with pytest.raises(marshmallow.ValidationError):
-            FilterReorderPayloadSchema().load({"nope": []}, unknown=marshmallow.UNKNOWN_INCLUDE)
+            FilterReorderPayloadSchema().load({})
 
     def test_error_constant(self):
         from app.utils import errors as err
         assert err.ERROR_FILTER_NOT_FOUND.m
-        assert err.ERROR_FILTER_NOT_FOUND.status_code == 404
+        assert err.ERROR_FILTER_NOT_FOUND.h == 404
 
 
 class TestSieveEditorModule:

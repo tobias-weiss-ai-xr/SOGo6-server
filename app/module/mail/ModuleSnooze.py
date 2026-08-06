@@ -56,14 +56,19 @@ class ModuleSnooze:
         self._db = db
 
     def _row_to_dict(self, row: list[Any]) -> dict[str, Any]:
+        def _fmt(value):
+            if value is None:
+                return None
+            return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
         return {
             "id": row[0],
             "user_uid": row[1],
             "mail_uid": row[2],
             "folder": row[3],
             "original_folder": row[4],
-            "snooze_until": row[5].isoformat() if row[5] else None,
-            "created_at": row[6].isoformat() if row[6] else None,
+            "snooze_until": _fmt(row[5]),
+            "created_at": _fmt(row[6]),
             "account_id": row[7],
         }
 
@@ -96,10 +101,10 @@ class ModuleSnooze:
         existing = list(self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
-            condition=AndCondition([
+            condition=AndCondition(
                 EqualCondition(self.COL_USER_UID, user_uid),
                 EqualCondition(self.COL_MAIL_UID, mail_uid),
-            ]),
+            ),
         ))
         if existing:
             raise RequestException(
@@ -136,10 +141,10 @@ class ModuleSnooze:
         rows = list(self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
-            condition=AndCondition([
+            condition=AndCondition(
                 EqualCondition(self.COL_USER_UID, user_uid),
                 EqualCondition(self.COL_MAIL_UID, mail_uid),
-            ]),
+            ),
         ))
         if rows:
             return self._row_to_dict(rows[-1])
@@ -161,10 +166,10 @@ class ModuleSnooze:
         rows = list(self._db.select_from_table(
             table_name=self.TABLE_NAME,
             column_tuple=self.ALL_COLS,
-            condition=AndCondition([
+            condition=AndCondition(
                 EqualCondition(self.COL_ID, snooze_id),
                 EqualCondition(self.COL_USER_UID, user_uid),
-            ]),
+            ),
         ))
         if not rows:
             raise RequestException(
