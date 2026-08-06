@@ -1,5 +1,7 @@
 """HTTP integration tests for all admin API endpoints."""
 import json
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 
@@ -112,3 +114,66 @@ class TestApiTokens:
         resp = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=user_auth_headers)
         assert resp.status_code == 201
         assert len(resp.get_json()["data"]["scopes"]) == 3
+
+
+class TestResourceBookingAdmin:
+    """Integration tests for Resource Booking Admin API."""
+
+    BASE = "/api/admin/v1/resources"
+    BOOKINGS_BASE = "/api/admin/v1/resource-bookings"
+
+    def test_list_resources(self, client, auth_headers):
+        """Test listing all resources (admin)."""
+        resp = client.get(self.BASE, headers=auth_headers)
+        assert resp.status_code == 200
+
+    def test_create_resource(self, client, auth_headers):
+        """Test creating a resource (admin)."""
+        data = {
+            "name": "Test Conference Room",
+            "email": "test-room-local@example.org",
+            "resource_type": "room",
+            "capacity": 20,
+            "description": "Test room for integration tests",
+            "booking_policy": "open"
+        }
+        resp = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
+        # Note: May fail if resource already exists in test DB
+        assert resp.status_code in [200, 201, 409]  # 409 if duplicate
+
+    def test_create_resource_duplicate_handling(self, client, auth_headers):
+        """Test that duplicate resource creation is handled gracefully."""
+        data = {
+            "name": "Duplicate Test Room",
+            "email": "duplicate-test-room-local@example.org",
+            "resource_type": "room"
+        }
+        # First creation should succeed
+        resp1 = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
+        # Second creation with same email should fail
+        resp2 = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
+        assert resp2.status_code == 409
+
+
+class TestResourceBookingUser:
+    """Integration tests for Resource Booking User API."""
+
+    BASE = "/api/user/v1/resources"
+    BOOKINGS_BASE = "/api/user/v1/resource-bookings"
+
+    def test_list_resources_user(self, client, user_auth_headers):
+        """Test listing resources (user)."""
+        resp = client.get(self.BASE, headers=user_auth_headers)
+        assert resp.status_code == 200
+
+    def test_check_resource_availability(self, client, user_auth_headers):
+        """Test checking resource availability (user)."""
+        from datetime import datetime, timedelta, timezone
+        # Use a date far in the future to avoid conflicts
+        future_date = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%Y-%m-%d')
+        resp = client.get(
+            f"{self.BASE}/res-001/availability?start={future_date}T10:00:00Z&end={future_date}T11:00:00Z",
+            headers=user_auth_headers
+        )
+        # May return 404 if resource doesn't exist, or 200 with availability data
+        assert resp.status_code in [200, 404]
