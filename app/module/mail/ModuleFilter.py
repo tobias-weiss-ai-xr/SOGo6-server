@@ -146,6 +146,135 @@ class ModuleFilter:
         current = self._read_current_filters()
         return current.get(section_key)
 
+    # ------------------------------------------------------------------ #
+    # Granular filter operations (Sieve Editor)                           #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _find_filter(filters: list[dict[str, Any]], filter_name: str) -> int:
+        """Return the index of the filter matching *filter_name* (case-insensitive).
+
+        :param filters: List of filter dicts (each must have a ``name``).
+        :type filters: list[dict[str, Any]]
+        :param filter_name: Name of the filter to locate.
+        :type filter_name: str
+        :return: Index of the matching filter, or ``-1`` if not found.
+        :rtype: int
+        """
+        for i, filt in enumerate(filters):
+            if isinstance(filt, dict) and str(filt.get("name", "")).lower() == filter_name.lower():
+                return i
+        return -1
+
+    def get_filter(self, filter_name: str) -> dict[str, Any]:
+        """Return a single filter by name from the stored ``filters`` section.
+
+        :param filter_name: Name of the filter to retrieve.
+        :type filter_name: str
+        :raises RequestException: If the filter does not exist.
+        :return: The matching filter dict.
+        :rtype: dict[str, Any]
+        """
+        self.sogo_db_manager.connect()
+        current = self._read_current_filters()
+        filters = current.get(FILTER_SECTION_FILTERS) or []
+        idx = self._find_filter(filters, filter_name)
+        if idx < 0:
+            raise RequestException(err.ERROR_FILTER_NOT_FOUND.m, err.ERROR_FILTER_NOT_FOUND)
+        return filters[idx]
+
+    def set_filter(self, filter_name: str, value: dict[str, Any]) -> dict[str, Any]:
+        """Create or replace a single filter by name, then push to Sieve.
+
+        If a filter with the same name (case-insensitive) already exists it is
+        replaced in place, otherwise the new filter is appended to the list.
+
+        :param filter_name: Name of the filter to create/update.
+        :type filter_name: str
+        :param value: Full filter dict (must contain ``name``, ``enabled``, ``actions``, ``rules``).
+        :type value: dict[str, Any]
+        :raises RequestException: If the profile update or Sieve push fails.
+        :return: The full updated filters column content.
+        :rtype: dict[str, Any]
+        """
+        self.sogo_db_manager.connect()
+        current = self._read_current_filters()
+        filters = list(current.get(FILTER_SECTION_FILTERS) or [])
+        idx = self._find_filter(filters, filter_name)
+        if idx >= 0:
+            filters[idx] = value
+        else:
+            filters.append(value)
+        return self.set_section(FILTER_SECTION_FILTERS, filters)
+
+    def delete_filter(self, filter_name: str) -> dict[str, Any]:
+        """Delete a single filter by name, then push the remaining filters to Sieve.
+
+        :param filter_name: Name of the filter to delete.
+        :type filter_name: str
+        :raises RequestException: If the filter does not exist or the update fails.
+        :return: The full updated filters column content.
+        :rtype: dict[str, Any]
+        """
+        self.sogo_db_manager.connect()
+        current = self._read_current_filters()
+        filters = list(current.get(FILTER_SECTION_FILTERS) or [])
+        idx = self._find_filter(filters, filter_name)
+        if idx < 0:
+            raise RequestException(err.ERROR_FILTER_NOT_FOUND.m, err.ERROR_FILTER_NOT_FOUND)
+        del filters[idx]
+        return self.set_section(FILTER_SECTION_FILTERS, filters)
+
+    def reorder_filters(self, ordered_names: list[str]) -> dict[str, Any]:
+        """Reorder the ``filters`` list to match *ordered_names*, then push to Sieve.
+
+        Filters whose names are not present in *ordered_names* are appended at the
+        end, preserving their relative order.
+
+        :param ordered_names: Desired filter names, in order.
+        :type ordered_names: list[str]
+        :raises RequestException: If a listed name does not exist or the update fails.
+        :return: The full updated filters column content.
+        :rtype: dict[str, Any]
+        """
+        self.sogo_db_manager.connect()
+        current = self._read_current_filters()
+        filters = list(current.get(FILTER_SECTION_FILTERS) or [])
+
+        by_name: dict[str, dict[str, Any]] = {}
+        for filt in filters:
+            if isinstance(filt, dict):
+                by_name[str(filt.get("name", ""))] = filt
+
+        for name in ordered_names:
+            if name not in by_name:
+                raise RequestException(err.ERROR_FILTER_NOT_FOUND.m, err.ERROR_FILTER_NOT_FOUND)
+
+        ordered: list[dict[str, Any]] = [by_name[name] for name in ordered_names]
+        # Append any filters not mentioned in the payload (preserving original order)
+        for filt in filters:
+            if filt not in ordered:
+                ordered.append(filt)
+
+        return self.set_section(FILTER_SECTION_FILTERS, ordered)
+
+    def push_to_sieve(self) -> dict[str, Any]:
+        """Re-push the current merged filter configuration to Sieve.
+
+        Reads the stored column and calls ``set_section`` with the unchanged
+        content, which rebuilds the merged Sieve script without modifying data.
+
+        :raises RequestException: If the Sieve push fails.
+        :return: The full filters column content that was pushed.
+        :rtype: dict[str, Any]
+        """
+        self.sogo_db_manager.connect()
+        current = self._read_current_filters()
+        for section_key in FILTER_SECTIONS:
+            if section_key in current:
+                self.set_section(section_key, current[section_key])
+        return current
+
     @staticmethod
     def _is_section_enabled(value: Any) -> bool:
         """Return whether a section is intended to be active by the user.

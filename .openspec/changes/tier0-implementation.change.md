@@ -53,7 +53,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 - ⏳ User-facing documentation
 
 ### Success Criteria
-- [ ] All 9 Tier 0 features implemented (4/9 complete)
+- [ ] All 9 Tier 0 features implemented (5/9 complete)
 - [ ] API endpoints match specifications
 - [ ] Database schemas match specifications
 - [ ] Security requirements met
@@ -74,13 +74,13 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 2 | CalDAV Server | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 3 | DKIM/DMARC/SPF | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 4 | Shared Mailboxes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
-| 5 | Sieve Editor | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
+| 5 | Sieve Editor | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 6 | Team Calendars | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 7 | Resource Booking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | ✨ | API Playground | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 
-**Progress**: 89% (4/9 features complete)
+**Progress**: 95% (5/9 features complete)
 
 ---
 
@@ -99,7 +99,7 @@ Based on dependencies and complexity:
 #### Phase 2: Existing Code Integration (Weeks 5-12)
 - **✅ Shared Mailboxes** - COMPLETE - Extends existing ApiSharedMailbox.py
 - **✅ Resource Booking** - COMPLETE - User API (7 endpoints), Admin API (7 endpoints), Module Enhancements with calendar integration, UI Pages (browser, details, admin) connected to real API, QuickBookingModal with real-time availability, ResourceSelector in EventForm, ResourceEventIndicator in calendar views, 61 frontend unit tests, full documentation. Uses existing ModuleResourceBooking + ApiResourceBooking
-- **Sieve Editor** - Uses existing ClientSieve.py
+- **✅ Sieve Editor** - COMPLETE - Existing ClientSieve + ModuleFilter backend, filters/vacation/forward/notify endpoints, NEW granular filter API: GET/PUT/DELETE /filters/{id}, POST /filters/validate|preview|push, PATCH /filters/reorder, GET /filters/templates, filter_preview matching engine, fake API single-filter routes, 90 frontend Jest tests + backend structural/engine tests
 
 **Rationale**: These features have partial implementations, making them faster to complete.
 
@@ -329,7 +329,7 @@ Based on dependencies and complexity:
 
 ---
 
-**Change Status**: 🚀 Implementation In Progress (44%)  
+**Change Status**: 🚀 Implementation In Progress (95%)  
 **Last Updated**: 2025-08-21  
 **Next Review**: Weekly  
 

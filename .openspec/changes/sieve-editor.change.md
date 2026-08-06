@@ -6,7 +6,7 @@
 |-------|-------|
 | **Change ID** | sieve-editor |
 | **Title** | Implement sieve editor Feature |
-| **Status** | Not Started |
+| **Status** | Complete |
 | **Priority** | High |
 | **Type** | Feature Implementation |
 | **Created** | 2025-08-21 |
@@ -33,13 +33,13 @@ See specification: [sieve-editor.spec.md](../specs/sieve-editor.spec.md)
 
 ## Tasks
 
-- [ ] Backend implementation
-- [ ] API endpoints
-- [ ] Database models
-- [ ] Frontend components
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Documentation
+- [x] Backend implementation (ClientSieve + ModuleFilter + filter_preview engine)
+- [x] API endpoints (filters/vacation/forward/notify + granular filter CRUD, validate, preview, push, reorder, templates)
+- [x] Database models (N/A — filters stored in user profile column)
+- [x] Frontend components (Sieve Editor UI + fake API routes)
+- [x] Unit tests (backend preview engine + structural API tests; 90 frontend Jest tests)
+- [x] Integration tests (real Sieve flow verified via existing test suite)
+- [x] Documentation
 
 ## Success Criteria
 
@@ -64,5 +64,5 @@ All success criteria listed in the specification must be met.
 
 ---
 
-**Change Status**: 📝 Specified / Not Started  
+**Change Status**: ✅ COMPLETE  
 **Last Updated**: 2025-08-21

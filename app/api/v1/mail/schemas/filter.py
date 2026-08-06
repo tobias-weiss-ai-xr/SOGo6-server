@@ -690,3 +690,127 @@ class NotificationGetResponseSchema(ApiBaseResponse):
             "error_msg": "No Error",
             "data": NotificationPayloadSchema.example(),
         }
+
+
+# ---------------------------------------------------------------------------
+# Sieve Editor granular filter endpoints (spec: sieve-editor)
+# ---------------------------------------------------------------------------
+
+class FilterItemPayloadSchema(Schema):
+    """Payload for creating/updating a single filter (PUT /filters/{id})."""
+    name    = fields.String(required=True)
+    enabled = fields.Boolean(load_default=True, dump_default=True)
+    actions = fields.List(fields.Nested(FilterSchema), required=True)
+    rules   = fields.Nested(FilterRuleSchema, required=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "name": "Move from CEO with urgent subject to INBOX",
+            "enabled": True,
+            "actions": [{"method": "fileinto", "arguments": {"folders": ["INBOX"]}}],
+            "rules": {
+                "op": "and",
+                "rules": [
+                    {"field": "from", "operator": "contains", "value": "ceo@example.com"},
+                ],
+            },
+        }
+
+
+class FilterGetResponseSchema(ApiBaseResponse):
+    """Response for GET /filters/{id} — returns a single filter."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {"filter": FilterItemPayloadSchema.example()},
+        }
+
+
+class FilterIdSchema(Schema):
+    """Path parameter schema for a single filter id/name."""
+    filter_id = fields.String(required=True)
+
+
+
+
+class FilterValidateResponseSchema(ApiBaseResponse):
+    """Response for POST /filters/validate."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {"valid": True, "errors": []},
+        }
+
+
+class FilterPreviewPayloadSchema(Schema):
+    """Payload for POST /filters/preview — a filter plus sample headers."""
+    filter  = fields.Nested(FilterItemPayloadSchema, required=True)
+    headers = fields.Dict(required=True)
+
+
+class FilterPreviewResponseSchema(ApiBaseResponse):
+    """Response for POST /filters/preview."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {"matched": True, "action": {"method": "fileinto", "arguments": {"folders": ["INBOX"]}}},
+        }
+
+
+class FilterReorderPayloadSchema(Schema):
+    """Payload for PATCH /filters/reorder — desired filter names in order."""
+    order = fields.List(fields.String(), required=True)
+
+
+class FilterReorderResponseSchema(ApiBaseResponse):
+    """Response for PATCH /filters/reorder."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": FiltersPayloadSchema.example(),
+        }
+
+
+class FilterPushResponseSchema(ApiBaseResponse):
+    """Response for POST /filters/push."""
+    data = fields.String(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": "OK",
+        }
+
+
+class FilterTemplatesResponseSchema(ApiBaseResponse):
+    """Response for GET /filters/templates — built-in filter templates."""
+    data = fields.List(fields.Nested(FilterItemPayloadSchema))
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": [
+                {"name": "Backup", "enabled": True, "actions": [], "rules": {"op": "and", "rules": []}},
+            ],
+        }
