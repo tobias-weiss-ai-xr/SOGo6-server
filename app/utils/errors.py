@@ -306,6 +306,14 @@ ERROR_CALENDAR_INVITE_INVALID_STATUS          = E("S000633", "Invitation Is Not 
 ERROR_CALENDAR_NOT_TEAM                       = E("S000634", "Calendar Is Not A Team Calendar", HTTPStatus.BAD_REQUEST)
 ERROR_CALENDAR_MEMBER_NOT_FOUND               = E("S000635", "Team Calendar Member Not Found", HTTPStatus.NOT_FOUND)
 
+#the email auth wizard
+ERROR_EMAIL_AUTH_DOMAIN_NOT_FOUND        = E("S000638", "Email Auth Domain Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS   = E("S000639", "Email Auth Domain Already Exists", HTTPStatus.CONFLICT)
+ERROR_EMAIL_AUTH_DKIM_NOT_FOUND          = E("S000640", "DKIM Configuration Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_DMARC_NOT_FOUND         = E("S000641", "DMARC Configuration Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_SPF_NOT_FOUND           = E("S000642", "SPF Configuration Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH      = E("S000643", "Invalid DKIM Key Length", HTTPStatus.BAD_REQUEST)
+
 #the contacts
 ERROR_CONTACT_JSON_PARSE_FAILED              = E("S000700", "Failed To Parse Contact JSON Content", HTTPStatus.UNPROCESSABLE_ENTITY)
 ERROR_CONTACT_ADDRESSBOOK_NOT_FOUND          = E("S000701", "Address Book Not Found", HTTPStatus.NOT_FOUND)

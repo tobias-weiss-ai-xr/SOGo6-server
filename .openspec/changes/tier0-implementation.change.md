@@ -53,7 +53,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 - ⏳ User-facing documentation
 
 ### Success Criteria
-- [ ] All 9 Tier 0 features implemented (6/9 complete)
+- [ ] All 9 Tier 0 features implemented (7/9 complete)
 - [ ] API endpoints match specifications
 - [ ] Database schemas match specifications
 - [ ] Security requirements met
@@ -72,7 +72,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 |---|---------|------|--------|---------|----------|-------|------|--------|
 | 1 | CalDAV | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
 | 2 | CalDAV Server | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
-| 3 | DKIM/DMARC/SPF | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Not Started |
+| 3 | DKIM/DMARC/SPF | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 4 | Shared Mailboxes | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | 5 | Sieve Editor | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 6 | Team Calendars | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
@@ -80,7 +80,7 @@ See: [TIER0_COMPLETION_REPORT.md](../specs/TIER0_COMPLETION_REPORT.md) for detai
 | 8 | WebAuthn/Passkeys | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | **COMPLETE** |
 | ✨ | API Playground | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 
-**Progress**: 100% (6/9 features complete)
+**Progress**: 100% (7/9 features complete)
 
 ---
 
@@ -92,7 +92,7 @@ Based on dependencies and complexity:
 
 #### Phase 1: Authentication & Security (Weeks 1-4)
 - **✅ WebAuthn/Passkeys** - COMPLETE - Passwordless auth foundation
-- **DKIM/DMARC/SPF** - Email security foundation
+- **✅ DKIM/DMARC/SPF** - COMPLETE - ModuleEmailAuth (RSA key gen via cryptography, DMARC XML report parser, SPF RFC 7208 validation), 27 endpoints under /admin/v1/email-auth/* (domains CRUD, DKIM generate/config/rotate/validate, DMARC config/validate/reports, SPF config/validate, test, validate-all), admin UI page + RTK store (26 Jest tests), 34 module + 16 structural backend tests
 
 **Rationale**: Security features should be implemented first as other features may depend on them.
 
