@@ -36,7 +36,7 @@ Drag-and-Drop). This tracker covers the remaining work.
 | 13 | Schedule Send | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 14 | Email Snooze | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 15 | Push Notifications | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
-| 16 | Global Quick Search (Cmd+K) | ❌ | ❌ | ❌ | Not Started |
+| 16 | **Global Quick Search (Cmd+K)** | ✅ | ✅ | ✅ | **✅ COMPLETE** |
 | 17 | PWA / Mobile Web | ❌ | ❌ | ❌ | Not Started |
 | 18 | Keyboard Shortcuts | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 | 19 | PGP E2E Encryption | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
@@ -45,6 +45,21 @@ Drag-and-Drop). This tracker covers the remaining work.
 | 22 | Drag-and-Drop Attachments | ✅ | ✅ | ✅ | ✅ COMPLETE (pre-existing) |
 
 ## Task Log
+
+### 2026-08-06 — Global Quick Search (Cmd+K) COMPLETE (Tier 1 #16)
+
+- **Backend** (`sogo6-server`): new `GET /search/global?q=` user API endpoint
+  (`ApiGlobalSearch.py` + `InterfaceApiGlobalSearch`) aggregating **contacts**
+  (transverse across all address books), **calendar events** (title/description
+  search in a 1-year rolling window) and **directory users** (LDAP). Each
+  section is isolated — one failing source never breaks the others.
+- **Frontend** (`sogo6-ui`): `GlobalQuickSearch` (existing Cmd+K palette) now
+  calls `useGlobalSearchQuery` (RTK, debounced 200 ms) and renders grouped
+  results (Contacts / Calendar events / Users) with navigation actions, a
+  loading spinner and empty states. New `search/*` i18n keys.
+- **Tests**: backend 892 passed (4 interface + 9 structural tests); frontend
+  search suite 10 passed + layout test updated (mock of the search store).
+- **Docs**: `global-quick-search.change.md` + implementation summary.
 
 ### 2026-08-06 — Working Hours / Location COMPLETE (Tier 1 #11)
 
