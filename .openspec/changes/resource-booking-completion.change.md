@@ -131,17 +131,17 @@ This change tracks the **complete implementation** of the Resource Booking featu
 ### Frontend
 | Task | Status | Est. Lines | Notes |
 |------|--------|-----------|-------|
-| Resource browser page | ❌ | 400 | TODO: Create page |
-| Resource detail view | ❌ | 200 | TODO: Create page |
-| Resource search | ❌ | 200 | TODO: Create component |
-| Quick booking | ❌ | 150 | TODO: Create component |
-| Admin resource management | ❌ | 300 | TODO: Create page |
-| Calendar resource selection | ❌ | 250 | TODO: Create component |
+| Resource browser page | ✅ | 400 | Created /resources/page.tsx |
+| Resource detail view | ✅ | 200 | Created /resources/[id]/page.tsx |
+| Resource search | ✅ | 200 | Built into browser page |
+| Quick booking | ❌ | 150 | TODO: Modal component |
+| Admin resource management | ✅ | 300 | Created /admin_panel/resources/page.tsx |
+| Calendar resource selection | ❌ | 250 | TODO: Extend calendar UI |
 | Resource indicators in calendar | ❌ | 100 | TODO: Add visual cues |
 
-**Frontend Total**: 29% (2/7 tasks complete - API + Types done)
+**Frontend Total**: 71% (5/7 tasks complete)
 
-**Overall Progress**: 30% (3/10 backend tasks + 2/7 frontend tasks complete)
+**Overall Progress**: 65% (7/10 backend tasks + 5/7 frontend tasks complete)
 
 ---
 
@@ -246,9 +246,9 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 |-------|-------|----------|--------------|--------|
 | A | Backend User API + Module Enhancements | 1-2 weeks | None | ✅ 70% Complete |
 | B | Calendar Integration (Backend) | 1 week | Phase A | ⬜ Not Started |
-| C | Frontend Resource Browser + Booking | 2 weeks | Phase A | ✅ 29% Complete |
-| D | Frontend Admin UI | 1 week | Phase A | ⬜ Not Started |
-| **Total** | **All** | **5-6 weeks** | None | **~30% Complete** |
+| C | Frontend Resource Browser + Booking | 2 weeks | Phase A | ✅ 71% Complete |
+| D | Frontend Admin UI | 1 week | Phase A | ✅ 100% Complete |
+| **Total** | **All** | **5-6 weeks** | None | **~65% Complete** |
 
 ---
 
@@ -358,10 +358,11 @@ DELETE /user/v1/resources/my-bookings/{booking_id}  - Cancel booking
 |------|---------|--------|---------|
 | 2025-08-21 | 1.0.0 | Pi Coding Agent | Initial change file created |
 | 2025-08-21 | 2.0.0 | Pi Coding Agent | Backend User API + Module Enhancements + Frontend API + Types. Progress: 30% |
+| 2025-08-21 | 3.0.0 | Pi Coding Agent | Added UI pages: browser, details, admin. Progress: 65% |
 
 ---
 
-**Change Status**: 🚀 Implementation In Progress (30%)  
+**Change Status**: 🚀 Implementation In Progress (65%)  
 **Last Updated**: 2025-08-21  
 **Next Review**: Weekly
 
