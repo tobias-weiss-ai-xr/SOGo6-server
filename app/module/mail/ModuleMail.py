@@ -1065,9 +1065,17 @@ class ModuleMail:
         moved_uids: list[int] = []
 
         uid_list = [str(uid) for uid in mail_uids]
-        client.uid_copy(uid_list, to_folder)
-        client.add_flags_to_mail(from_folder, uid_list, ['\\Deleted'])
-        moved_uids.extend(mail_uids)
+        # Prefer the bulk UID COPY primitive when available; fall back to a
+        # per-mail loop for compatibility (e.g. minimal/fake IMAP clients).
+        if hasattr(client, "uid_copy"):
+            client.uid_copy(uid_list, to_folder)
+            client.add_flags_to_mail(from_folder, uid_list, ['\\Deleted'])
+            moved_uids.extend(mail_uids)
+        else:
+            for mail_uid in mail_uids:
+                client.copy_mail_to_mailbox(from_folder, str(mail_uid), to_folder)
+                client.add_flags_to_mail(from_folder, str(mail_uid), ['\\Deleted'])
+                moved_uids.append(mail_uid)
 
         logger_mail_server.info(
             "Moved %d mails from '%s' to '%s' (account %s)", len(moved_uids), from_folder, to_folder, account_id
@@ -1867,7 +1875,11 @@ class ModuleMail:
             # Efficient bulk move when all mails go to the same destination
             if data and isinstance(data, str):
                 moved = self.move_mails(account_id, folder_name, mail_uids, data)
-                return {"processed_ids": moved.get("moved_ids", mail_uids), "action": action}
+                return {
+                    "processed_ids": moved.get("moved_ids", mail_uids),
+                    "failed_ids": [],
+                    "action": action,
+                }
 
         # For other actions, process each mail individually
         processed_ids: list[int] = []

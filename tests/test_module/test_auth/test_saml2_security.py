@@ -31,6 +31,7 @@ def _make_saml_response(
     conditions_not_on_or_after: str = "2025-01-01T00:05:00Z",
     audience: str = "https://sogo.example.org/saml/metadata",
     sign: bool = False,
+    attributes: dict[str, list[str]] | None = None,
 ) -> str:
     """Build a SAML Response XML and base64-encode it."""
     in_response_to_attr = f'InResponseTo="{in_response_to}"' if in_response_to else ""
@@ -41,6 +42,15 @@ def _make_saml_response(
                 <saml:Audience>{audience}</saml:Audience>
             </saml:AudienceRestriction>
         </saml:Conditions>'''
+
+    # Build attribute statement from the attributes dict (default: mail)
+    attrs = attributes if attributes is not None else {"mail": [email]}
+    attrs_xml = "".join(
+        f'<saml:Attribute Name="{name}">' + "".join(
+            f"<saml:AttributeValue>{value}</saml:AttributeValue>" for value in values
+        ) + "</saml:Attribute>"
+        for name, values in attrs.items()
+    )
 
     xml = f"""<?xml version="1.0"?>
 <samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
@@ -66,9 +76,7 @@ def _make_saml_response(
       </saml:AuthnContext>
     </saml:AuthnStatement>
     <saml:AttributeStatement>
-        <saml:Attribute Name="mail">
-            <saml:AttributeValue>{email}</saml:AttributeValue>
-        </saml:Attribute>
+        {attrs_xml}
     </saml:AttributeStatement>
   </saml:Assertion>
 </samlp:Response>"""

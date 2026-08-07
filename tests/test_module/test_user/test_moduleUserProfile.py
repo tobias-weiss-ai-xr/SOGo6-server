@@ -923,9 +923,30 @@ def test_get_delegations_given_empty(monkeypatch):
 
 # ========== Tests for add_delegation_given ==========
 
-def test_add_delegation_given_not_implemented(monkeypatch):
-    """Test that add_delegation_given raises NotImplementedError."""
+def test_add_delegation_given_success(monkeypatch):
+    """Test adding a delegation that does not exist yet."""
     fake_client = FakeClientSQL()
+    fake_client.select_result = [(["existing@example.com"],)]
+    patch_import_manager(monkeypatch, fake_client)
+
+    process_settings = FakeProcessSettings()
+    domain_settings = get_default_domain_settings()
+    module = ModuleUserProfile(process_settings, domain_settings)
+
+    user = FakeUser()
+    result = module.add_delegation_given(user, 'delegate@example.com')
+
+    assert result == 'delegate@example.com'
+    # Both the SELECT and the UPDATE must have happened
+    assert len(fake_client.select_calls) == 1
+    assert len(fake_client.update_calls) == 1
+    assert fake_client.update_calls[0]['values'][0] == ["existing@example.com", 'delegate@example.com']
+
+
+def test_add_delegation_given_duplicate_raises(monkeypatch):
+    """Test that adding an already-existing delegation raises an error."""
+    fake_client = FakeClientSQL()
+    fake_client.select_result = [(["Delegate@Example.com"],)]  # case-insensitive duplicate
     patch_import_manager(monkeypatch, fake_client)
 
     process_settings = FakeProcessSettings()
@@ -934,8 +955,10 @@ def test_add_delegation_given_not_implemented(monkeypatch):
 
     user = FakeUser()
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RequestException) as exc_info:
         module.add_delegation_given(user, 'delegate@example.com')
+
+    assert exc_info.value.error.c == err.ERROR_DELEGATION_ALREADY_EXISTS.c
 
 
 # ========== Tests for _validate_signatures_size ==========

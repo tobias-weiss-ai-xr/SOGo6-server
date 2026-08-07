@@ -200,7 +200,8 @@ class Saml2Metadata:
             use = key_desc.get("use", "signing")
             if use not in ("signing", ""):
                 continue
-            for x509_data in key_desc.findall(f"{{{DSIG}}}X509Data", NS):
+            # X509Data is nested inside ds:KeyInfo — search at any depth
+            for x509_data in key_desc.findall(f".//{{{DSIG}}}X509Data", NS):
                 for x509_cert in x509_data.findall(f"{{{DSIG}}}X509Certificate", NS):
                     cert_text = (x509_cert.text or "").strip().replace("\n", "").replace(" ", "")
                     if cert_text:

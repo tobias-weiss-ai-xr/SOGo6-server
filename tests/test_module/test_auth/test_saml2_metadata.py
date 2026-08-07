@@ -45,20 +45,20 @@ FEDERATION_METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
       <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
       <md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
                                Location="https://idp1.example.org/idp/profile/SAML2/Redirect/SSO"/>
-      <md:Organization>
-        <md:OrganizationDisplayName>Example University 1</md:OrganizationDisplayName>
-      </md:Organization>
     </md:IDPSSODescriptor>
+    <md:Organization>
+      <md:OrganizationDisplayName>Example University 1</md:OrganizationDisplayName>
+    </md:Organization>
   </md:EntityDescriptor>
   <md:EntityDescriptor entityID="https://idp2.example.org/idp/shibboleth">
     <md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
       <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
       <md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
                                Location="https://idp2.example.org/idp/profile/SAML2/Redirect/SSO"/>
-      <md:Organization>
-        <md:OrganizationDisplayName>Example University 2</md:OrganizationDisplayName>
-      </md:Organization>
     </md:IDPSSODescriptor>
+    <md:Organization>
+      <md:OrganizationDisplayName>Example University 2</md:OrganizationDisplayName>
+    </md:Organization>
   </md:EntityDescriptor>
   <md:EntityDescriptor entityID="https://sp.example.org/sp/shibboleth">
     <md:SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">

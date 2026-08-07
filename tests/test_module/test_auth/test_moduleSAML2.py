@@ -126,13 +126,16 @@ def _make_saml_response(
     """Build a minimal SAML Response XML and base64-encode it."""
     attrs_xml = ""
     if attributes:
+        attr_parts = []
         for name, values in attributes.items():
             attr_xml = f'<saml:Attribute Name="{name}">'
             for v in values:
                 attr_xml += f"<saml:AttributeValue>{v}</saml:AttributeValue>"
             attr_xml += "</saml:Attribute>"
-        attrs_xml = f"<saml:AttributeStatement>{attrs_xml}{attr_xml}</saml:AttributeStatement>"
-        attrs_xml = f"<saml:AttributeStatement>{attr_xml}</saml:AttributeStatement>"
+            attr_parts.append(attr_xml)
+        attrs_xml = (
+            f"<saml:AttributeStatement>{"".join(attr_parts)}</saml:AttributeStatement>"
+        )
 
     email_attr = ""
     if email and not attributes:

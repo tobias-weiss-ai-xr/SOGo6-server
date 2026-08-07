@@ -84,7 +84,8 @@ try:
     from saml2.saml import NAMEID_FORMAT_EMAILADDRESS, NAMEID_FORMAT_TRANSIENT, NAMEID_FORMAT_PERSISTENT
     from saml2.s_utils import deflate_and_base64_encode
     from saml2.sigver import SecurityContext
-    from saml2.validate import ValidatingError
+    from saml2.response import VerificationError
+    from saml2.entity import SigverError, UnravelError
 
     PYSAML2_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -180,7 +181,7 @@ class ModuleSAML2:
     # ------------------------------------------------------------------
 
     def _build_sp_config(self) -> Any:
-        """Build a pysaml2 ``SPConfig`` from the SP parameters.
+        """Build a pysaml2 ``SPConfig`` from the SP parameters (dict-based API).
 
         :returns: A configured ``SPConfig`` instance.
         :raises RequestException: If required parameters are missing.
@@ -188,41 +189,45 @@ class ModuleSAML2:
         if not PYSAML2_AVAILABLE:
             raise RequestException("pysaml2 is not installed", err.ERROR_SAML_NOT_CONFIGURED)
 
-        config = SPConfig()
-        config.setattr("entityid", self._entity_id)
-        config.setattr("name", "SOGo SAML2 SP")
-
-        # ACS URL
         acs_url = self._acs_url or ""
-        config.setattr("service", {
-            "sp": {
-                "endpoints": {
-                    "assertion_consumer_service": [
-                        (acs_url, BINDING_HTTP_POST),
-                    ],
-                    "single_logout_service": [
-                        (acs_url, BINDING_HTTP_REDIRECT),
-                    ],
-                },
-                "allow_unsolicited": True,
-                "authn_requests_signed": bool(self._x509_cert),
-                "want_assertions_signed": self._want_assertions_signed,
-                "want_assertions_encrypted": self._want_assertions_encrypted,
-                "want_response_signed": self._want_response_signed,
-                "want_name_id": True,
-                "name_id_format": self._nameid_format,
-            }
-        })
+        config_dict: dict[str, Any] = {
+            "entityid": self._entity_id,
+            "name": "SOGo SAML2 SP",
+            "service": {
+                "sp": {
+                    "endpoints": {
+                        "assertion_consumer_service": [
+                            (acs_url, BINDING_HTTP_POST),
+                        ],
+                        "single_logout_service": [
+                            (acs_url, BINDING_HTTP_REDIRECT),
+                        ],
+                    },
+                    "allow_unsolicited": True,
+                    "authn_requests_signed": bool(self._x509_cert),
+                    "want_assertions_signed": self._want_assertions_signed,
+                    "want_assertions_encrypted": self._want_assertions_encrypted,
+                    "want_response_signed": self._want_response_signed,
+                    "want_name_id": True,
+                    "name_id_format": self._name_id_format,
+                }
+            },
+            "organization": {
+                "name": "SOGo",
+                "display_name": "SOGo Webmail",
+                "url": self._entity_id,
+            },
+            "accepted_time_diff": self._clock_skew,
+        }
 
         # SP keypair
         if self._x509_cert and self._x509_key:
-            config.setattr("key_file", self._x509_key)
-            config.setattr("cert_file", self._x509_cert)
-            # Inline key/cert for non-file-based usage
-            config.setattr("encryption_keypairs", [{
+            config_dict["key_file"] = self._x509_key
+            config_dict["cert_file"] = self._x509_cert
+            config_dict["encryption_keypairs"] = [{
                 "key_file": self._x509_key,
                 "cert_file": self._x509_cert,
-            }])
+            }]
 
         # IdP metadata (inline)
         idp_data: dict[str, Any] = {}
@@ -236,20 +241,12 @@ class ModuleSAML2:
         # Build IdP metadata inline
         if idp_data:
             metadata_str = self._build_idp_metadata_xml(idp_data)
-            config.setattr("metadata", {
+            config_dict["metadata"] = {
                 "inline": [metadata_str],
-            })
+            }
 
-        # Security settings
-        config.setattr("organization", {
-            "name": "SOGo",
-            "display_name": "SOGo Webmail",
-            "url": self._entity_id,
-        })
-
-        # Clock skew
-        config.setattr("accepted_time_diff", self._clock_skew)
-
+        config = SPConfig()
+        config.load(config_dict)
         return config
 
     def _build_idp_metadata_xml(self, idp_data: dict[str, Any]) -> str:
@@ -513,7 +510,7 @@ class ModuleSAML2:
                 saml_response_b64,
                 BINDING_HTTP_POST,
             )
-        except ValidatingError as exc:
+        except (VerificationError, SigverError, UnravelError) as exc:
             # Check for specific validation errors
             exc_str = str(exc).lower()
             if "signature" in exc_str:
@@ -714,6 +711,11 @@ class ModuleSAML2:
         # Map attributes
         mapped = self._map_attributes(attributes)
 
+        # InResponseTo (replay protection) — checked in every mode
+        in_response_to = root.get("InResponseTo", "")
+        if in_response_to:
+            self._consume_in_response_to(in_response_to)
+
         # SessionIndex
         session_index = ""
         authn_statement = (
@@ -736,7 +738,7 @@ class ModuleSAML2:
             "attributes": attributes,
             "session_index": session_index,
             "issuer": assertion_issuer,
-            "in_response_to": "",
+            "in_response_to": in_response_to,
         }
         logger_api.warning(
             "SAML2 response processed in LEGACY mode (no signature verification): name_id=%s", name_id

@@ -2,6 +2,8 @@
 Tests unitaires pour InterfaceApiMailFolder (Interface layer).
 Ces tests utilisent un fake ModuleMail pour tester la logique de l'interface.
 """
+import io
+
 from app.interface.mail.InterfaceApiMailFolder import InterfaceApiMailFolder
 from app.utils.exceptions import RequestException
 from app.utils import errors as err
@@ -85,6 +87,7 @@ class FakeModuleMail:
         self.get_folder_share_args = None
         self.share_folder_args = None
         self.export_folder_mails_args = None
+        self.export_folder_mails_result = None
 
         # Configurable results
         self.get_folder_list_result = [{"name": "INBOX"}, {"name": "Sent"}]
@@ -112,9 +115,9 @@ class FakeModuleMail:
         """Simulate deleting a folder."""
         self.delete_folder_args = folder_name
 
-    def move_mails(self, from_folder, mail_uids, to_folder):
+    def move_mails(self, account_id, from_folder, mail_uids, to_folder):
         """Simulate moving mails from one folder to another."""
-        self.move_mails_args = (from_folder, mail_uids, to_folder)
+        self.move_mails_args = (account_id, from_folder, mail_uids, to_folder)
         return self.move_mails_result
 
     def expunge_folder(self, account_id, folder_name, do_subfolders=True):
@@ -122,9 +125,9 @@ class FakeModuleMail:
         self.expunge_folder_args = folder_name
         return self.expunge_folder_result
 
-    def update_folder(self, folder_name, folder_data):
+    def update_folder(self, account_id, folder_name, folder_data):
         """Simulate updating a folder."""
-        self.update_folder_args = (folder_name, folder_data)
+        self.update_folder_args = (account_id, folder_name, folder_data)
         return self.update_folder_result
 
     def get_one_folder(self, account_id, folder_name):
@@ -147,10 +150,10 @@ class FakeModuleMail:
         self.share_folder_args = (folder_path, share_data)
         return iter(self.share_folder_result)
 
-    def export_folder_mails(self, folder_name):
+    def export_folder_mails(self, account_id, folder_name):
         """Simulate exporting mails from a folder."""
-        self.export_folder_mails_args = folder_name
-        return {"exported": True, "count": 42}
+        self.export_folder_mails_args = (account_id, folder_name)
+        return self.export_folder_mails_result
 
 
 def make_interface(monkeypatch, fake_module, user_conf=None):
@@ -262,7 +265,7 @@ def test_move_mails_success(monkeypatch):
 
     assert status_code == 200
     assert result["data"]["moved_ids"] == [11, 22]
-    assert fake_module.move_mails_args == ("INBOX", [11, 22], "Sent")
+    assert fake_module.move_mails_args == (0, "INBOX", [11, 22], "Sent")
 
 
 def test_move_mails_module_error(monkeypatch):
@@ -317,7 +320,7 @@ def test_update_folder_success(monkeypatch):
 
     assert status_code == 200
     assert result["data"]["name"] == "RenamedFolder"
-    assert fake_module.update_folder_args == ("OldFolder", folder_data)
+    assert fake_module.update_folder_args == (0, "OldFolder", folder_data)
 
 
 def test_update_folder_module_error(monkeypatch):
@@ -391,22 +394,22 @@ def test_purge_folder_mails_module_error(monkeypatch):
 # ========== Tests for export_folder_mails ==========
 
 def test_export_folder_mails_success(monkeypatch):
-    """Test exporting folder mails for a valid account."""
+    """Test exporting folder mails for a valid account (BytesIO buffer)."""
     fake_module = FakeModuleMail()
+    fake_module.export_folder_mails_result = io.BytesIO(b"PK\x03\x04fake-zip")
     interface = make_interface(monkeypatch, fake_module)
 
-    result, status_code = interface.export_folder_mails(account_id=0, folder_name="INBOX")
+    result = interface.export_folder_mails(account_id=0, folder_name="INBOX")
 
-    assert status_code == 200
-    assert result["data"]["exported"] is True
-    assert result["data"]["count"] == 42
-    assert fake_module.export_folder_mails_args == "INBOX"
+    assert isinstance(result, io.BytesIO)
+    assert result.getvalue() == b"PK\x03\x04fake-zip"
+    assert fake_module.export_folder_mails_args == (0, "INBOX")
 
 
 def test_export_folder_mails_module_error(monkeypatch):
     """Test error handling when exporting folder mails fails."""
     fake_module = FakeModuleMail()
-    fake_module.export_folder_mails = lambda x: (_ for _ in ()).throw(RequestException("Cannot export", err.ERROR_VALIDATION_ERROR))
+    fake_module.export_folder_mails = lambda account_id, folder_name: (_ for _ in ()).throw(RequestException("Cannot export", err.ERROR_VALIDATION_ERROR))
     interface = make_interface(monkeypatch, fake_module)
 
     result, status_code = interface.export_folder_mails(account_id=0, folder_name="INBOX")

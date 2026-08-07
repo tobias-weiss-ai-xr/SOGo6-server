@@ -38,53 +38,64 @@ def fake_process():
 
 @pytest.fixture
 def fake_db():
-    """Fake DB client that stores rows in memory."""
+    """Fake DB client that stores rows in memory (tuple rows, column layout from insert)."""
     class FakeDB:
         def __init__(self):
             self.rows: dict[str, list[tuple]] = {}
+            self.layouts: dict[str, tuple] = {}
             self._next_id = 1
 
         def connect(self):
             pass
 
         def select_from_table(self, table_name, column_tuple, condition=None, **kwargs):
-            rows = self.rows.get(table_name, [])
-            # Simple condition filtering for EqualCondition
-            if condition and hasattr(condition, "column_name") and hasattr(condition, "value"):
-                filtered = []
-                for row in rows:
-                    # row is a list matching column_tuple order
-                    col_idx = list(column_tuple).index(condition.column_name)
-                    if row[col_idx] == condition.value:
-                        filtered.append(row)
-                return iter(filtered)
-            return iter(rows)
+            layout = self.layouts.get(table_name)
+            if layout is None:
+                return iter([])
+            idx = {col: i for i, col in enumerate(layout)}
+            result = []
+            for row in self.rows.get(table_name, []):
+                if condition and hasattr(condition, "param_name") \
+                        and row[idx.get(condition.param_name, -1)] != condition.param_value:
+                    continue
+                # Project to the requested column tuple (real DB returns only those)
+                result.append(tuple(row[idx[c]] for c in column_tuple if c in idx))
+            return iter(result)
 
         def insert_in_table(self, table_name, column_tuple, values_list):
+            if table_name not in self.layouts:
+                self.layouts[table_name] = tuple(column_tuple)
             if table_name not in self.rows:
                 self.rows[table_name] = []
             for values in values_list:
                 self.rows[table_name].append(tuple(values))
 
         def update_in_table(self, table_name, column_tuple, values_list, condition):
-            rows = self.rows.get(table_name, [])
-            for i, row in enumerate(rows):
-                # Check condition
-                col_idx = list(column_tuple).index(condition.column_name) if hasattr(condition, "column_name") else None
-                if col_idx is not None and row[col_idx] == condition.value:
-                    # Update the row
-                    new_row = list(row)
-                    for j, col in enumerate(column_tuple):
-                        # Find the index in the original column tuple of the table
-                        new_row[j] = values_list[0][j]
-                    self.rows[table_name][i] = tuple(new_row)
+            layout = self.layouts.get(table_name)
+            if layout is None or not self.rows.get(table_name):
+                return 0
+            idx = {col: i for i, col in enumerate(layout)}
+            updated = 0
+            for i, row in enumerate(self.rows[table_name]):
+                if hasattr(condition, "param_name") \
+                        and row[idx.get(condition.param_name, -1)] != condition.param_value:
+                    continue
+                new_row = list(row)
+                for col, value in zip(column_tuple, values_list[0]):
+                    new_row[idx[col]] = value
+                self.rows[table_name][i] = tuple(new_row)
+                updated += 1
+            return updated
 
         def delete_row_in_table(self, table_name, condition, expected_row=0):
-            rows = self.rows.get(table_name, [])
-            if hasattr(condition, "column_name") and hasattr(condition, "value"):
+            layout = self.layouts.get(table_name)
+            if layout is None:
+                return
+            idx = {col: i for i, col in enumerate(layout)}
+            if hasattr(condition, "param_name"):
                 self.rows[table_name] = [
-                    row for row in rows
-                    if not row[list(self._get_columns(table_name)).index(condition.column_name)] == condition.value
+                    row for row in self.rows.get(table_name, [])
+                    if row[idx.get(condition.param_name, -1)] != condition.param_value
                 ]
 
         def _get_columns(self, table_name):
