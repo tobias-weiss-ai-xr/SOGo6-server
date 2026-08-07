@@ -162,7 +162,7 @@ class ModuleAdminUser:
         try:
             users.sort(key=lambda u: (u.get(sort_by) or [""])[0], reverse=reverse)
         except (KeyError, IndexError):
-            pass
+            pass  # best-effort: keep fallback/default value on failure
 
         total = len(users)
 

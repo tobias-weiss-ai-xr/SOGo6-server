@@ -6,7 +6,6 @@ package with the global ``/admin/v1`` prefix).
 
 from __future__ import annotations
 
-from typing import Any
 
 from flask.views import MethodView
 from flask_smorest import Blueprint
@@ -18,22 +17,12 @@ from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.exceptions import RequestException
 
 from .schemas.email_auth import (
-    DkimConfigResponseSchema,
     DkimConfigSchema,
-    DkimGenerateResponseSchema,
     DkimGenerateSchema,
-    DkimValidateResponseSchema,
-    DmarcConfigResponseSchema,
     DmarcConfigSchema,
-    DmarcValidateResponseSchema,
     EmailAuthDomainCreateSchema,
-    EmailAuthDomainResponseSchema,
-    EmailAuthDomainStatusSchema,
-    EmailAuthTestResultSchema,
     EmailAuthTestSchema,
-    SpfConfigResponseSchema,
     SpfConfigSchema,
-    SpfValidateResponseSchema,
 )
 
 blp = Blueprint(

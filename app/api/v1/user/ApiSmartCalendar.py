@@ -6,10 +6,6 @@ meeting times to suggest optimal meeting slots.
 from __future__ import annotations
 
 import json
-import time
-from typing import TYPE_CHECKING
-
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -17,10 +13,6 @@ from marshmallow import Schema, fields
 
 from app.service import sogo_cache
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Smart Calendar", __name__, url_prefix="/ai/smart-calendar")
 
@@ -111,8 +103,8 @@ class ApiSmartCalendarAnalyze(MethodView):
     @blp.arguments(AnalyzePatternSchema)
     def post(self, body: dict) -> ResponseReturnValue:
         """Analyze a user's historical meeting patterns."""
-        cache = sogo_cache()
-        uid = body["attendee_uid"]
+        _ = sogo_cache()
+        _ = body["attendee_uid"]
 
         # In production: query calendar module for historical events
         # Return typical patterns

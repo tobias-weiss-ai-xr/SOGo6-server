@@ -7,12 +7,10 @@ and database persistence for per-user TOTP configurations.
 
 from __future__ import annotations
 
-import base64
 from typing import TYPE_CHECKING, Any
 
 import pyotp
 
-from app.config.db import tables as tbl
 from app.config.settings.ProcessSetting import process_config
 from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException

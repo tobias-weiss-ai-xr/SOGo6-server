@@ -1,12 +1,11 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from flask import g, request, Response
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
-from app.config.settings.SystemSettings import SystemSettingsObj
 from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import errors as err
@@ -507,7 +506,6 @@ class ApiAuthSaml2Discovery(MethodView):
         """Accept the selected IdP entity ID and return the AuthnRequest URL."""
         from app.config.settings.DomainSettings import AuthSettingsObj
         from app.config.settings.ProcessSetting import process_config
-        from app.interface.auth.InterfaceAuthSSO import InterfaceAuthSSO
         from app.config.init_config import init_get_system_and_default_domain_settings
 
         data = request.get_json(silent=True) or {}

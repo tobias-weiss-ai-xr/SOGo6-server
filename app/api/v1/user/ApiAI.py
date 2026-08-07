@@ -4,15 +4,13 @@ Exposes AI service functions via REST endpoints for the frontend.
 """
 from __future__ import annotations
 
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
 
-from app.service.ai.AIService import get_model_backend, cached_ai_result
+from app.service.ai.AIService import get_model_backend
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
 
 blp = Blueprint("AI Service", __name__, url_prefix="/ai")
 

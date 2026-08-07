@@ -169,7 +169,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     def delete_calendar(self, user: User, key: str) -> None:
         """Delete a calendar and all its events."""
         source: CalendarSource = self.get_calendar(user, key)
-        calendar_user: CalendarUser = CalendarUser(user=user, owner=user)
+        _ = CalendarUser(user=user, owner=user)
         self._acl.check_permission(
             source.calendar.permissions, CalendarPermissionAction.DELETE,
         )

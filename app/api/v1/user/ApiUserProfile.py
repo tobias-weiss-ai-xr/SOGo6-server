@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from flask import g, Response
+from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -13,7 +13,6 @@ from .schema import userPreferences as sch
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
-    from app.utils.api.paginate_sort_filter import FakePaginationParameters
     from app.auth.User import User
 
 
@@ -28,7 +27,7 @@ def init_user_profile() -> None:
     """
     logger_api.debug("Calling before_request for ApiUserPreferences")
     process: ProcessSetting = g.process_settings
-    system_settings: dict = g.system_settings
+    _ = g.system_settings
     user_domain: dict = g.user_domain_settings
     user: User = g.user
     interface_api = InterfaceUserProfile(process_settings=process, user_domain=user_domain, user=user)

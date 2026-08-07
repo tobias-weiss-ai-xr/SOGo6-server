@@ -13,8 +13,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from flask import g
 from flask.views import MethodView
@@ -25,7 +24,6 @@ from marshmallow import Schema, fields, validate
 from app.service import sogo_cache
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
@@ -115,7 +113,7 @@ class ApiTokenListCreate(MethodView):
                         "last_used_at": data.get("last_used_at"),
                     })
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"tokens": tokens})
 
     @blp.arguments(ApiTokenCreateSchema)

@@ -53,7 +53,7 @@ class ApiWorkflowListCreate(MethodView):
                 try:
                     workflows.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"workflows": workflows})
 
     @blp.arguments(WorkflowCreateSchema)

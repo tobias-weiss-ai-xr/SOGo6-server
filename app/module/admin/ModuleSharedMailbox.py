@@ -596,6 +596,6 @@ class ModuleSharedMailbox:
                             is_nullable=True,
                         )
                     except Exception:
-                        pass  # Column may already exist or add_column not supported
+                        continue
         except Exception:
-            pass  # Best-effort migration
+            pass  # Best-effort migration  # best-effort: keep fallback/default value on failure

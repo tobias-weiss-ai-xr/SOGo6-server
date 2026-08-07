@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
@@ -24,10 +22,6 @@ from .schemas.team_calendar import (
     TeamCalendarInviteResponseSchema,
     TeamCalendarInviteAcceptResponseSchema,
 )
-
-if TYPE_CHECKING:
-    from app.auth.User import User
-    from app.config.settings.ProcessSetting import ProcessSetting
 
 blp = Blueprint("Team Calendar", __name__, url_prefix="")
 

@@ -21,10 +21,10 @@ class ConfigSystemDomain():
         db_type = process_config["SOGO_P_DB_TYPE"]
         if db_type == "MySQL":
             from app.manager.db.ClientMySQL import ClientMySQL
-            db_client = ClientMySQL(**db_config)
+            _ = ClientMySQL(**db_config)
         else:
             from app.manager.db.ClientPostgreSQL import ClientPostgreSQL
-            db_client = ClientPostgreSQL(**db_config)
+            _ = ClientPostgreSQL(**db_config)
 
 
     def init_without_domain(self):

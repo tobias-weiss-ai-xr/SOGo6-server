@@ -16,9 +16,7 @@ methods resolve real records; otherwise they return ``dns_lookup_available``
 from __future__ import annotations
 
 import base64
-import binascii
 import hashlib
-import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any

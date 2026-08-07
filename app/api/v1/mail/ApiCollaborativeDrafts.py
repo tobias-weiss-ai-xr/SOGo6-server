@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import secrets
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from flask import g
 from flask.views import MethodView
@@ -46,7 +46,7 @@ class ApiSharedDraftListCreate(MethodView):
                 try:
                     drafts.append(json.loads(raw_d))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"drafts": drafts})
 
     @blp.arguments(SharedDraftCreateSchema)

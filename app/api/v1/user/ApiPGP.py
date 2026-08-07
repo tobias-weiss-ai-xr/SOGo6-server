@@ -12,7 +12,6 @@ from marshmallow import Schema, fields
 from app.svc.pgp.PGPKeyManager import PGPKeyManager
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import errors as err
-from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
@@ -138,5 +137,5 @@ class ApiPGPDecrypt(MethodView):
         try:
             decrypted = manager.decrypt_message(data["armored_message"], privkey)
             return create_api_base_response({"plaintext": decrypted})
-        except ValueError as e:
+        except ValueError:
             return create_api_base_response(None, err.ERROR_PGP_DECRYPT_FAILED)

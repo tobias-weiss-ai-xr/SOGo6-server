@@ -6,7 +6,7 @@ responses.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from app.module.auth.ModulePasswordReset import ModulePasswordReset
 from app.utils.api.ApiBaseResponse import create_api_base_response
@@ -15,7 +15,6 @@ from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
-    from app.auth.User import User
 
 # Default SMTP configuration for Stalwart
 SMTP_HOST = "sogo6-stalwart"
@@ -46,7 +45,6 @@ class InterfacePasswordReset:
 
         Returns an API response (always 200 OK to avoid user enumeration).
         """
-        from app.utils import errors as err
         from app.config.init_config import init_get_user_domain_settings
         from app.config.settings.DomainSettings import AuthSettings, AuthSettingsObj
 
@@ -123,7 +121,7 @@ class InterfacePasswordReset:
                     smtp_port=SMTP_PORT,
                 )
             except Exception:
-                pass  # Already logged in the module
+                pass  # Already logged in the module  # best-effort: keep fallback/default value on failure
 
         logger_api.info("Password-reset initiated for uid=%s", user_uid)
         return create_api_base_response({"requested": True})
@@ -133,7 +131,6 @@ class InterfacePasswordReset:
 
         Returns the API response with ``user_uid`` on success or an error.
         """
-        from app.utils import errors as err
 
         try:
             result = self.module.validate_token(token)
@@ -147,7 +144,6 @@ class InterfacePasswordReset:
 
         Returns an API response.
         """
-        from app.utils import errors as err
 
         # 1. Validate token
         try:

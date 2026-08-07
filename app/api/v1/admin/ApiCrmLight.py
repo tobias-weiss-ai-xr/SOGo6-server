@@ -18,7 +18,6 @@ from marshmallow import Schema, fields, validate
 
 from app.service import sogo_cache
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
     from app.auth.User import User
@@ -61,7 +60,7 @@ class ApiCrmAccounts(MethodView):
                 try:
                     accounts.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"accounts": accounts})
 
     @blp.arguments(AccountCreateSchema)
@@ -96,7 +95,7 @@ class ApiCrmContacts(MethodView):
                 try:
                     contacts.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"contacts": contacts})
 
     @blp.arguments(ContactUpdateSchema)

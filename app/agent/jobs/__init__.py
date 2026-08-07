@@ -7,3 +7,5 @@ it up at boot.
 from app.agent.jobs import JobCanceller  # noqa: F401
 from app.agent.jobs import JobRecovery  # noqa: F401
 from app.agent.jobs import ScheduleSendJob  # noqa: F401
+
+__all__ = ["JobCanceller", "JobRecovery", "ScheduleSendJob"]

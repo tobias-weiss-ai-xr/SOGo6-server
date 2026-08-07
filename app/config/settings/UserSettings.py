@@ -4,14 +4,13 @@
 Defines all users parameters
 """
 from typing import Type
-from marshmallow import fields, validate
 from app.config.settings.SogoSchema import SogoSchema
 from app.utils.config.generateObjFromSchema import SettingsObj
 from app.utils import constants as cs
 
 import zoneinfo
 
-from marshmallow import Schema, fields, validate, validates_schema, ValidationError
+from marshmallow import Schema, fields, validate
 
 TIMEZONES = zoneinfo.available_timezones()
 

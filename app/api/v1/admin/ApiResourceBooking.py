@@ -87,7 +87,6 @@ class ResourceAvailableListSchema(Schema):
 
 def _get_module() -> ModuleResourceBooking:
     if not hasattr(g, "_resource_booking_module"):
-        from app.manager.db.ClientSQL import ClientSQL
         from app.utils.module.importManager import import_and_instantiate_manager
 
         process = g.process_settings

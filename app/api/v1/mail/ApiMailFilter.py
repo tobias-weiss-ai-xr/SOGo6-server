@@ -264,7 +264,7 @@ class ApiMailFilterTemplatesResource(MethodView):
                 },
             },
         ]
-        interface: InterfaceApiMailFilter = g.inter
+        _ = g.inter
         return create_api_base_response(templates)
 
 

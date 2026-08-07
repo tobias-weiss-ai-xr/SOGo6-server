@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import secrets
 import time
-from typing import Any
 
 from flask import request, Response
 from flask.views import MethodView
@@ -20,7 +18,6 @@ from flask_smorest import Blueprint
 
 from app.service import sogo_cache
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
 
 blp = Blueprint("JMAP Protocol", __name__, url_prefix="/jmap")
 
@@ -123,7 +120,7 @@ def _jmap_get_email_list(account_id: str, args: dict) -> list:
     """JMAP Email/query (RFC 8621 §4.4)."""
     filter_condition = args.get("filter", {})
     sort = args.get("sort", [{"property": "receivedAt", "isAscending": False}])
-    limit = args.get("limit", 50)
+    _ = args.get("limit", 50)
     
     # Build a search from JMAP filter conditions
     # Real: translate to IMAP SEARCH or SQL
@@ -154,7 +151,7 @@ def _jmap_get_email_list(account_id: str, args: dict) -> list:
 def _jmap_get_email(account_id: str, args: dict) -> list:
     """JMAP Email/get (RFC 8621 §4.1)."""
     ids = args.get("ids", [])
-    properties = args.get("properties", [
+    _ = args.get("properties", [
         "id", "blobId", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
         "subject", "sentAt", "receivedAt", "size", "preview", "bodyStructure",
         "hasAttachment", "keywords",
@@ -171,7 +168,7 @@ def _jmap_get_email(account_id: str, args: dict) -> list:
 def _jmap_set_mailboxes(account_id: str, args: dict) -> list:
     """JMAP Mailbox/set (RFC 8621 §2.3)."""
     create = args.get("create", {})
-    update = args.get("update", {})
+    _ = args.get("update", {})
     destroy = args.get("destroy", [])
     
     created = {}
@@ -253,9 +250,9 @@ class JmapApi(MethodView):
         Processes batched method calls and returns batched responses.
         """
         body = request.get_json(force=True)
-        using = body.get("using", [])
+        _ = body.get("using", [])
         method_calls = body.get("methodCalls", [])
-        created_ids = body.get("createdIds", {})
+        _ = body.get("createdIds", {})
         account_id = body.get("accountId", "default")
         
         if not method_calls:

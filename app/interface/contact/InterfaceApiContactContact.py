@@ -43,9 +43,7 @@ if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.module.contact.model.CardContact import CardContact
     from app.module.contact.model.CardList import CardList
-    from app.module.contact.model.ContactImportResult import ContactImportResult
     from app.module.contact.source.ContactSource import ContactSource
-    from collections.abc import Callable
 
     from app.utils.api.paginate_sort_filter import CollectionPaginateArgs, CustomPaginateResponse
 

@@ -28,11 +28,11 @@ not constrained by the JSON content-type middleware.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import xml.etree.ElementTree as ET
-from flask import Blueprint, Response, current_app, g, request
+from flask import Blueprint, Response, current_app, request
 from werkzeug.exceptions import HTTPException
 
 from app.module.caldav.ModuleCalDAV import (
@@ -434,7 +434,7 @@ def _report_sync_collection(resource, root: ET.Element) -> Response:
                         try:
                             limit = min(int(child.text.strip()), MAX_SYNC_LIMIT)
                         except ValueError:
-                            pass
+                            continue
             elif local == "calendar-data":
                 include_data = True
 
@@ -485,7 +485,7 @@ def _report_calendar_query(resource, root: ET.Element) -> Response:
     for event in module.list_events(resource.email or "", resource.calendar_name or ""):
         if time_range is not None:
             start, end = time_range
-            from datetime import timedelta, timezone as _tz
+            from datetime import timezone as _tz
             periods = module._event_periods_in_range(event, start or datetime.min.replace(tzinfo=_tz.utc), end or datetime.max.replace(tzinfo=_tz.utc))
             if not periods:
                 continue

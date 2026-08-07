@@ -7,18 +7,12 @@ from __future__ import annotations
 
 import json
 import time
-from typing import TYPE_CHECKING
-
 from flask import g, Response, stream_with_context
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
 from app.service import sogo_cache
-from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Live Updates", __name__, url_prefix="/live")
 
@@ -29,13 +23,13 @@ class ApiLiveEvents(MethodView):
 
     def get(self) -> ResponseReturnValue:
         """Subscribe to real-time events via Server-Sent Events."""
-        user: User = g.user
-        cache = sogo_cache()
+        _ = g.user
+        _ = sogo_cache()
 
         def generate():
             # Send initial connection event
             yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
-            last_check = time.time()
+            _ = time.time()
 
             while True:
                 # Check for new events for this user

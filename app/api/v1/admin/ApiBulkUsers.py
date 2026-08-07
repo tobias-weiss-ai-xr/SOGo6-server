@@ -10,10 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-import time
-from typing import TYPE_CHECKING, Any
-
-from flask import g, Response
+from flask import Response
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -23,7 +20,6 @@ from marshmallow.validate import Length
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-from app.service import sogo_cache
 
 
 def sanitize_csv_field(value: str) -> str:
@@ -50,9 +46,6 @@ def sanitize_csv_field(value: str) -> str:
         return f"'{value}"
     
     return value
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Bulk Users", __name__, url_prefix="/bulk-users")
 

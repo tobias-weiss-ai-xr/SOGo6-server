@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import secrets
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from flask import g
 from flask.views import MethodView
@@ -62,7 +62,7 @@ class ApiPollListCreate(MethodView):
                 try:
                     polls.append(json.loads(raw_poll))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"polls": polls})
 
     @blp.arguments(PollCreateSchema)

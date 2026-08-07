@@ -11,12 +11,8 @@ import base64
 import hashlib
 import hmac
 import json
-import struct
 import time
 import urllib.request
-from datetime import datetime, timezone
-from typing import Any
-from urllib.parse import urlparse
 
 from app.service import sogo_cache
 from app.utils.logger.logger import logger_api
@@ -50,7 +46,7 @@ def _generate_vapid_keys() -> tuple[str, str]:
 
     Simplified implementation for development. In production, use pre-generated keys.
     """
-    from cryptography.hazmat.primitives import asymmetric, serialization
+    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ec
 
     private_key = ec.generate_private_key(ec.SECP256R1())
@@ -149,7 +145,7 @@ class PushService:
                 try:
                     subs.append(json.loads(raw))
                 except json.JSONDecodeError:
-                    pass
+                    continue
         return subs
 
     def send_notification(

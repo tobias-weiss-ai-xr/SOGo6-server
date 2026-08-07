@@ -9,22 +9,15 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 import time
-from typing import TYPE_CHECKING
-
 from flask import request, Response
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields
 
 from app.service import sogo_cache
-from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("SCIM Provisioning", __name__, url_prefix="/scim/v2")
 
@@ -99,7 +92,7 @@ class ScimUsers(MethodView):
                 try:
                     users.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         # SCIM list response
         return Response(
             json.dumps({

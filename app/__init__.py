@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import os
 from json import loads, dumps
@@ -19,7 +19,6 @@ from app.auth.Admin import Admin, AdminAnonymous
 from app.auth.service.VoucherUserService import VoucherUserService
 from app.auth.service.VoucherAdminService import VoucherAdminService
 from app.config.settings.ProcessSetting import process_config
-from app.config.settings.SystemSettings import SystemSettingsObj
 from app.config.init_config import init_get_system_and_default_domain_settings, init_get_user_domain_settings
 import app.utils.errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response, ApiBaseResponse

@@ -6,10 +6,8 @@ the process-configured ``Client<DB_TYPE>`` manager and its live connection.
 """
 from __future__ import annotations
 
-from typing import Any
 
 from app.config.settings.ProcessSetting import process_config
-from app.utils.logger.logger import logger
 from app.utils.module.importManager import import_and_instantiate_manager
 
 

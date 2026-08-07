@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import secrets
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from flask import g
 from flask.views import MethodView
@@ -58,7 +58,7 @@ class ApiSlotListCreate(MethodView):
                 try:
                     slots.append(json.loads(raw_slot))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"slots"})
 
     @blp.arguments(SlotCreateSchema)
@@ -148,5 +148,5 @@ class ApiSlotBookings(MethodView):
                         try:
                             bookings.append(json.loads(raw_b))
                         except Exception:
-                            pass
+                            continue
         return create_api_base_response({"bookings": bookings})

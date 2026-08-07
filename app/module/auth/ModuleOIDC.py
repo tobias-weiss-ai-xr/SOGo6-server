@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import secrets
 from typing import Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode
 
 from authlib.integrations.requests_client import OAuth2Session
 from authlib.jose import JsonWebKey, JsonWebToken

@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.module.calendar.model.CalResource import CalResource
-from app.module.calendar.repository.RepositoryCalendar import RepositoryCalendar
 from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCalendarShare
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
@@ -390,8 +389,6 @@ class ModuleResourceBooking:
         # Get the calendar to use (default to user's primary calendar)
         try:
             from app.config.settings.ProcessSetting import ProcessSetting
-            from app.manager.cache.ClientRedis import ClientRedis
-            from app.module.calendar.ModuleCalendar import ModuleCalendar
             
             module_calendar: ModuleCalendar = ModuleCalendar(
                 process_settings=ProcessSetting(),
@@ -823,7 +820,6 @@ class ModuleResourceBooking:
         """
         from app.module.calendar.repository.RepositoryEvent import RepositoryEvent
         from app.module.calendar.model.enums.EventStatus import EventStatus
-        from app.module.calendar.model.CalEvent import CalEvent
         
         try:
             # First, get the booking to verify ownership
@@ -857,7 +853,7 @@ class ModuleResourceBooking:
                 logger.debug("Could not update sogo6_resource_bookings table (may not exist): %s", exc)
             
             # If we have an event, cancel it
-            event_id = booking.get("event_id")
+            _ = booking.get("event_id")
             event_key = booking.get("event_key")
             event_uid = booking.get("event_uid")
             calendar_key = booking.get("calendar_key")
@@ -880,7 +876,6 @@ class ModuleResourceBooking:
                     
                     # Update the event in the database
                     # Note: We need a source to update the event
-                    from app.module.calendar.source.CalendarSource import CalendarSource
                     from app.module.calendar.Serializer import CalendarSources
                     
                     try:

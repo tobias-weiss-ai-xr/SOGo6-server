@@ -16,7 +16,7 @@ from app.config.db.tables import (
 )
 from app.utils import constants as cs
 from app.utils import errors as err
-from app.utils.db.Condition import EqualCondition, AndCondition
+from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
 
 if TYPE_CHECKING:

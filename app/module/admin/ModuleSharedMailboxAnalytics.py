@@ -17,7 +17,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from app.utils.db.Condition import EqualCondition, TrueCondition
 
 if TYPE_CHECKING:
     from app.manager.db.ClientSQL import ClientSQL
@@ -76,7 +75,7 @@ class ModuleSharedMailboxAnalytics:
                     delta = completed_dt - created_dt
                     completion_times.append(delta.total_seconds())
                 except (ValueError, TypeError):
-                    pass
+                    continue
 
         avg_completion_seconds = (
             sum(completion_times) / len(completion_times)

@@ -15,13 +15,10 @@ Security properties:
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import secrets
 from datetime import datetime, timezone
 from typing import Any
 
-from app.config.db import tables as tbl
 from app.manager.db.ClientSQL import ClientSQL
 from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
@@ -117,7 +114,7 @@ class ModuleAppPassword:
         )
 
         # Query back the inserted record to get its auto-generated ID
-        from app.utils.db.Condition import AndCondition, EqualCondition
+        from app.utils.db.Condition import EqualCondition
 
         condition_hash = EqualCondition("hash", token_hash)
         rows = list(self._db.select_from_table(

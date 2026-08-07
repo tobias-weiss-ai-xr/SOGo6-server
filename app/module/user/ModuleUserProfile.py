@@ -7,7 +7,6 @@ from app.config.db import tables as tbl
 from app.config.settings.UserSettings import get_all_user_settings_schema, user_settings_dict
 from app.config.settings.SogoSchema import check_data_for_sogo_schemas
 from app.config.settings.DomainSettings import UserModuleSettingsObj, UserModuleSettings
-from app.utils import constants as cs
 from app.utils import errors as err
 from app.utils.db.Condition import EqualCondition
 from app.utils.dict import merge_patch

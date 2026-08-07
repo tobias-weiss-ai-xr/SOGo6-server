@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -131,7 +130,7 @@ class InterfaceWebAuthn:
         self,
         credential: dict[str, Any],
     ) -> dict[str, Any]:
-        cred_id = credential.get("id", "")
+        _ = credential.get("id", "")
         # Find the challenge by iterating — the credential may have been
         # preceded by a user-specific or anonymous begin call
         challenge_data: dict[str, Any] | None = None

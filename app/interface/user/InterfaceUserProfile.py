@@ -1,9 +1,7 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from marshmallow import EXCLUDE, ValidationError
 
-from app.config.db import tables as tbl
 from app.config.settings.DomainSettings import (
     AuthSettings,
     AuthSettingsObj,
@@ -13,7 +11,7 @@ from app.config.settings.DomainSettings import (
 )
 from app.module.user.ModuleUserProfile import ModuleUserProfile
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.exceptions import BugException, RequestException
+from app.utils.exceptions import RequestException
 from app.utils import errors as err
 from app.utils.logger.logger import logger_api
 

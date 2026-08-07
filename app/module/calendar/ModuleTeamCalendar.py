@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.module.calendar.model.CalCalendar import CalCalendar
@@ -19,7 +18,6 @@ from app.module.calendar.repository.RepositoryCalendarInvite import RepositoryCa
 from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCalendarShare
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
-from app.utils.logger.logger import logger_calendar
 from app.utils.maths.sogo_hash import generate_uuid
 
 if TYPE_CHECKING:

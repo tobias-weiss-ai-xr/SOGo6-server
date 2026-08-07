@@ -1,9 +1,6 @@
 """Webhook management API for admins."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -12,10 +9,6 @@ from marshmallow import Schema, fields, validate
 from app.service.webhook.WebhookService import WebhookService
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Webhooks", __name__, url_prefix="/webhooks")
 

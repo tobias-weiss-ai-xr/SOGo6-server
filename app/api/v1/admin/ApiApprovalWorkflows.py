@@ -59,7 +59,7 @@ class ApiApprovalListCreate(MethodView):
                 try:
                     approvals.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         approvals.sort(key=lambda a: a.get("created_at", 0), reverse=True)
         return create_api_base_response({"approvals": approvals})
 

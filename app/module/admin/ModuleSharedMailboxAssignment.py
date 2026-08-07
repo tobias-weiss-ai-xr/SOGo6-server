@@ -7,7 +7,6 @@ completed, cancelled), and recording completion timestamps.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 

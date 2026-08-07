@@ -287,7 +287,7 @@ class ContactSourceDirectory(ContactSource):  # pylint: disable=unused-argument
             try:
                 client.close()
             except Exception:
-                pass
+                pass  # best-effort: keep fallback/default value on failure
 
         contacts: list[CardContact] = []
         for raw in raw_entries:
@@ -403,7 +403,7 @@ class ContactSourceDirectory(ContactSource):  # pylint: disable=unused-argument
         # parts[0] = "dir", parts[1] = source_uid, parts[2] = hash
         if parts[1] != self._user_source.US_UID:
             return None
-        target_hash: str = parts[2]
+        _ = parts[2]
 
         # Fetch all entries and find the one with matching key
         all_contacts, _ = self._query_directory()
@@ -454,7 +454,7 @@ class ContactSourceDirectory(ContactSource):  # pylint: disable=unused-argument
             try:
                 client.close()
             except Exception:
-                pass
+                pass  # best-effort: keep fallback/default value on failure
 
     def _get_sql_contact_by_uid(self, uid_val: str) -> CardContact | None:
         """Query SQL for a single entry by its UID.

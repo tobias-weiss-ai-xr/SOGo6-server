@@ -23,20 +23,15 @@ Spec: .openspec/specs/webauthn-passkeys.spec.md
 
 import base64
 import os
-import secrets
-import hashlib
 import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Tuple
 from uuid import uuid4
 
-import webauthn
 from webauthn import (
     generate_registration_options,
-    verify_registration_response,
     generate_authentication_options,
     verify_authentication_response,
-    options_to_json,
 )
 from webauthn.helpers import (
     bytes_to_base64url,
@@ -467,7 +462,7 @@ class ModuleWebAuthn:
             Registration options as dict (ready for JSON serialization)
         """
         # Create user model for webauthn
-        webauthn_user = PublicKeyCredentialUserEntity(
+        _ = PublicKeyCredentialUserEntity(
             id=user_id.encode('utf-8'),
             name=user_name,
             display_name=user_display_name,
@@ -1010,7 +1005,7 @@ class ModuleWebAuthn:
             policy.timeout_seconds,
             policy.updated_at,
         )
-        row = Db().execute_read_one(sql, params)
+        _ = Db().execute_read_one(sql, params)
         
         # Log the policy change
         ModuleWebAuthn._log_action(

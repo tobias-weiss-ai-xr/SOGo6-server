@@ -1,7 +1,6 @@
 import re
 from datetime import datetime
 from enum import IntEnum
-from app.utils.logger.logger import logger
 from app.utils.exceptions import BugException, AggravatedException
 from app.utils import errors as err
 

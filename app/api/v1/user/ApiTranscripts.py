@@ -111,7 +111,7 @@ class ApiTranscriptListCreate(MethodView):
                 try:
                     transcripts.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"transcripts": transcripts})
 
     @blp.arguments(TranscriptCreateSchema)

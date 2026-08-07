@@ -27,13 +27,10 @@ from app.utils import errors
 from app.module.auth.ModuleWebAuthn import (
     ModuleWebAuthn,
     RP_ID,
-    RP_NAME,
     WebAuthnError,
-    WebAuthnNotSupportedError,
     WebAuthnChallengeExpiredError,
     WebAuthnChallengeAlreadyUsedError,
     WebAuthnInvalidResponseError,
-    WebAuthnUserNotFoundError,
     WebAuthnCredentialNotFoundError,
     WebAuthnMaxCredentialsError,
 )
@@ -314,7 +311,6 @@ class ApiWebAuthnRegister(MethodView):
         ModuleWebAuthn.mark_challenge_used(challenge_id)
         
         # Convert credential data to the format expected by webauthn
-        import base64
         
         try:
             # Register the credential

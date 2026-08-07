@@ -374,7 +374,7 @@ class RepositoryContact:
                     data = row[3] if isinstance(row[3], dict) else {}
                     meta.rev = data.get("rev") if isinstance(data, dict) else None
                 except (TypeError, ValueError):
-                    pass
+                    continue
             result.append(meta)
         return result
 

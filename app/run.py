@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
 from time import time
 
 import click
@@ -14,10 +13,6 @@ from app.config.init_config import init_sogo
 from app.service import set_agent, set_cache
 from app.utils import constants as cs
 from app.utils.logger.logger import logger
-
-if TYPE_CHECKING:
-    from app.manager.cache.ClientRedis import ClientRedis
-    from app.manager.agent.ClientAgent import ClientAgent
 
 #Beware that all methods called here will be called twice because the auto-reloader is on
 #To see the correct behavior run:

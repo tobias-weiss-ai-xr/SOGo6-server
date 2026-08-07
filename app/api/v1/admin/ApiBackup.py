@@ -8,25 +8,15 @@ Admins can:
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import time
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
-
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 from app.service import sogo_cache
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Backup", __name__, url_prefix="/backup")
 

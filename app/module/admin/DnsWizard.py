@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 
@@ -123,7 +122,7 @@ class DnsWizard:
         :param adkim: DKIM alignment mode (``r`` relaxed, ``s`` strict).
         :return: Dict with ``name``, ``type``, ``value``, ``ttl``.
         """
-        tags: list[str] = [f"v=DMARC1", f"p={policy}", f"pct={pct}", f"aspf={aspf}", f"adkim={adkim}"]
+        tags: list[str] = ["v=DMARC1", f"p={policy}", f"pct={pct}", f"aspf={aspf}", f"adkim={adkim}"]
 
         if subdomain_policy:
             tags.append(f"sp={subdomain_policy}")

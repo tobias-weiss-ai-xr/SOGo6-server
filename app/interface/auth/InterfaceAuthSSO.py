@@ -22,7 +22,6 @@ from app.utils.logger.logger import logger_api
 if TYPE_CHECKING:
     from app.config.settings.DomainSettings import AuthSettingsObj
     from app.config.settings.ProcessSetting import ProcessSetting
-    from app.module.auth.ModuleUserSource import ModuleUserSource
 
 
 class InterfaceAuthSSO:
@@ -89,7 +88,7 @@ class InterfaceAuthSSO:
         8. Redirect to frontend with token
         """
         code = params.get("code", "")
-        state = params.get("state", "")
+        _ = params.get("state", "")
         # For now, the state is passed via the redirect URL — in production,
         # validate against the session cookie value.
 
@@ -357,7 +356,6 @@ class InterfaceAuthSSO:
         )
         from app.config.settings.SystemSettings import SystemSettingsObj
         from app.config.settings.UserSettings import UserGeneralSettings
-        from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
         from app.module.auth.ModuleAuth import ModuleAuth
         from app.module.auth.ModuleUserSource import ModuleUserSource
         from app.module.calendar.ModuleCalendar import ModuleCalendar
@@ -365,9 +363,7 @@ class InterfaceAuthSSO:
         from app.module.user.ModuleUserProfile import ModuleUserProfile
         from app.config.init_config import (
             init_get_system_and_default_domain_settings,
-            init_get_user_domain_settings,
         )
-        from app.utils.exceptions import RequestException
 
         logger_api.info("SSO auth (%s) for email=%s domain=%s", auth_type, email, domain)
 
@@ -381,7 +377,7 @@ class InterfaceAuthSSO:
         for src_uid, src_settings in default_us_raw.items():
             default_us[src_uid] = UserSourceSettingsObj(src_settings)
 
-        module_auth = ModuleAuth(self._process, system_obj, default_auth, default_us)
+        _ = ModuleAuth(self._process, system_obj, default_auth, default_us)
 
         # Prepare user
         user = User(email, password="")  # password is empty — we use SSO

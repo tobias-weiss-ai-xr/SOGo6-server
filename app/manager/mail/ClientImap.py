@@ -1633,7 +1633,7 @@ class ClientImap(ClientMailServer):
                     try:
                         part_filename = str(make_header(decode_header(part_filename)))
                     except (UnicodeDecodeError, AttributeError):
-                        pass
+                        continue
                 if part_filename == filename:
                     payload = part.get_payload(decode=True)
                     if payload is None:

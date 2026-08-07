@@ -610,7 +610,7 @@ class ModuleMail:
                         try:
                             filename = str(make_header(decode_header(filename)))
                         except (UnicodeDecodeError, AttributeError):
-                            pass
+                            continue
 
                         attachment_size = len(part.get_payload(decode=True) or b"")
                         extension = filename.rsplit('.', 1)[-1] if '.' in filename else ""

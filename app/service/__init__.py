@@ -40,7 +40,6 @@ def set_cache(new_cache: ClientRedis) -> None:
 def sogo_agent() -> ClientAgent:
     """Return the agent client. Set by ``run.py`` at process start.
     Thread-safe initialization to prevent race conditions."""
-    global agent_client
     if isinstance(agent_client, ClientAgent):
         return agent_client
     with _agent_lock:

@@ -16,11 +16,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import time
-from typing import Any, Callable
+from typing import Callable
 
 from app.service import sogo_cache
-from app.utils.logger.logger import logger_api
 
 # Cache prefix for AI results
 _AI_CACHE_PREFIX: str = "ai:cache:"
@@ -192,7 +190,7 @@ class AIModelBackend:
 
     def classify_attachment(self, filename: str, content_type: str) -> dict:
         """Classify attachment type and suggest actions."""
-        name_lower = filename.lower()
+        _ = filename.lower()
         ext = filename.split(".")[-1].lower() if "." in filename else ""
 
         types = {
@@ -254,7 +252,7 @@ def cached_ai_result(cache_key: str, ttl: int = 3600) -> Callable:
                 try:
                     return json.loads(cached)
                 except Exception:
-                    pass
+                    pass  # best-effort: keep fallback/default value on failure
             result = func(*args, **kwargs)
             cache.set(key, json.dumps(result), ttl=ttl)
             return result

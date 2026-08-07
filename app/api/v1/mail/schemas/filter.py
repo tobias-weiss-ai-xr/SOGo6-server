@@ -1,9 +1,8 @@
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
-from marshmallow import Schema, ValidationError, fields, validate, validates_schema, post_load
-from marshmallow.validate import Email
+from marshmallow import Schema, ValidationError, fields, validate, validates_schema
 from app.utils.api.ApiBaseResponse import ApiBaseResponse
 from app.utils import constants as cs
 
@@ -57,29 +56,26 @@ class DateTimeWithTzField(fields.Field):
             datetime.strptime(date_part, "%Y-%m-%d")
 
             time_part_base = time_part
-            has_tz = False
 
             # Check for Z (UTC)
             if time_part_base.endswith("Z"):
                 time_part_base = time_part_base[:-1]
-                has_tz = True
+                _ = True
             # Check for +/- timezone offset
             elif "+" in time_part_base:
                 idx = time_part_base.rfind("+")
                 time_part_base = time_part_base[:idx]
-                has_tz = True
+                _ = True
             elif time_part_base.count("-") > 0:
                 idx = time_part_base.rfind("-")
                 if idx > 7:  # After HH:MM:SS minimum
                     time_part_base = time_part_base[:idx]
-                    has_tz = True
             elif ":" in time_part_base and time_part_base.count(":") > 2:
                 # Check for :Zone format
                 parts = time_part_base.rsplit(":", 1)
                 tz_candidate = parts[1]
                 if "/" in tz_candidate or tz_candidate.startswith("UTC") or tz_candidate.startswith("GMT"):
                     time_part_base = parts[0]
-                    has_tz = True
 
             # Validate the time part (HH:MM:SS or HH:MM:SS.ffffff)
             # Try to parse it

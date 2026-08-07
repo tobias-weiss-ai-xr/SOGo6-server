@@ -1,10 +1,8 @@
-from collections.abc import Generator
 from json import dumps as json_dumps, loads as json_loads
 from json.decoder import JSONDecodeError
 from typing import cast, Type
-import logging
 
-from redis import Redis, exceptions as rexc, ConnectionPool
+from redis import Redis, exceptions as rexc
 from redis.backoff import ExponentialBackoff
 from redis.cache import CacheConfig
 from redis.retry import Retry

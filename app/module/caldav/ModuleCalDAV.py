@@ -37,7 +37,7 @@ import base64
 import hashlib
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 import xml.etree.ElementTree as ET
 

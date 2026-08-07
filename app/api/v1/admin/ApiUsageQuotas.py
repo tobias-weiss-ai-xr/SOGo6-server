@@ -5,21 +5,14 @@ Users can view their own quota usage.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
 from app.service import sogo_cache
-from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Usage Quotas", __name__, url_prefix="/quotas")
 
@@ -55,7 +48,7 @@ class ApiQuotaDetail(MethodView):
                 import json
                 limits = json.loads(raw)
             except Exception:
-                pass
+                pass  # best-effort: keep fallback/default value on failure
 
         # Get current usage from the mail module (simplified)
         # In production this would query actual storage

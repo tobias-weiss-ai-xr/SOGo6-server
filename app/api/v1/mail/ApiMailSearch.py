@@ -11,8 +11,6 @@ from marshmallow import ValidationError
 
 from app.interface.mail.InterfaceApiMailMail import InterfaceApiMailMail
 from app.utils.logger.logger import logger_api
-from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils import errors as err
 from app.utils.api.paginate_sort_filter import make_pagination_metadata
 from .schemas.mail import MailSearchQuerySchema, MailSearchResponseSchema
 

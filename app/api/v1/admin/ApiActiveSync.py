@@ -5,13 +5,9 @@ WBXML provisioning, Sync, Ping, and FolderSync commands.
 """
 from __future__ import annotations
 
-import hashlib
 import json
-import re
 import secrets
-import struct
 import time
-from typing import Any
 
 from flask import request, Response
 from flask.views import MethodView
@@ -129,7 +125,7 @@ class EasRoot(MethodView):
 class EasPing(MethodView):
     def post(self) -> ResponseReturnValue:
         """ActiveSync Ping command (heartbeat, push notification channel)."""
-        device_id = _parse_device_id()
+        _ = _parse_device_id()
         heartbeat_interval = request.headers.get("MS-ASHeartbeatInterval", "300")
         folders = request.get_json(silent=True, force=True) or {}
         
@@ -304,7 +300,7 @@ class EasSendMail(MethodView):
 class EasSettings(MethodView):
     def post(self) -> ResponseReturnValue:
         """ActiveSync Settings (device settings, OOF, etc.)."""
-        body = request.get_json(silent=True, force=True) or {}
+        _ = request.get_json(silent=True, force=True) or {}
         return _eas_wbxml_response("Settings", status=1, data={"Status": 1})
 
 

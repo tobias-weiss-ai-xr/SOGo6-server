@@ -1,6 +1,5 @@
 from marshmallow import Schema, fields
 
-from app.utils.api.ApiBaseResponse import ApiBaseResponse
 
 
 class AuthUserGetMechSchema(Schema):

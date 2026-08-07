@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from flask import g, request
+from flask import g
 from flask.views import MethodView
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields

@@ -14,7 +14,6 @@ import hmac
 import json
 import time
 import urllib.request
-from typing import Any, Callable
 
 from app.service import sogo_cache
 from app.utils.logger.logger import logger_api

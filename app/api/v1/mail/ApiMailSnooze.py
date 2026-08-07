@@ -50,7 +50,6 @@ class SnoozeUnsnoozeSchema(Schema):
 
 def _get_module() -> ModuleSnooze:
     if not hasattr(g, "_snooze_module"):
-        from app.manager.db.ClientSQL import ClientSQL
         from app.utils.module.importManager import import_and_instantiate_manager
 
         process = g.process_settings

@@ -6,15 +6,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
-from marshmallow import Schema, fields
 
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
 from app.module.mail.ModuleMail import ModuleMail
 from app.config.settings.DomainSettings import MailSettingsObj
 from app.config.settings.ProcessSetting import ProcessSetting
@@ -47,7 +44,7 @@ class ApiMailboxDebugRaw(MethodView):
             )
             raw = module.get_mail_raw("0", folder, mail_uid)
             return create_api_base_response({"raw": raw.get("raw", "")})
-        except Exception as e:
+        except Exception:
             return create_api_base_response(None, err.ERROR_MAIL_DOWNLOAD_FAILED)
 
 
@@ -73,5 +70,5 @@ class ApiMailboxDebugHeaders(MethodView):
                 "spf_status": detail.get("mail", {}).get("Received-SPF", ""),
             }
             return create_api_base_response(trace)
-        except Exception as e:
+        except Exception:
             return create_api_base_response(None, err.ERROR_MAIL_DOWNLOAD_FAILED)

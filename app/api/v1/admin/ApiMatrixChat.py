@@ -11,7 +11,6 @@ import json
 import re
 import secrets
 import time
-from typing import Any
 
 from flask import request
 from flask.views import MethodView
@@ -20,7 +19,6 @@ from flask_smorest import Blueprint
 
 from app.service import sogo_cache
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
 
 blp = Blueprint("Matrix Chat", __name__, url_prefix="/admin/matrix")
 

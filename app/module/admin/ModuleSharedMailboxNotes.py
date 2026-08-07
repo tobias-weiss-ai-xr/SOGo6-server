@@ -15,7 +15,7 @@ from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api as logger
 from app.utils.maths.sogo_hash import generate_uuid
-from app.utils.db.Condition import EqualCondition, TrueCondition
+from app.utils.db.Condition import EqualCondition
 
 if TYPE_CHECKING:
     from app.manager.db.ClientSQL import ClientSQL

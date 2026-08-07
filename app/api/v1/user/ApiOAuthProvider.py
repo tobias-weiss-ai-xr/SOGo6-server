@@ -12,26 +12,19 @@ Supports:
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import secrets
 import time
-from typing import TYPE_CHECKING, Any
-
-from flask import g, redirect, request, jsonify
+from flask import redirect, request, jsonify
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
 
-from app.auth.User import User
 from app.service import sogo_cache
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    pass
 
 blp = Blueprint("OAuth Provider", __name__, url_prefix="/oauth")
 
@@ -57,7 +50,7 @@ class ApiOAuthClients(MethodView):
     def get(self) -> ResponseReturnValue:
         """List registered clients."""
         cache = sogo_cache()
-        pattern = f"{_OAUTH_CLIENT_PREFIX}*"
+        _ = f"{_OAUTH_CLIENT_PREFIX}*"
         # Use index-based approach
         clients = []
         raw = cache.get("oauth:client_index", list)
@@ -68,7 +61,7 @@ class ApiOAuthClients(MethodView):
                 try:
                     clients.append(json.loads(raw_client))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"clients": clients})
 
     @blp.arguments(OAuthClientSchema)

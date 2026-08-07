@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
 
 from flask import g
 from flask.views import MethodView
@@ -152,7 +151,6 @@ class TimeRangeSchema(Schema):
 
 class AvailabilityCheckSchema(TimeRangeSchema):
     """Availability check request schema."""
-    pass
 
 
 class AvailabilityResponseSchema(Schema):
@@ -232,7 +230,6 @@ class ErrorSchema(Schema):
 def _get_module() -> ModuleResourceBooking:
     """Get or create the ResourceBooking module instance."""
     if not hasattr(g, "_resource_booking_module"):
-        from app.manager.db.ClientPostgreSQL import ClientPostgreSQL
         from app.utils.module.importManager import import_and_instantiate_manager
 
         process = g.process_settings
@@ -299,7 +296,7 @@ def _parse_datetime(dt_str: str, timezone: str = "UTC") -> datetime:
             target_tz = ZoneInfo(timezone)
             dt = dt.astimezone(target_tz)
         except Exception:
-            pass
+            pass  # best-effort: keep fallback/default value on failure
     
     return dt
 

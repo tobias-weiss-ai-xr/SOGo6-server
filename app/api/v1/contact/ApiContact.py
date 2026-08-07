@@ -23,7 +23,6 @@ from .schemas.addressbook import (
     ContactImportUploadSchema,
     ContactJobResponseSchema,
     ExternalAddressBookCreateSchema,
-    ExternalAddressBookUpdateSchema,
     ShareCreateSchema,
     ShareListResponseSchema,
     ShareResponseSchema,

@@ -14,11 +14,10 @@ Endpoints:
 
 from __future__ import annotations
 
-from typing import Any
 
 from flask.views import MethodView
 from flask_smorest import Blueprint
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields
 
 from app.config.settings.ProcessSetting import process_config
 from app.module.auth.ModuleSaml2Provider import ModuleSaml2Provider

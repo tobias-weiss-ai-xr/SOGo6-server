@@ -83,7 +83,7 @@ class ModuleUserSource:
         """
         auth = False
         raw_policy: dict = {}
-        raw_content: dict[str, list[str]] = {}
+        _ = {}
         if user.source_id and user.source_id in self.all_user_sources:
             source_settings = self.all_user_sources[user.source_id]
             if source_settings.US_CAN_AUTH:

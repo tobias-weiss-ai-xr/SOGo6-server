@@ -24,6 +24,8 @@ def register_user_blueprints(api: Api):
 # Also export the WebAuthn blueprints for direct registration
 from app.api.v1.user.ApiWebAuthn import blp as webauthn_blp, blp_admin as webauthn_blp_admin
 
+__all__ = ["webauthn_blp", "webauthn_blp_admin"]
+
 # List of blueprints to be added to v1_basic_apis
 user_auth_apis: list[Blueprint] = []
 

@@ -29,7 +29,7 @@ from typing import Any
 
 from app.config.db import tables as tbl
 from app.manager.db.ClientSQL import ClientSQL
-from app.utils.db.Condition import AndCondition, EqualCondition, OrCondition
+from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
 
@@ -248,7 +248,6 @@ class ModulePasswordReset:
         avoid leaking user information). SMTP host and port are read from
         process settings when not explicitly provided.
         """
-        from app.utils import errors as err
         
         # Read SMTP settings from process config if not overridden
         if smtp_host is None:
@@ -277,7 +276,7 @@ class ModulePasswordReset:
         msg.attach(MIMEText(body, "plain"))
 
         try:
-            context = ssl.create_default_context()
+            _ = ssl.create_default_context()
             with smtplib.SMTP(host=smtp_host, port=smtp_port, timeout=10) as server:
                 server.send_message(msg)
             logger_api.info(

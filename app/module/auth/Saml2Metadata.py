@@ -319,7 +319,7 @@ class Saml2Metadata:
             entities.append(root)
 
         for entity_desc in entities:
-            entity_id = entity_desc.get("entityID", "")
+            _ = entity_desc.get("entityID", "")
             idp_sso = entity_desc.find(f"{{{SAML_METADATA}}}IDPSSODescriptor", NS)
             if idp_sso is None:
                 continue  # Not an IdP (could be SP or other role)

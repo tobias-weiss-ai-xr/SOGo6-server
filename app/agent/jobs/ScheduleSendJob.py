@@ -10,7 +10,6 @@ extracted before the scheduling decision: ``account_id``, ``mail_data``,
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, ClassVar
 
 from app.agent.jobs.Job import Job, agent_job
@@ -64,7 +63,7 @@ class ScheduleSendJob(Job):
         account_id: str = payload["account_id"]
         mail_data: dict = payload["mail_data"]
         extra_headers: dict | None = payload.get("extra_headers")
-        tmp_draft_key: str | None = payload.get("tmp_draft_key")
+        _ = payload.get("tmp_draft_key")
 
         logger_agent.info(
             "ScheduleSendJob: delivering scheduled mail (account=%s, subject=%s)",

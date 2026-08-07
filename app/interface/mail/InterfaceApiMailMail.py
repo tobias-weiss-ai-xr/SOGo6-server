@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any
 from io import BytesIO
 
 from marshmallow import ValidationError
-from http import HTTPStatus
 
 from app.utils.exceptions import RequestException
 from app.module.mail.ModuleMail import ModuleMail
@@ -14,7 +13,6 @@ from app.config.settings.DomainSettings import MailSettings, MailSettingsObj
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import errors as err
 from app.utils.logger.logger import logger_api
-from app.utils import constants as cs
 
 if TYPE_CHECKING:
     from app.auth.User import User

@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
-from app.module.contact.format.vcard import VcardConst as vc
-from app.module.contact.format.vcard.FormatEngineVcard import FormatEngineVcard
 from app.module.contact.model.enums.CardKind import CardKind
 from app.module.contact.model.enums.CardSourceType import CardSourceType
 from app.module.contact.serializer.CardContactDeserializerVcard4 import CardContactDeserializerVcard4

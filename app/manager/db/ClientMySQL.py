@@ -3,7 +3,6 @@ from typing import Any, Generator, Tuple, List, cast
 
 import re
 import json
-from urllib.parse import quote_plus
 
 import mysql.connector
 from mysql.connector import Error, ProgrammingError  # pylint: disable=no-name-in-module
@@ -66,8 +65,7 @@ data_type_mysql_to_sogo: dict[str, str] = {
     "integer":    "int",
     "bigint":     "int",
     "smallint":   "int8",
-    "tinyint":    "bool",  # MariaDB reports TINYINT(1) as tinyint
-    "tinyint(1)": "bool",
+        "tinyint(1)": "bool",
     "datetime":   "datetime",
     "tinyint": "int",
     "longblob":   "bytes",

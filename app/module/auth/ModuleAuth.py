@@ -13,7 +13,6 @@ from app.utils.strings import get_domain_from_mail
 from app.utils.module.importManager import import_and_instantiate_manager
 
 if TYPE_CHECKING:
-    from app.config.settings.DomainSettings import AuthSettingsObj, UserSourceSettingsObj
     from app.config.settings.SystemSettings import SystemSettingsObj
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.manager.db.ClientSQL import ClientSQL

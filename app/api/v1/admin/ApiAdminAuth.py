@@ -5,7 +5,7 @@ Admin authentication API endpoints
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from flask import g, request, Response
+from flask import g, request
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint

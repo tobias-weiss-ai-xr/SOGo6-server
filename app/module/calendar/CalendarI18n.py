@@ -322,7 +322,7 @@ def _locale_for(user: User | None) -> str:
         if lang and lang in _IMIP_SUBJECTS:
             return lang
     except Exception:
-        pass
+        pass  # best-effort: keep fallback/default value on failure
     return "en"
 
 

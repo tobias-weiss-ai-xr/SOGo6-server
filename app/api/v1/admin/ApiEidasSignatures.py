@@ -18,7 +18,6 @@ import json
 import os
 import secrets
 import time
-from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization

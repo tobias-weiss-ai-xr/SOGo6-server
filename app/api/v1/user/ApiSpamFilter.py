@@ -8,10 +8,6 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections import Counter
-from typing import TYPE_CHECKING
-
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -20,9 +16,6 @@ from marshmallow import Schema, fields
 from app.service import sogo_cache
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Intelligent Spam Filter", __name__, url_prefix="/ai/spam")
 

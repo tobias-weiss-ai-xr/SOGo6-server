@@ -10,13 +10,10 @@ from typing import Any
 
 from flask import g
 from flask.views import MethodView
-from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
 from app.interface.auth.InterfacePasswordReset import InterfacePasswordReset
-from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.exceptions import RequestException
 
 blp = Blueprint("Password Reset", __name__, url_prefix="/auth/password-reset")
 

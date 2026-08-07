@@ -8,21 +8,13 @@ from __future__ import annotations
 import json
 import secrets
 import time
-from typing import TYPE_CHECKING, Any
-
-from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
 from app.service import sogo_cache
-from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.logger.logger import logger_api
-
-if TYPE_CHECKING:
-    pass
 
 blp = Blueprint("File Sharing", __name__, url_prefix="/files")
 
@@ -49,7 +41,7 @@ class ApiFileShareListCreate(MethodView):
                     s.pop("password", None)  # Never expose password
                     shares.append(s)
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"shares": shares})
 
     @blp.arguments(FileShareCreateSchema)

@@ -1,18 +1,17 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Type, Callable
+from typing import TYPE_CHECKING, Callable
 
-from marshmallow import EXCLUDE
 import json as json_module
 from app.config.db import tables as tbl
 from app.config.settings.SystemSettings import get_all_system_schemas
 from app.config.settings.DomainSettings import get_all_domain_schemas
 from app.config.settings.DynamicFormSettings import create_dynamic_dict_for_settings
-from app.config.settings.SogoSchema import SogoSchema, check_data_for_sogo_schemas
+from app.config.settings.SogoSchema import check_data_for_sogo_schemas
 from app.utils.dict import merge_patch, set_origin_from_settings
-from app.utils.db.Condition import EqualCondition, NotEqualCondition, TrueCondition, Order, order_str_to_order_enum
+from app.utils.db.Condition import EqualCondition, NotEqualCondition, TrueCondition, Order
 from app.utils.db.Table import Column
 from app.utils.exceptions import AggravatedException, BugException, RequestException
-from app.utils.logger.logger import logger, logger_api
+from app.utils.logger.logger import logger
 from app.utils.module.importManager import import_and_instantiate_manager
 from app.utils.maths.sogo_hash import get_unique_token, HASH_SIZE_DOMAIN
 from app.utils import errors as err

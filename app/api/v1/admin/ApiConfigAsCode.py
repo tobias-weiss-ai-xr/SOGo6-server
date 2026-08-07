@@ -12,8 +12,6 @@ import json
 import time
 import hashlib
 import uuid
-from typing import TYPE_CHECKING
-
 from flask import g, request
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
@@ -24,9 +22,6 @@ from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 from app.service import sogo_cache
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Config as Code", __name__, url_prefix="/config-as-code")
 

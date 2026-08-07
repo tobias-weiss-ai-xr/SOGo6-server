@@ -18,8 +18,6 @@ from .schemas.mail import (
     MailRawResponseSchema,
     MailActionSchema,
     MailBatchActionSchema,
-    MailSearchQuerySchema,
-    MailSearchResponseSchema,
     MailDownloadSchema,
     MailEditResponseSchema,
     MailReplyResponseSchema,

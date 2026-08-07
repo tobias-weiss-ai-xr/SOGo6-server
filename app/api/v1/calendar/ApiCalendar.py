@@ -52,8 +52,6 @@ from .schemas.external_calendar import (
 )
 
 if TYPE_CHECKING:
-    from app.auth.User import User
-    from app.config.settings.ProcessSetting import ProcessSetting
     from werkzeug.datastructures import FileStorage
 
 blp = Blueprint("Calendar", __name__, url_prefix="")

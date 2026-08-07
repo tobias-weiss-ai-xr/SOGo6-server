@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import re
 import time
-from typing import TYPE_CHECKING, Any
-
 from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
@@ -61,9 +59,6 @@ def sanitize_health_error(exc: Exception) -> str:
         error_str = error_str[:max_length] + "..."
     
     return error_str
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("Health Dashboard", __name__, url_prefix="/health-dashboard")
 

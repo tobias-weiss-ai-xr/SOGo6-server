@@ -8,9 +8,6 @@ voucher system for the login-challenge flow.
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
-import time
 from typing import TYPE_CHECKING, Any
 
 from app.module.auth.ModuleTOTP import ModuleTOTP

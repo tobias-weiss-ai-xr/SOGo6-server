@@ -265,7 +265,7 @@ class IcsFetcher:
         calendars: list[dict[str, object]] = []
         current: dict[str, object] = {}
         in_response = False
-        tag_content = ""
+        _ = ""
 
         for line in xml_body.split("<"):
             if not line:

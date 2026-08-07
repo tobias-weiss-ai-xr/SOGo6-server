@@ -59,7 +59,6 @@ class NoteCreateSchema(Schema):
 
 class AssignmentAcceptSchema(Schema):
     """Empty schema for accepting an assignment."""
-    pass
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

@@ -62,7 +62,7 @@ class ApiTicketListCreate(MethodView):
                 try:
                     tickets.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         tickets.sort(key=lambda t: t.get("created_at", 0), reverse=True)
         return create_api_base_response({"tickets": tickets})
 

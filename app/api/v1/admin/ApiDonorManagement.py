@@ -9,7 +9,6 @@ import hashlib
 import json
 import secrets
 import time
-from typing import Any
 
 from flask import request
 from flask.views import MethodView

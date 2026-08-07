@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from app.config.settings.DomainSettings import (
     UserModuleSettings, UserModuleSettingsObj, MailSettings, MailSettingsObj,
 )
-from app.config.settings.UserSettings import UserGeneralSettings, UserGeneralSettingsObj
+from app.config.settings.UserSettings import UserGeneralSettings
 from app.module.mail.ModuleMail import ModuleMail
 from app.module.mail.ModuleMailOutgoing import ModuleMailOutgoing
 from app.module.user.ModuleUserProfile import ModuleUserProfile
@@ -290,7 +290,7 @@ class InterfaceApiMailSend:
                     cache.delete(redis_key)
                     return create_api_base_response(None, err.ERROR_MAIL_UNDO_SEND_EXPIRED)
             except (ValueError, TypeError):
-                pass
+                pass  # best-effort: keep fallback/default value on failure
 
         # Delete the pending entry from Redis
         cache.delete(redis_key)

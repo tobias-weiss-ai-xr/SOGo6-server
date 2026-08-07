@@ -1,7 +1,7 @@
 
 from typing import Any, Type
 from cryptography.fernet import Fernet, InvalidToken
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
 from json import loads as js_loads, dumps as js_dumps, JSONDecodeError
 from uuid import uuid4
 import time
@@ -9,7 +9,6 @@ import time
 from app.auth.User import User, UserAnonymous
 from app.auth.voucher.Voucher import Voucher
 from app.config.settings.ProcessSetting import ProcessSetting
-from app.config.settings.DomainSettings import AuthSettingsObj
 from app.service import sogo_cache
 from app.utils.dynamic_import import import_and_get_class
 from app.utils.exceptions import RequestException, AggravatedException, BugException

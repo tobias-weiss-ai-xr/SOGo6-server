@@ -16,7 +16,6 @@ from app.module.calendar.ModuleCalendar import ModuleCalendar
 from app.module.contact.ModuleContact import ModuleContact
 from app.module.admin.ModuleAdminUser import ModuleAdminUser
 from app.service import sogo_cache
-from app.utils import constants as cs
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api

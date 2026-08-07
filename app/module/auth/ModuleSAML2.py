@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 from base64 import b64decode, b64encode
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
 from zlib import compress
@@ -82,8 +82,6 @@ try:
     from saml2.client import Saml2Client
     from saml2.config import SPConfig
     from saml2.saml import NAMEID_FORMAT_EMAILADDRESS, NAMEID_FORMAT_TRANSIENT, NAMEID_FORMAT_PERSISTENT
-    from saml2.s_utils import deflate_and_base64_encode
-    from saml2.sigver import SecurityContext
     from saml2.response import VerificationError
     from saml2.entity import SigverError, UnravelError
 
@@ -381,7 +379,7 @@ class ModuleSAML2:
         # Build the request
         # pysaml2's prepare_for_authenticate returns (session_id, authn_request_dict)
         binding = BINDING_HTTP_REDIRECT
-        req_authn_context = self._authn_context
+        _ = self._authn_context
         nameid_format = self._nameid_format_map.get(
             self._name_id_format, NAMEID_FORMAT_EMAILADDRESS
         )
@@ -497,7 +495,7 @@ class ModuleSAML2:
 
         # Decode the base64 response
         try:
-            saml_response_xml = b64decode(saml_response_b64).decode("utf-8")
+            _ = b64decode(saml_response_b64).decode("utf-8")
         except Exception as exc:
             raise RequestException(
                 f"SAML2: failed to decode response: {exc}",

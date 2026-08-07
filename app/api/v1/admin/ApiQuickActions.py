@@ -56,7 +56,7 @@ class ApiQuickActionListCreate(MethodView):
                 try:
                     actions.append(json.loads(raw))
                 except Exception:
-                    pass
+                    continue
         return create_api_base_response({"actions": actions})
 
     @blp.arguments(QuickActionCreateSchema)

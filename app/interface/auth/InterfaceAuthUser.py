@@ -11,7 +11,7 @@ from app.module.calendar.ModuleCalendar import ModuleCalendar
 from app.module.contact.ModuleContact import ModuleContact
 from app.module.user.ModuleUserProfile import ModuleUserProfile
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.exceptions import RequestException, BugException
+from app.utils.exceptions import RequestException
 from app.utils import errors as err
 from app.utils.logger.logger import logger_api
 

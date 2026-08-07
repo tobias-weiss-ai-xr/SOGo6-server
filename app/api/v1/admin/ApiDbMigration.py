@@ -8,21 +8,15 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from typing import TYPE_CHECKING, Any
-
 from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 from app.service import sogo_cache
-
-if TYPE_CHECKING:
-    from app.auth.User import User
 
 blp = Blueprint("DB Migration", __name__, url_prefix="/db-migration")
 
@@ -99,7 +93,7 @@ class ApiDbMigrationRun(MethodView):
 
     def post(self) -> ResponseReturnValue:
         cache = sogo_cache()
-        current = cache.get(_SCHEMA_VERSION_KEY, str) or "6.0.0"
+        _ = cache.get(_SCHEMA_VERSION_KEY, str) or "6.0.0"
         new_version = "6.0.3"
 
         entry = {
