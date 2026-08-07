@@ -86,7 +86,7 @@ class ModuleUserSource:
         _ = {}
         if user.source_id and user.source_id in self.all_user_sources:
             source_settings = self.all_user_sources[user.source_id]
-            if source_settings.US_CAN_AUTH:
+            if not source_settings.US_CAN_AUTH:
                 logger.warning("Registered user source %s for user %s forbid authentication." \
                 "Might happend if the user source US_CAN_AUTH has changed", user.source_id, user.uid)
             else:

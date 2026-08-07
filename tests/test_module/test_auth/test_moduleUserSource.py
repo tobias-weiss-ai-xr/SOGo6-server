@@ -73,6 +73,7 @@ def make_user(**overrides) -> SimpleNamespace:
         login_mail_outgoing=None,
         login_mail_filtering=None,
         imap_host=None,
+        authenticated=False,
         access=SimpleNamespace(),
     )
     defaults.update(overrides)
@@ -153,3 +154,50 @@ class TestGetContactInfoForUser:
         module.get_contact_info_for_user(user)
 
         assert user.anonymous is True
+
+class TestCheckLogin:
+    """check_login: US_CAN_AUTH must gate authentication (regression for
+    the inverted-condition bug where disabled sources still authed)."""
+
+    def _module(self, can_auth: bool) -> ModuleUserSource:
+        settings = dict(LDAP_SETTINGS)
+        settings["US_CAN_AUTH"] = can_auth
+        return _module_with(settings)
+
+    def _stub(self, module, monkeypatch, result: bool):
+        calls = {"n": 0}
+        def fake_login(source_settings, user):
+            calls["n"] += 1
+            return (result, {}, {"cn": ["X"]})
+        monkeypatch.setattr(module, "_make_us_check_login", fake_login)
+        monkeypatch.setattr(module, "fill_user_with_contact_info", lambda u, i: None)
+        monkeypatch.setattr(module, "fill_user_with_source_info", lambda u, i: None)
+        return calls
+
+    def test_can_auth_true_authenticates_via_primary(self, monkeypatch):
+        module = self._module(can_auth=True)
+        calls = self._stub(module, monkeypatch, result=True)
+        user = make_user(uid="user1", source_id="ldap-1")
+
+        assert module.check_login(user) is True
+        assert user.authenticated is True
+        assert calls["n"] >= 1  # primary source was consulted
+
+    def test_can_auth_true_auth_failure_returns_false(self, monkeypatch):
+        module = self._module(can_auth=True)
+        calls = self._stub(module, monkeypatch, result=False)
+        user = make_user(uid="user1", source_id="ldap-1")
+
+        assert module.check_login(user) is False
+        assert getattr(user, "authenticated", False) is False
+        assert calls["n"] >= 1
+
+    def test_can_auth_false_does_not_attempt_login(self, monkeypatch):
+        module = self._module(can_auth=False)
+        calls = self._stub(module, monkeypatch, result=True)
+        user = make_user(uid="user1", source_id="ldap-1")
+
+        # disabled source: no auth attempt, no authenticated flag
+        assert module.check_login(user) is False
+        assert getattr(user, "authenticated", False) is False
+        assert calls["n"] == 0
