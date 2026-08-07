@@ -102,6 +102,19 @@ class ModuleInitSogo:
         except Exception as exc:
             logger.warning("Could not ensure supplementary tables: %s", exc)
 
+        # Ensure shared mailbox notes and assignments tables exist
+        try:
+            from app.module.admin.ModuleSharedMailboxNotes import ModuleSharedMailboxNotes
+            ModuleSharedMailboxNotes.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure shared mailbox notes table: %s", exc)
+
+        try:
+            from app.module.admin.ModuleSharedMailboxAssignment import ModuleSharedMailboxAssignment
+            ModuleSharedMailboxAssignment.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure shared mailbox assignments table: %s", exc)
+
         sogo_db_manager.close()
 
     
