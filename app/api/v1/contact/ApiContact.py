@@ -25,7 +25,7 @@ from .schemas.addressbook import (
     ExternalAddressBookCreateSchema,
     ShareCreateSchema,
     ShareListResponseSchema,
-    ShareResponseSchema,
+    ContactShareResponseSchema,
 )
 from .schemas.contact import (
     ContactCreateSchema,
@@ -138,7 +138,7 @@ class ApiAddressBookShareList(MethodView):
         return interface.list_shares(key)
 
     @blp.arguments(ShareCreateSchema)
-    @blp.response(201, ShareResponseSchema)
+    @blp.response(201, ContactShareResponseSchema)
     def post(self, body: dict, key: str) -> ResponseReturnValue:
         """Share an address book with a user."""
         logger_api.debug("POST /addressbooks/%s/shares user=%s body=%s", key, g.user.uid, body)
@@ -150,7 +150,7 @@ class ApiAddressBookShareList(MethodView):
 class ApiAddressBookShareDetail(MethodView):
     """API to remove a share from an address book."""
 
-    @blp.response(200, ShareResponseSchema)
+    @blp.response(200, ContactShareResponseSchema)
     def delete(self, key: str, user_uid: str) -> ResponseReturnValue:
         """Remove a share from an address book."""
         logger_api.debug("DELETE /addressbooks/%s/shares/%s user=%s", key, user_uid, g.user.uid)

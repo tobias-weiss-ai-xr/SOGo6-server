@@ -280,7 +280,6 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
             """
             # Skip authentication check for OPTIONS (CORS preflight)
             if request.method == "OPTIONS":
-                print("Skipping authentication check for OPTIONS request")
                 return None
             anon_endpoints = {
                 "user#Auth.v1_Auth.Auth.ApiAuthUserMode", 

@@ -35,7 +35,7 @@ class SpfValidateSchema(Schema):
     spf_value = fields.String(required=True, metadata={"example": "v=spf1 mx ~all"})
 
 
-class DkimGenerateSchema(Schema):
+class DkimGenerateDnsSchema(Schema):
     """Request body for DKIM record generation."""
     domain = fields.String(required=True, metadata={"example": "example.org"})
     selector = fields.String(load_default="sogo", metadata={"example": "sogo"})
@@ -110,7 +110,7 @@ class ApiSpfValidate(MethodView):
 
 @blp.route("/dkim/generate")
 class ApiDkimGenerate(MethodView):
-    @blp.arguments(DkimGenerateSchema, error_status_code=400)
+    @blp.arguments(DkimGenerateDnsSchema, error_status_code=400)
     @blp.response(200)
     def post(self, data: dict) -> dict[str, Any]:
         """Generate a DKIM TXT record."""

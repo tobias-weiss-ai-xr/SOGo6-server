@@ -121,7 +121,7 @@ class ShareListResponseSchema(ApiBaseResponse):
     data = fields.Nested(ShareListDataSchema, allow_none=True)
 
 
-class ShareResponseSchema(ApiBaseResponse):
+class ContactShareResponseSchema(ApiBaseResponse):
     """Response schema for a single share."""
 
     data = fields.Nested(ShareSchema, allow_none=True)
