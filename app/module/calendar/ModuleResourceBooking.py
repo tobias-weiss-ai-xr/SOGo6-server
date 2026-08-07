@@ -10,7 +10,7 @@ from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_calendar as logger
 from app.utils.maths.sogo_hash import generate_uuid
-from app.utils.db.Condition import EqualCondition, TrueCondition
+from app.utils.db.Condition import EqualCondition, AndCondition, TrueCondition
 
 if TYPE_CHECKING:
     from app.manager.db.ClientSQL import ClientSQL
@@ -903,3 +903,76 @@ class ModuleResourceBooking:
                 error=err.ERROR_BOOKING_CANCEL_FAILED,
                 message=f"Failed to cancel booking: {exc}",
             )
+
+    # ── Favorites ────────────────────────────────────────────────────────────
+
+    FAVORITES_TABLE = "sogo6_resource_favorites"
+    COL_FAV_ID = "id"
+    COL_FAV_USER_UID = "user_uid"
+    COL_FAV_RESOURCE_ID = "resource_id"
+    COL_FAV_CREATED = "created_at"
+
+    @staticmethod
+    def ensure_favorites_table(db: ClientSQL) -> None:
+        """Create the resource favorites table if it does not exist."""
+        try:
+            from app.utils.db.Table import Column, Table
+
+            table = Table(
+                name=ModuleResourceBooking.FAVORITES_TABLE,
+                columns=[
+                    Column(name="id", data_type="serial"),
+                    Column(name="user_uid", data_type="str", extra_args={"max_len": 512}),
+                    Column(name="resource_id", data_type="str", extra_args={"max_len": 64}),
+                    Column(name="created_at", data_type="datetime", is_nullable=True),
+                ],
+                primary_keys=("id",),
+            )
+            if not db.get_table_info(table.name):
+                db.create_table(table)
+        except Exception as exc:
+            logger.warning("Could not ensure resource favorites table: %s", exc)
+
+    def add_favorite(self, user_uid: str, resource_id: str) -> dict[str, Any]:
+        """Mark a resource as favorite for a user (idempotent)."""
+        if self.is_favorite(user_uid, resource_id):
+            return {"resource_id": resource_id, "is_favorite": True}
+        now = datetime.now(timezone.utc).isoformat()
+        self._db.insert_in_table(
+            table_name=self.FAVORITES_TABLE,
+            column_tuple=(self.COL_FAV_USER_UID, self.COL_FAV_RESOURCE_ID, self.COL_FAV_CREATED),
+            values_tuple=[[user_uid, resource_id, now]],
+        )
+        return {"resource_id": resource_id, "is_favorite": True}
+
+    def remove_favorite(self, user_uid: str, resource_id: str) -> dict[str, Any]:
+        """Remove a resource from a user's favorites."""
+        self._db.delete_row_in_table(
+            table_name=self.FAVORITES_TABLE,
+            condition=AndCondition(
+                EqualCondition(self.COL_FAV_RESOURCE_ID, resource_id),
+                EqualCondition(self.COL_FAV_USER_UID, user_uid),
+            ),
+        )
+        return {"resource_id": resource_id, "is_favorite": False}
+
+    def is_favorite(self, user_uid: str, resource_id: str) -> bool:
+        """Check whether a resource is a favorite of a user."""
+        rows = list(self._db.select_from_table(
+            table_name=self.FAVORITES_TABLE,
+            column_tuple=(self.COL_FAV_ID,),
+            condition=AndCondition(
+                EqualCondition(self.COL_FAV_RESOURCE_ID, resource_id),
+                EqualCondition(self.COL_FAV_USER_UID, user_uid),
+            ),
+        ))
+        return bool(rows)
+
+    def list_favorite_resource_ids(self, user_uid: str) -> list[str]:
+        """Return resource IDs favorited by a user."""
+        rows = list(self._db.select_from_table(
+            table_name=self.FAVORITES_TABLE,
+            column_tuple=(self.COL_FAV_RESOURCE_ID,),
+            condition=EqualCondition(self.COL_FAV_USER_UID, user_uid),
+        ))
+        return [row[0] for row in rows]

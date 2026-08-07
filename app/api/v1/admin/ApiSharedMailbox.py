@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any
 
-from flask import g
+from flask import Response, g
+from flask.typing import ResponseReturnValue
 from flask.views import MethodView
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
@@ -13,6 +16,7 @@ from app.module.admin.ModuleSharedMailboxAssignment import ModuleSharedMailboxAs
 from app.module.admin.ModuleSharedMailboxAnalytics import ModuleSharedMailboxAnalytics
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
+from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
 
 blp = Blueprint(
@@ -31,6 +35,7 @@ class SharedMailboxCreateSchema(Schema):
     email = fields.Email(required=True, metadata={"example": "support@example.org"})
     name = fields.String(required=True, metadata={"example": "Support Team"})
     description = fields.String(load_default="", metadata={"example": "Customer support shared inbox"})
+    is_active = fields.Boolean(load_default=True)
     member_uids = fields.List(fields.Email(), load_default=None,
                               metadata={"description": "Initial member email addresses"})
     # Quota
@@ -157,6 +162,23 @@ class AssignmentResponseSchema(Schema):
     completed_at = fields.String(allow_none=True)
 
 
+class SharedMailboxSearchQuerySchema(Schema):
+    """Query parameters for searching shared mailboxes."""
+    q = fields.String(load_default="",
+                      metadata={"description": "Search query matching name, email or description"})
+
+
+class SharedMailboxImportSchema(Schema):
+    """Request body for importing shared mailbox configurations."""
+    mailboxes = fields.List(
+        fields.Nested(SharedMailboxCreateSchema),
+        required=True,
+        metadata={"description": "List of mailbox configurations to import"},
+    )
+    dry_run = fields.Boolean(load_default=False,
+                             metadata={"description": "Validate only, do not write anything"})
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -235,6 +257,7 @@ class ApiSharedMailboxList(MethodView):
                 name=data["name"],
                 description=data.get("description", ""),
                 member_uids=data.get("member_uids"),
+                is_active=data.get("is_active", True),
                 quota_enabled=data.get("quota_enabled", False),
                 quota_max_size=data.get("quota_max_size"),
                 quota_max_emails=data.get("quota_max_emails"),
@@ -250,6 +273,72 @@ class ApiSharedMailboxList(MethodView):
             return create_api_base_response(mailbox, code=201)
         except RequestException as ex:
             return create_api_base_response(None, ex.error)
+
+
+@blp.route("/search")
+class ApiSharedMailboxSearch(MethodView):
+    """Search shared mailboxes."""
+
+    @blp.arguments(SharedMailboxSearchQuerySchema, location="query")
+    @blp.response(200)
+    def get(self, query: dict) -> dict[str, Any]:
+        """Search mailboxes by name, email or description."""
+        module = _get_module()
+        mailboxes = module.search(query.get("q", ""))
+        return create_api_base_response({"mailboxes": mailboxes, "total_count": len(mailboxes)})
+
+
+@blp.route("/export")
+class ApiSharedMailboxExportAll(MethodView):
+    """Export all shared mailboxes as portable configuration."""
+
+    @blp.response(200)
+    def get(self) -> dict[str, Any]:
+        """Return the configuration of every shared mailbox."""
+        module = _get_module()
+        configs = module.export_all_configs()
+        return create_api_base_response({"mailboxes": configs, "total_count": len(configs)})
+
+
+@blp.route("/import")
+class ApiSharedMailboxImport(MethodView):
+    """Import shared mailbox configurations."""
+
+    @blp.arguments(SharedMailboxImportSchema, error_status_code=400)
+    @blp.response(200)
+    def post(self, data: dict) -> dict[str, Any]:
+        """Create/update mailboxes from imported configuration (idempotent)."""
+        module = _get_module()
+        mailboxes = data["mailboxes"]
+        dry_run = data.get("dry_run", False)
+        results = []
+        for config in mailboxes:
+            if dry_run:
+                existing = list(module._db.select_from_table(
+                    table_name=module.TABLE_NAME,
+                    column_tuple=(module.COL_ID,),
+                    condition=EqualCondition(module.COL_EMAIL, config["email"]),
+                ))
+                results.append({
+                    "email": config["email"],
+                    "action": "update" if existing else "create",
+                })
+                continue
+            try:
+                mailbox = module.import_config(config)
+                results.append({
+                    "email": mailbox.get("email"),
+                    "mailbox_id": mailbox.get("id"),
+                    "action": "updated",
+                })
+            except RequestException as ex:
+                results.append({
+                    "email": config.get("email"),
+                    "action": "error",
+                    "error_code": ex.error.c,
+                    "error_msg": ex.error.m,
+                })
+        return create_api_base_response({"imported": len(results) if not dry_run else 0, "results": results})
 
 
 @blp.route("/<string:mailbox_id>")
@@ -357,6 +446,52 @@ class ApiSharedMailboxAnalytics(MethodView):
             return create_api_base_response(None, err.ERROR_SHARED_MAILBOX_NOT_FOUND)
         analytics = _get_analytics_module().get_analytics(mailbox_id)
         return create_api_base_response(analytics)
+
+
+@blp.route("/<string:mailbox_id>/analytics/export")
+class ApiSharedMailboxAnalyticsExport(MethodView):
+    """Export shared mailbox analytics as CSV."""
+
+    def get(self, mailbox_id: str) -> ResponseReturnValue:
+        """Return notes/assignment analytics as a CSV download."""
+        module = _get_module()
+        mailbox = module.get_by_id(mailbox_id)
+        if not mailbox:
+            return create_api_base_response(None, err.ERROR_SHARED_MAILBOX_NOT_FOUND)
+        analytics = _get_analytics_module().get_analytics(mailbox_id)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["metric", "category", "value"])
+        for category, stat in (
+            ("notes", "total"), ("notes", "public"), ("notes", "private"),
+            ("notes", "last_7_days"), ("notes", "last_30_days"),
+        ):
+            writer.writerow([stat, category, analytics.get("notes", {}).get(stat, 0)])
+        for stat in ("total", "pending", "accepted", "completed", "cancelled",
+                     "last_7_days", "last_30_days", "completion_rate", "avg_completion_seconds"):
+            writer.writerow([stat, "assignments", analytics.get("assignments", {}).get(stat, 0)])
+
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=shared-mailbox-{mailbox_id}-analytics.csv"},
+        )
+
+
+@blp.route("/<string:mailbox_id>/export")
+class ApiSharedMailboxExport(MethodView):
+    """Export a single shared mailbox configuration."""
+
+    @blp.response(200)
+    def get(self, mailbox_id: str) -> dict[str, Any]:
+        """Return the portable configuration for one mailbox."""
+        module = _get_module()
+        try:
+            config = module.export_config(mailbox_id)
+            return create_api_base_response(config)
+        except RequestException as ex:
+            return create_api_base_response(None, ex.error)
 
 
 # ── Notes ─────────────────────────────────────────────────────────────────────

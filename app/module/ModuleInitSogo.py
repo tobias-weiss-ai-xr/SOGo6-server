@@ -115,6 +115,13 @@ class ModuleInitSogo:
         except Exception as exc:
             logger.warning("Could not ensure shared mailbox assignments table: %s", exc)
 
+        # Ensure resource favorites table exists
+        try:
+            from app.module.calendar.ModuleResourceBooking import ModuleResourceBooking
+            ModuleResourceBooking.ensure_favorites_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure resource favorites table: %s", exc)
+
         sogo_db_manager.close()
 
     

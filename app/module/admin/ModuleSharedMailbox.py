@@ -107,6 +107,7 @@ class ModuleSharedMailbox:
         description: str = "",
         member_uids: list[str] | None = None,
         *,
+        is_active: bool = True,
         quota_enabled: bool = False,
         quota_max_size: int | None = None,
         quota_max_emails: int | None = None,
@@ -135,7 +136,7 @@ class ModuleSharedMailbox:
 
         values = [[
             mailbox_id, email, name, description,
-            members_json, member_roles_json, True, now, now,
+            members_json, member_roles_json, is_active, now, now,
             quota_enabled, quota_max_size, quota_max_emails,
             auto_respond_enabled, auto_respond_subject, auto_respond_message,
             forward_to or [], forward_keep_copy,
@@ -180,6 +181,113 @@ class ModuleSharedMailbox:
                 mb_copy["role"] = role
                 result.append(mb_copy)
         return result
+
+    def search(self, query: str) -> list[dict[str, Any]]:
+        """Search shared mailboxes by name, email or description.
+
+        Returns mailboxes whose name, email or description contains the query
+        (case-insensitive). When query is empty, all mailboxes are returned.
+        """
+        q = (query or "").strip().lower()
+        mailboxes = self.get_all()
+        if not q:
+            return mailboxes
+        return [
+            mb for mb in mailboxes
+            if q in (mb.get("name") or "").lower()
+            or q in (mb.get("email") or "").lower()
+            or q in (mb.get("description") or "").lower()
+        ]
+
+    # ── Import / Export ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _config_from_mailbox(mailbox: dict[str, Any]) -> dict[str, Any]:
+        """Build a portable configuration dict for a mailbox (no internal ids)."""
+        return {
+            "email": mailbox.get("email"),
+            "name": mailbox.get("name"),
+            "description": mailbox.get("description") or "",
+            "is_active": mailbox.get("is_active", True),
+            "member_uids": mailbox.get("member_uids") or [],
+            "quota_enabled": mailbox.get("quota_enabled", False),
+            "quota_max_size": mailbox.get("quota_max_size"),
+            "quota_max_emails": mailbox.get("quota_max_emails"),
+            "auto_respond_enabled": mailbox.get("auto_respond_enabled", False),
+            "auto_respond_subject": mailbox.get("auto_respond_subject"),
+            "auto_respond_message": mailbox.get("auto_respond_message"),
+            "forward_to": mailbox.get("forward_to") or [],
+            "forward_keep_copy": mailbox.get("forward_keep_copy", True),
+            "signature_enabled": mailbox.get("signature_enabled", False),
+            "signature_html": mailbox.get("signature_html"),
+            "signature_plain": mailbox.get("signature_plain"),
+        }
+
+    def export_config(self, mailbox_id: str) -> dict[str, Any]:
+        """Export a single mailbox as a portable configuration dict."""
+        mailbox = self.get_by_id(mailbox_id)
+        if not mailbox:
+            raise RequestException(error=err.ERROR_SHARED_MAILBOX_NOT_FOUND)
+        return self._config_from_mailbox(mailbox)
+
+    def export_all_configs(self) -> list[dict[str, Any]]:
+        """Export all mailboxes as portable configuration dicts."""
+        return [self._config_from_mailbox(mb) for mb in self.get_all()]
+
+    def import_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Create (or update) a shared mailbox from a configuration dict.
+
+        If a mailbox with the same email already exists, its settings are
+        updated with the imported values (idempotent import).
+        """
+        email = config.get("email")
+        if not email:
+            raise RequestException(error=err.ERROR_SHARED_MAILBOX_DUPLICATE)
+
+        existing_rows = list(self._db.select_from_table(
+            table_name=self.TABLE_NAME,
+            column_tuple=(self.COL_ID,),
+            condition=EqualCondition(self.COL_EMAIL, email),
+        ))
+        if existing_rows:
+            # Idempotent update for existing mailbox
+            updates = {
+                "name": config.get("name"),
+                "description": config.get("description"),
+                "is_active": config.get("is_active", True),
+                "member_uids": config.get("member_uids") or [],
+                "quota_enabled": config.get("quota_enabled", False),
+                "quota_max_size": config.get("quota_max_size"),
+                "quota_max_emails": config.get("quota_max_emails"),
+                "auto_respond_enabled": config.get("auto_respond_enabled", False),
+                "auto_respond_subject": config.get("auto_respond_subject"),
+                "auto_respond_message": config.get("auto_respond_message"),
+                "forward_to": config.get("forward_to") or [],
+                "forward_keep_copy": config.get("forward_keep_copy", True),
+                "signature_enabled": config.get("signature_enabled", False),
+                "signature_html": config.get("signature_html"),
+                "signature_plain": config.get("signature_plain"),
+            }
+            return self.update(existing_rows[0][0], updates)
+
+        return self.create(
+            email=email,
+            name=config.get("name") or email,
+            description=config.get("description") or "",
+            member_uids=config.get("member_uids") or None,
+            is_active=config.get("is_active", True),
+            quota_enabled=config.get("quota_enabled", False),
+            quota_max_size=config.get("quota_max_size"),
+            quota_max_emails=config.get("quota_max_emails"),
+            auto_respond_enabled=config.get("auto_respond_enabled", False),
+            auto_respond_subject=config.get("auto_respond_subject"),
+            auto_respond_message=config.get("auto_respond_message"),
+            forward_to=config.get("forward_to") or None,
+            forward_keep_copy=config.get("forward_keep_copy", True),
+            signature_enabled=config.get("signature_enabled", False),
+            signature_html=config.get("signature_html"),
+            signature_plain=config.get("signature_plain"),
+        )
 
     def update(self, mailbox_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         """Update a shared mailbox. Only allowed fields are applied."""

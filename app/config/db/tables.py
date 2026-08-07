@@ -791,6 +791,24 @@ ALL_RESOURCE_COL = [COL_RES_ID,
 TABLE_RESOURCES = Table(name="sogo6_resources", columns=ALL_RESOURCE_COL,
                          primary_keys=(COL_RES_ID.name,))
 
+# ── Resource Favorites ────────────────────────────────────────────────────────
+
+COL_RES_FAV_ID = Column(name="id", data_type="serial")
+COL_RES_FAV_USER_UID = Column(name="user_uid", data_type="str", extra_args={"max_len": 512})
+COL_RES_FAV_RESOURCE_ID = Column(name="resource_id", data_type="str", extra_args={"max_len": 64})
+COL_RES_FAV_CREATED = Column(name="created_at", data_type="datetime", is_nullable=True)
+
+ALL_RESOURCE_FAV_COL = [COL_RES_FAV_ID,
+                        COL_RES_FAV_USER_UID,
+                        COL_RES_FAV_RESOURCE_ID,
+                        COL_RES_FAV_CREATED]
+
+IDX_RES_FAV_USER = Index(name="idx_resource_fav_user", columns=(COL_RES_FAV_USER_UID.name,))
+
+TABLE_RESOURCE_FAVORITES = Table(name="sogo6_resource_favorites", columns=ALL_RESOURCE_FAV_COL,
+                                 primary_keys=(COL_RES_FAV_ID.name,),
+                                 indexes=[IDX_RES_FAV_USER])
+
 # ── Snoozed Emails ───────────────────────────────────────────────────────────
 
 COL_SNOOZE_ID = Column(name="id", data_type="serial")
@@ -884,5 +902,6 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_MFA_WEBAUTHN,
               TABLE_PWD_RESET_TOKENS,
               TABLE_RESOURCES,
+              TABLE_RESOURCE_FAVORITES,
               TABLE_SNOOZE,
               TABLE_SAML2_PROVIDERS]

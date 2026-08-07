@@ -357,9 +357,12 @@ class ApiResourceList(MethodView):
                 if query["feature"] not in features:
                     continue
             
-            # Add is_favorite flag (placeholder - implement later)
-            resource["is_favorite"] = False
             filtered_resources.append(resource)
+        
+        # Mark favorites for the current user
+        favorite_ids = set(module.list_favorite_resource_ids(user_id))
+        for resource in filtered_resources:
+            resource["is_favorite"] = resource.get("id") in favorite_ids
         
         # Apply pagination
         limit = query.get("limit", 50)
@@ -372,6 +375,50 @@ class ApiResourceList(MethodView):
             "limit": limit,
             "offset": offset,
         })
+
+
+@blp.route("/favorites")
+class ApiResourceFavorites(MethodView):
+    """List the current user's favorite resources."""
+
+    @blp.response(200, ResourceSchema(many=True))
+    def get(self) -> dict[str, Any]:
+        """Return resources the current user has favorited."""
+        module = _get_module()
+        user_id = _get_user_id()
+        favorite_ids = module.list_favorite_resource_ids(user_id)
+        resources = []
+        for resource_id in favorite_ids:
+            resource = module.get_by_id(resource_id)
+            if resource and resource.get("is_active", True):
+                resource["is_favorite"] = True
+                resources.append(resource)
+        return create_api_base_response({"resources": resources, "total_count": len(resources)})
+
+
+@blp.route("/<string:resource_id>/favorite")
+class ApiResourceFavoriteToggle(MethodView):
+    """Add or remove a favorite for the current user."""
+
+    @blp.response(200)
+    def post(self, resource_id: str) -> dict[str, Any]:
+        """Mark a resource as favorite."""
+        module = _get_module()
+        user_id = _get_user_id()
+        resource = module.get_by_id(resource_id)
+        if not resource:
+            return create_api_base_response(None, err.ERROR_RESOURCE_NOT_FOUND)
+        return create_api_base_response(module.add_favorite(user_id, resource_id))
+
+    @blp.response(200)
+    def delete(self, resource_id: str) -> dict[str, Any]:
+        """Remove a resource from favorites."""
+        module = _get_module()
+        user_id = _get_user_id()
+        resource = module.get_by_id(resource_id)
+        if not resource:
+            return create_api_base_response(None, err.ERROR_RESOURCE_NOT_FOUND)
+        return create_api_base_response(module.remove_favorite(user_id, resource_id))
 
 
 @blp.route("/<string:resource_id>")
@@ -393,8 +440,7 @@ class ApiResourceDetail(MethodView):
         if not _can_access_resource(resource, user_groups):
             return create_api_base_response(None, err.ERROR_RESOURCE_ACCESS_DENIED)
         
-        # Add is_favorite flag
-        resource["is_favorite"] = False
+        resource["is_favorite"] = module.is_favorite(user_id, resource_id)
         
         return create_api_base_response(resource)
 
@@ -439,8 +485,12 @@ class ApiAvailableResources(MethodView):
                 # Find next available time (simplified)
                 resource["next_available"] = end_time.isoformat()
             
-            resource["is_favorite"] = False
             available_resources.append(resource)
+        
+        # Mark favorites for the current user
+        favorite_ids = set(module.list_favorite_resource_ids(_get_user_id()))
+        for resource in available_resources:
+            resource["is_favorite"] = resource.get("id") in favorite_ids
         
         return create_api_base_response({
             "resources": available_resources,
