@@ -10,6 +10,7 @@ from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
 
 from app.service.webhook.WebhookService import WebhookService
+from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 

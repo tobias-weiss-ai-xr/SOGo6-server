@@ -241,9 +241,9 @@ class ModuleAdminConfig:
         col_names = [col.name for col in tbl.TABLE_RULES.columns]
         ret = dict(zip(col_names, row))
         if tbl.COL_RULE_SETTINGS.name in ret and isinstance(ret[tbl.COL_RULE_SETTINGS.name], str):
-            ret[tbl.COL_RULE_SETTINGS.name] = json.loads(ret[tbl.COL_RULE_SETTINGS.name])
+            ret[tbl.COL_RULE_SETTINGS.name] = json_module.loads(ret[tbl.COL_RULE_SETTINGS.name])
         if tbl.COL_RULE_DOMAINS.name in ret and isinstance(ret[tbl.COL_RULE_DOMAINS.name], str):
-            ret[tbl.COL_RULE_DOMAINS.name] = json.loads(ret[tbl.COL_RULE_DOMAINS.name])
+            ret[tbl.COL_RULE_DOMAINS.name] = json_module.loads(ret[tbl.COL_RULE_DOMAINS.name])
         return ret
 
     def create_rule(self, data: dict) -> tuple[str, dict]:
@@ -440,8 +440,8 @@ class ModuleAdminConfig:
                 # Normalize to dict for consistent behavior across database backends.
                 if isinstance(record_dict["settings"], str):
                     try:
-                        record_dict["settings"] = json.loads(record_dict["settings"])
-                    except (json.JSONDecodeError, TypeError):
+                        record_dict["settings"] = json_module.loads(record_dict["settings"])
+                    except (json_module.JSONDecodeError, TypeError):
                         record_dict["settings"] = {}
             ret.append(record_dict)
 

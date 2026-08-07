@@ -21,7 +21,7 @@ from app.utils import errors as err
 from app.utils.exceptions import RequestException, BugException
 from app.utils.maths.crypto_utils import decrypt_password
 from app.utils.module.importManager import import_and_instantiate_manager
-from app.utils.logger.logger import logger_mail_server
+from app.utils.logger.logger import logger_mail_server, logger_api
 from app.utils.strings import get_imap_config_from_url, get_domain_from_mail, get_domain_from_contact
 from app.utils.constants import DELETE_MAIL_BEHAVIOR_MAP
 

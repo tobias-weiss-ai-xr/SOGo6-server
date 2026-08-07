@@ -547,6 +547,7 @@ class ModuleResourceBooking:
             List of booking dictionaries
         """
         from app.module.calendar.model.CalUserType import CalUserType
+        from app.module.calendar.model.enums.EventStatus import EventStatus
         from app.module.calendar.repository.RepositoryEvent import RepositoryEvent
         from app.module.calendar.repository.RepositoryCalendar import RepositoryCalendar
         
@@ -566,8 +567,8 @@ class ModuleResourceBooking:
                 ))
                 
                 for row in rows:
-                    booking_id, event_id, resource_id, start_ts, end_ts, booking_status, 
-                    organizer_id, booking_purpose, created_at = row
+                    (booking_id, event_id, resource_id, start_ts, end_ts, booking_status,
+                     organizer_id, booking_purpose, created_at) = row
                     
                     # Filter by time range if specified
                     if start and end_ts and end_ts < start:
@@ -717,8 +718,8 @@ class ModuleResourceBooking:
                 
                 if rows:
                     row = rows[0]
-                    booking_id_db, event_id, resource_id, start_ts, end_ts, booking_status, 
-                    organizer_id, booking_purpose, created_at = row
+                    (booking_id_db, event_id, resource_id, start_ts, end_ts, booking_status,
+                     organizer_id, booking_purpose, created_at) = row
                     
                     # Get resource details
                     resource = self.get_by_id(resource_id)

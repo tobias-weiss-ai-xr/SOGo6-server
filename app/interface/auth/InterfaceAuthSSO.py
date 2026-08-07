@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.config.settings.SystemSettings import SystemSettingsObj
+from app.config.settings.DomainSettings import UserSourceSettingsObj
 from app.module.auth.ModuleOIDC import ModuleOIDC
 from app.module.auth.ModuleSAML2 import ModuleSAML2
 from app.module.auth.Saml2Keypair import Saml2Keypair

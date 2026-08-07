@@ -22,6 +22,7 @@ Spec: .openspec/specs/webauthn-passkeys.spec.md
 """
 
 import base64
+import os
 import secrets
 import hashlib
 import json
@@ -59,6 +60,7 @@ from app.utils import errors
 # Relying Party ID (usually domain)
 RP_ID = "sogo6.local"
 RP_NAME = "SOGo6"
+ORIGIN = os.environ.get("SOGO_WCH_ORIGIN", f"https://{RP_ID}")
 
 # Supported algorithms
 SUPPORTED_ALGORITHMS = [

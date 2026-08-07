@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 from app.config.db import tables as tbl
 from app.utils import errors as err
 from app.utils.constants import (
+    FILTER_SECTION_FILTERS,
     FILTER_SECTIONS,
 )
 from app.utils.db.Condition import EqualCondition

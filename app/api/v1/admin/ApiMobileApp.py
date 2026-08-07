@@ -11,6 +11,7 @@ import re
 import secrets
 import time
 
+from flask import request
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
