@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import time
 from typing import Any
 
@@ -18,6 +19,7 @@ from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
 from app.service import sogo_cache
+from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 
@@ -53,6 +55,7 @@ def _parse_pst_headers(pst_path: str) -> dict:
         "format": "unicode" if header[:4] == b'\x00\x00\x01\x00' else "ansi",
         "estimated_folders": max(1, estimated_messages // 50),
         "estimated_messages": estimated_messages,
+        "analysis": "simulated",  # real counts need readpst/libpst
         "header_hex": header[:16].hex(),
     }
 
@@ -79,6 +82,7 @@ def _simulate_m365_discovery(email: str, access_token: str) -> dict:
         "total_messages": total,
         "quota_used_gb": round(total * 0.00005, 2),
         "account_type": "Exchange",
+        "simulated": True,
     }
 
 
@@ -104,7 +108,6 @@ class PstAnalyze(MethodView):
             return create_api_base_response(error_code="E000003", error_msg="pst_path required", success=False)
         
         # Security check: prevent path traversal
-        import os.path
         # Normalize the path and check it doesn't contain dangerous patterns
         normalized_path = os.path.normpath(pst_path)
         # Re-normalize in case normpath didn't catch everything
@@ -135,7 +138,6 @@ class PstImport(MethodView):
             return create_api_base_response(error_code="E000003", error_msg="pst_path and target_user required", success=False)
         
         # Security check: prevent path traversal
-        import os.path
         normalized_path = os.path.normpath(pst_path)
         # Re-normalize in case normpath didn't catch everything
         normalized_path = os.path.normpath(normalized_path)
@@ -149,6 +151,19 @@ class PstImport(MethodView):
         cache = sogo_cache()
         job_id = secrets.token_hex(10)
         pst_info = _parse_pst_headers(normalized_path)
+        if not pst_info.get("exists"):
+            return create_api_base_response(error_code="E000008", error_msg="PST file not found", success=False)
+
+        # Honesty gate: the import engine is readpst/libpst. Until it is
+        # installed *and* the streaming importer wired, we must not claim any
+        # mail was imported.
+        if not shutil.which("readpst"):
+            logger_api.error("PST import attempted without readpst/libpst installed")
+            return create_api_base_response(
+                data={"job_id": job_id, "status": "requires-external-tool", "note": "install libpst/readpst and re-run"},
+                error=err.ERROR_IMPORT_ENGINE_UNAVAILABLE,
+            )
+
         job = {
             "id": job_id,
             "type": "pst",
@@ -159,21 +174,17 @@ class PstImport(MethodView):
             "imported": 0,
             "failed": 0,
             "skipped": 0,
-            "status": "running",
+            "status": "requires-external-tool",
             "started_at": time.time(),
             "completed_at": None,
-            "error": None,
+            "error": "readpst found but streaming importer not wired yet — nothing imported",
         }
         cache.set(f"{_IMPORT_PFX}{job_id}", json.dumps(job), ttl=86400 * 30)
-        # Simulate import progress (real = libpst streaming + IMAP APPEND)
-        job["imported"] = job["total_messages"]
-        job["failed"] = max(0, job["total_messages"] // 100)  # ~1% failure
-        job["skipped"] = max(0, job["total_messages"] // 50)
-        job["status"] = "completed"
-        job["completed_at"] = time.time() + job["total_messages"] / 200 * 60
-        cache.set(f"{_IMPORT_PFX}{job_id}", json.dumps(job), ttl=86400 * 30)
-        logger_api.info("PST import job %s: %d messages for %s", job_id, job["imported"], target_user)
-        return create_api_base_response(data=job)
+        logger_api.warning("PST import job %s created but no messages imported (engine not wired)", job_id)
+        return create_api_base_response(
+            data=job,
+            error=err.ERROR_IMPORT_ENGINE_UNSUPPORTED,
+        )
 
 
 @blp.route("/m365/discover")
@@ -210,17 +221,21 @@ class M365Import(MethodView):
             "target_user": target_user,
             "folders": folders or [f["displayName"] for f in discovery["folders"]],
             "total_messages": discovery["total_messages"],
-            "imported": discovery["total_messages"],
+            "imported": 0,
             "failed": 0,
             "skipped": 0,
-            "status": "completed",
+            "status": "requires-graph-api",
             "started_at": time.time(),
-            "completed_at": time.time() + discovery["total_messages"] / 500 * 60,
-            "error": None,
+            "completed_at": None,
+            "error": "Microsoft Graph import is not wired yet — nothing imported",
+            "simulated": True,
         }
         cache.set(f"{_IMPORT_PFX}{job_id}", json.dumps(job), ttl=86400 * 30)
-        logger_api.info("M365 import job %s: %d messages from %s", job_id, job["imported"], email)
-        return create_api_base_response(data=job)
+        logger_api.warning("M365 import job %s requested for %s: not wired, nothing imported", job_id, email)
+        return create_api_base_response(
+            data=job,
+            error=err.ERROR_M365_IMPORT_UNAVAILABLE,
+        )
 
 
 @blp.route("/jobs")

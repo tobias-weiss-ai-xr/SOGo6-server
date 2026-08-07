@@ -1,5 +1,10 @@
 # Specification vs Implementation Compliance Analysis
 
+> **⚠️ STALE (Aug 2025)**: Scores/statuses below reflect an early snapshot, several
+> “Missing” items have since been implemented (e.g. shared-mailbox extended fields,
+> user-facing resource booking + favorites, WebAuthn module, SAML2 SP/federation, HIPAA
+> AES-256-GCM, batch mail ops). Re-audit before trusting any row.
+
 **Generated**: August 21, 2025  
 **Author**: Tobias Weiss (@tobias-weiss-ai-xr)  
 **Status**: Initial Analysis  

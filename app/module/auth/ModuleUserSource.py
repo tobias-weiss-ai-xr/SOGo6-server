@@ -5,6 +5,7 @@ from app.config.settings.DomainSettings import UserSourceSettingsObj, UserSource
 from app.utils import exceptions as exc
 from app.utils.module.importManager import import_and_instantiate_manager
 from app.utils.logger.logger import logger
+from app.manager.ldap.ClientLdap import ldap_escape
 
 if TYPE_CHECKING:
     from app.auth.User import User
@@ -184,17 +185,64 @@ class ModuleUserSource:
                         setattr(user.access, module_name.lower(), False)
 
 
-    def _get_contact_info_for_user_from_user_source(self, user:User) -> dict:
-        """
-        _summary_
+    def _get_contact_info_for_user_from_user_source(self, user: User) -> dict:
+        """Fetch the contact info of a user from the configured user source.
 
-        :param user: _description_
-        :type user: _type_
-        :return: _description_
+        Only LDAP sources expose a read-only lookup (admin bind + search); SQL
+        user sources do not implement a post-login lookup yet, so for those we
+        log an explicit warning and return an empty dict instead of silently
+        guessing — the caller then treats the identifier as unknown.
+
+        :param user: The user to look up (must carry ``user.source_id``).
+        :type user: User
+        :return: Contact dict in the form consumed by
+            :meth:`fill_user_with_contact_info` (e.g. ``{"cn": [...], "mail": [...]}``)
+            or ``{}`` when the source cannot answer.
         :rtype: dict
         """
-        # TODO: Implement user source fetching logic
-        # This method should fetch additional user info from the configured user source
+        if not user.source_id or user.source_id not in self.all_user_sources:
+            logger.debug("No source_id for user %s, skipping source contact lookup", user.uid)
+            return {}
+
+        source_settings = self.all_user_sources[user.source_id]
+        if source_settings.US_TYPE != "ldap":
+            logger.warning(
+                "Contact lookup from user source type %r (source %s) is not supported yet",
+                source_settings.US_TYPE, user.source_id,
+            )
+            return {}
+
+        # Read-only lookup using the admin bind (never the user's password)
+        us_config = source_settings.get_user_source_settings(source_settings.US_TYPE)
+        client_us: ClientUserSource = import_and_instantiate_manager(
+            module_path=MAP_KEY_PATH[source_settings.US_TYPE],
+            module_and_class_name=MAP_KEY_CLASS[source_settings.US_TYPE],
+            module_args=us_config,
+        )
+        try:
+            client_us.connect()
+            l_filter = f"({source_settings.US_LDAP_UID}={ldap_escape(user.uid)})"
+            records = client_us.search_entries(
+                base_dn=source_settings.US_LDAP_BASE_DN,
+                l_filter=l_filter,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("User source lookup failed for uid %s: %s", user.uid, exc)
+            return {}
+        finally:
+            try:
+                client_us.close()
+            except Exception:  # pylint: disable=broad-except
+                # some clients have no close()
+                logger.debug("User source client close() failed or is absent")
+
+        for record in records:
+            contact = dict(record)
+            contact.pop("dn", None)
+            # fill_user_with_contact_info needs at least cn and mail
+            if contact.get("cn") and contact.get("mail"):
+                return contact
+        logger.debug("No contact record found in user source for uid %s", user.uid)
         return {}
 
     def get_contact_info_for_user(self, user:User) -> None:

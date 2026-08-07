@@ -6,6 +6,7 @@ mobile app config provisioning, and OTA update checking.
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import time
@@ -15,6 +16,7 @@ from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
 from app.service import sogo_cache
+from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 
@@ -270,35 +272,73 @@ class MobileConfig(MethodView):
 @blp.route("/push/broadcast")
 class MobilePushBroadcast(MethodView):
     def post(self) -> ResponseReturnValue:
-        """Send push notification to all registered devices (or subset)."""
+        """Send push notification to all registered devices (or subset).
+
+        Requires a push provider: set ``SOGO_PUSH_PROVIDER`` to ``apns`` or
+        ``fcm`` (with the matching credentials — APNS auth key / FCM
+        service-account). When unset, the endpoint refuses to claim success
+        and reports ``sent: 0`` with a clear reason.
+        """
         body = request.get_json(force=True)
         message = body.get("message", "")
         title = body.get("title", "SOGo Notification")
         target_email = body.get("email", "")  # empty = broadcast to all
         platform_filter = body.get("platform", "")  # empty = all platforms
-        sound = body.get("sound", "default")
-        
+        dry_run = bool(body.get("dry_run", False))
+
         if not message:
             return create_api_base_response(error_code="E000003", error_msg="message required", success=False)
-        
+
         cache = sogo_cache()
         idx = list(cache.get(f"{_DEVICE_PFX}index", list) or [])
-        sent_count = 0
+        devices = []
         for did in idx:
             raw = cache.get(f"{_DEVICE_PFX}{did}", str)
             if not raw:
                 continue
             device = json.loads(raw)
-            # Filter by email and platform
             if target_email and device.get("user_email") != target_email:
                 continue
             if platform_filter and device.get("platform") != platform_filter:
                 continue
-            if not device.get("push_token"):
-                continue
-            # Real: send via APNS (apns2) or FCM (firebase-admin)
-            # Simulated: just count
-            sent_count += 1
-        
-        logger_api.info("Push broadcast: %d devices notified (title=%s)", sent_count, title)
-        return create_api_base_response(data={"sent": sent_count, "title": title, "message": message})
+            if device.get("push_token"):
+                devices.append(device)
+
+        provider = os.environ.get("SOGO_PUSH_PROVIDER", "").lower()
+        if provider not in ("apns", "fcm") and not dry_run:
+            logger_api.warning(
+                "Push broadcast skipped: no provider configured (SOGO_PUSH_PROVIDER=apns|fcm); %d devices matched",
+                len(devices),
+            )
+            return create_api_base_response(
+                data={
+                    "sent": 0,
+                    "matched_devices": len(devices),
+                    "title": title,
+                    "message": message,
+                    "provider": "none",
+                    "reason": "push provider not configured (set SOGO_PUSH_PROVIDER=apns or fcm)",
+                },
+                error_code="S0003B1",
+                error_msg="push provider not configured",
+                success=False,
+                code=503,
+            )
+
+        if dry_run:
+            return create_api_base_response(data={
+                "sent": 0,
+                "matched_devices": len(devices),
+                "title": title,
+                "message": message,
+                "dry_run": True,
+            })
+
+        # Real provider dispatch (apns2 / firebase-admin) belongs here, wired
+        # behind SOGO_PUSH_PROVIDER. Until a client dependency is installed,
+        # attempting an actual delivery would silently drop notifications:
+        # refuse to do so.
+        return create_api_base_response(
+            error=err.ERROR_PUSH_PROVIDER_UNSUPPORTED,
+            data={"sent": 0, "matched_devices": len(devices)},
+        )
