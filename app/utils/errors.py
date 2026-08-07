@@ -155,6 +155,10 @@ ERROR_MAIL_UID_INVALID       = E("S001307", "Mail UID Must Be A Valid Positive I
 
 ERROR_MAIL_DOWNLOAD_FAILED          = E("S000360", "Mail Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_ZIP_FAILED               = E("S000361", "Mail Zip Archive Creation Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_ENCRYPTION_KEY_NOT_CONFIGURED = E("S0003A1", "Encryption Key Not Configured (set SOGO_AES_ENC_KEY)", HTTPStatus.PRECONDITION_FAILED)
+ERROR_ENCRYPTION_FAILED             = E("S0003A2", "Encryption Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_DECRYPTION_FAILED             = E("S0003A3", "Decryption Failed Or Data Corrupted", HTTPStatus.BAD_REQUEST)
+ERROR_ENCRYPTED_DATA_INVALID        = E("S0003A4", "Encrypted Data Format Is Invalid", HTTPStatus.BAD_REQUEST)
 ERROR_MAIL_ATTACHMENT_NOT_FOUND     = E("S000367", "Mail Attachment Not Found", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_ATTACHMENT_DOWNLOAD_FAILED = E("S000368", "Mail Attachment Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_EDIT_FAILED       = E("S000366", "Failed To Open Mail For Editing", HTTPStatus.INTERNAL_SERVER_ERROR)

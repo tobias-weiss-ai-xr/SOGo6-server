@@ -5,19 +5,22 @@ auto-expiry on PHI emails, and BAA-ready logging.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 import time
 from typing import Any
 
+from flask import request
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
 from app.service import sogo_cache
+from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
+from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
+from app.utils.maths.crypto_utils import encrypt_gcm, decrypt_gcm
 
 blp = Blueprint("HIPAA Compliance", __name__, url_prefix="/admin/hipaa")
 
@@ -26,28 +29,26 @@ _AUDIT_PFX = "hipaa_audit:"
 
 
 def _encrypt_message_at_rest(body: str, recipient: str) -> str:
-    """Simulate AES-256-GCM encryption of email body for PHI storage.
-    
-    Real production would use cryptography.fernet or age.
+    """Encrypt a message body with authenticated AES-256-GCM at rest.
+
+    The key is derived from ``SOGO_AES_ENC_KEY`` via HKDF scoped by the
+    recipient, so every recipient's PHI uses a distinct key. GCM provides
+    confidentiality *and* integrity (tamper detection).
     """
-    # Key = HMAC of recipient + server secret, deterministic per-recipient
-    server_key = secrets.token_hex(32)
-    kdf = hashlib.sha256(f"{recipient}:{server_key}".encode()).hexdigest()
-    # XOR the body bytes with the key (demo only; real = Fernet/GCM)
-    encrypted = "".join(
-        chr(ord(c) ^ ord(kdf[i % len(kdf)])) for i, c in enumerate(body[:4096])
-    )
-    return encrypted
+    try:
+        return encrypt_gcm(body, context=recipient)
+    except ValueError as exc:
+        logger_api.error("HIPAA encryption failed: %s", exc)
+        raise RequestException(err.ERROR_ENCRYPTION_KEY_NOT_CONFIGURED.m, err.ERROR_ENCRYPTION_KEY_NOT_CONFIGURED) from exc
 
 
 def _decrypt_message(encrypted: str, recipient: str) -> str:
-    """Decrypt a HIPAA-encrypted message body."""
-    server_key = secrets.token_hex(32)
-    kdf = hashlib.sha256(f"{recipient}:{server_key}".encode()).hexdigest()
-    decrypted = "".join(
-        chr(ord(c) ^ ord(kdf[i % len(kdf)])) for i, c in enumerate(encrypted)
-    )
-    return decrypted
+    """Decrypt and verify a HIPAA-encrypted message body."""
+    try:
+        return decrypt_gcm(encrypted, context=recipient)
+    except ValueError as exc:
+        logger_api.error("HIPAA decryption failed: %s", exc)
+        raise RequestException(err.ERROR_DECRYPTION_FAILED.m, err.ERROR_DECRYPTION_FAILED) from exc
 
 
 def _log_access(email_id: str, accessor: str, action: str, patient_context: str = ""):
@@ -62,8 +63,8 @@ def _log_access(email_id: str, accessor: str, action: str, patient_context: str 
         "action": action,
         "patient_context": patient_context,
         "timestamp": time.time(),
-        "ip": "logged",  # real = request.remote_addr
-        "user_agent": "logged",
+        "ip": request.remote_addr or "unknown",
+        "user_agent": request.headers.get("User-Agent", "unknown")[:255],
     }
     cache.set(f"{_AUDIT_PFX}{entry_id}", json.dumps(entry), ttl=86400 * 365 * 7)
     audit_idx.append(entry_id)
@@ -183,11 +184,35 @@ class HipaaEncrypt(MethodView):
         recipient = body.get("recipient", "")
         if not message_body or not recipient:
             return create_api_base_response(error_code="E000003", error_msg="body and recipient required", success=False)
-        encrypted = _encrypt_message_at_rest(message_body, recipient)
+        try:
+            encrypted = _encrypt_message_at_rest(message_body, recipient)
+        except RequestException as ex:
+            return create_api_base_response(None, ex.error)
         _log_access(body.get("email_id", "new"), "system", "encrypt")
         return create_api_base_response(data={
             "encrypted": encrypted,
-            "algorithm": "XOR-SHA256",  # placeholder for AES-256-GCM
+            "algorithm": "AES-256-GCM",
             "recipient": recipient,
             "encrypted_at": time.time(),
+        })
+
+
+@blp.route("/decrypt")
+class HipaaDecrypt(MethodView):
+    def post(self) -> ResponseReturnValue:
+        body = request.get_json(force=True)
+        encrypted = body.get("encrypted", "")
+        recipient = body.get("recipient", "")
+        if not encrypted or not recipient:
+            return create_api_base_response(error_code="E000003", error_msg="encrypted and recipient required", success=False)
+        try:
+            decrypted = _decrypt_message(encrypted, recipient)
+        except RequestException as ex:
+            return create_api_base_response(None, ex.error)
+        _log_access(body.get("email_id", "new"), "system", "decrypt")
+        return create_api_base_response(data={
+            "decrypted": decrypted,
+            "algorithm": "AES-256-GCM",
+            "recipient": recipient,
+            "decrypted_at": time.time(),
         })
