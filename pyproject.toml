@@ -33,6 +33,7 @@ dependencies = [
     "pydantic-settings",
     "pyjwt",
     "python-ldap",
+    "pysaml2>=7.4",
     "pytest-mock",
     "redis",
     "sievelib",

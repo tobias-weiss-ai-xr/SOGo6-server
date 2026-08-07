@@ -46,6 +46,15 @@ class AuthSettings(SogoSchema):
         "SOGO_D_OPENID_ALLOW_REDIRECT": ("SOGO_D_AUTH_TYPE", "openid"),
 
         "SOGO_D_SAML2_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_IDP_METADATA_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_IDP_ENTITY_ID": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_FEDERATION_METADATA_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_DISCOVERY_SERVICE_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_ATTRIBUTE_MAP": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_AUTHN_REQUESTS_SIGNED": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_SP_ENTITY_ID": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_PROVIDER_ID": ("SOGO_D_AUTH_TYPE", "saml2"),
 
         "SOGO_D_PWD_CHANGE_ENABLED": ("SOGO_D_AUTH_TYPE", "plain"),
         "SOGO_D_LOGIN_CHECK_MAX_ATTEMPT": ("SOGO_D_AUTH_TYPE", "plain"),
@@ -86,6 +95,24 @@ class AuthSettings(SogoSchema):
 
     #IF SOGO_D_AUTH_TYPE = 'saml2'
     SOGO_D_SAML2_URL  = fields.Url(schemes={'http','https'}, require_tld=False) #TODO saml2 configuration....
+    # IdP metadata URL for auto-configuration (fetches SSO URL + signing cert)
+    SOGO_D_SAML2_IDP_METADATA_URL = fields.Url(schemes={'http','https'}, require_tld=False)
+    # Expected IdP entity ID for issuer validation
+    SOGO_D_SAML2_IDP_ENTITY_ID = fields.String()
+    # Federation aggregate metadata URL (multi-IdP, e.g., DFN-AAI)
+    SOGO_D_SAML2_FEDERATION_METADATA_URL = fields.Url(schemes={'http','https'}, require_tld=False)
+    # External WAYF/DS URL (optional; if not set, built-in discovery is used)
+    SOGO_D_SAML2_DISCOVERY_SERVICE_URL = fields.Url(schemes={'http','https'}, require_tld=False)
+    # JSON mapping of SOGo field names to SAML attribute names (OID URNs or friendly names)
+    SOGO_D_SAML2_ATTRIBUTE_MAP = fields.Dict(load_default={}, dump_default={})
+    # Require encrypted assertions from the IdP
+    SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS = fields.Boolean(load_default=False, dump_default=False)
+    # Sign AuthnRequests with the SP private key (default True if keypair is configured)
+    SOGO_D_SAML2_AUTHN_REQUESTS_SIGNED = fields.Boolean(load_default=True, dump_default=True)
+    # SP entity ID override (default: derived from public base URL)
+    SOGO_D_SAML2_SP_ENTITY_ID = fields.String()
+    # Reference to a Saml2Provider record (optional, for admin-managed IdP config)
+    SOGO_D_SAML2_PROVIDER_ID = fields.String()
 
     #If SOGO_D_AUTH_TYPE = 'plain'
     SOGO_D_PWD_CHANGE_ENABLED = fields.Boolean(load_default=False, dump_default=False) #Allow users to change the password (for ldap it means the ldap admin account is allow to do that too)
@@ -126,6 +153,15 @@ class AuthSettingsObj(SettingsObj):
     SOGO_D_OPENID_FETCH_USER_PROFILE: bool = True
     SOGO_D_OPENID_ALLOW_REDIRECT: list[str] = []
     SOGO_D_SAML2_URL: str = ""
+    SOGO_D_SAML2_IDP_METADATA_URL: str = ""
+    SOGO_D_SAML2_IDP_ENTITY_ID: str = ""
+    SOGO_D_SAML2_FEDERATION_METADATA_URL: str = ""
+    SOGO_D_SAML2_DISCOVERY_SERVICE_URL: str = ""
+    SOGO_D_SAML2_ATTRIBUTE_MAP: dict = {}
+    SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS: bool = False
+    SOGO_D_SAML2_AUTHN_REQUESTS_SIGNED: bool = True
+    SOGO_D_SAML2_SP_ENTITY_ID: str = ""
+    SOGO_D_SAML2_PROVIDER_ID: str = ""
     SOGO_D_PWD_CHANGE_ENABLED: bool = False
     SOGO_D_LOGIN_CHECK_MAX_ATTEMPT: int = 0
     SOGO_D_LOGIN_CHECK_TIME_SPAN: int = 10

@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libldap2-dev \
     libsasl2-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
     git \
     && rm -rf /var/lib/apt/lists/*
 
@@ -32,7 +34,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         marshmallow icalendar \
         psycopg[binary] mysql-connector-python python-ldap redis \
         cryptography pyjwt pydantic pydantic-settings \
-        sievelib yarl || \
+        sievelib yarl pysaml2 || \
     echo "Some packages failed - will check at runtime"
 
 # Copy source code (will be mounted by compose in dev)

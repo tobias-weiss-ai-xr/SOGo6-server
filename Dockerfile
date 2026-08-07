@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libldap2-dev \
     libsasl2-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -30,7 +32,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         marshmallow icalendar \
         psycopg[binary] mysql-connector-python python-ldap redis \
         cryptography pyjwt pydantic pydantic-settings \
-        sievelib yarl debugpy \
+        sievelib yarl debugpy pysaml2 \
     && rm -rf /root/.cache/pip
 
 # Copy source
@@ -47,6 +49,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libldap-2.5-0 \
     libsasl2-2 \
+    xmlsec1 \
+    libxml2 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

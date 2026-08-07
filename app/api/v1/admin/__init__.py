@@ -41,6 +41,7 @@ from .ApiMatrixChat import blp as matrix_chat_api
 from .ApiJmapProtocol import blp as jmap_protocol_api
 from .ApiActiveSync import blp as active_sync_api
 from .ApiMobileApp import blp as mobile_app_api
+from .ApiSaml2Admin import blp as saml2_admin_api
 
 admin_apis : list[Blueprint] = [
     audit_log_api,
@@ -83,4 +84,5 @@ admin_apis : list[Blueprint] = [
     jmap_protocol_api,
     active_sync_api,
     mobile_app_api,
+    saml2_admin_api,
 ]

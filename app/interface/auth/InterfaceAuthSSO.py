@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.module.auth.ModuleOIDC import ModuleOIDC
 from app.module.auth.ModuleSAML2 import ModuleSAML2
+from app.module.auth.Saml2Keypair import Saml2Keypair
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.exceptions import RequestException
@@ -163,7 +164,8 @@ class InterfaceAuthSSO:
             saml = self._build_saml(domain_auth, domain)
             result = saml.process_response(saml_response_b64)
 
-            email = result.get("email", "") or result.get("name_id", "")
+            # Use mapped attributes: prefer email, fall back to eppn, then name_id
+            email = result.get("email", "") or result.get("eppn", "") or result.get("name_id", "")
 
             if not email:
                 return create_api_base_response(
@@ -172,8 +174,16 @@ class InterfaceAuthSSO:
                 )
 
             # Authenticate the user in the local user source
-            auth_result = self._authenticate_sso_user(domain, email, "saml2")
+            auth_result = self._authenticate_sso_user(
+                domain, email, "saml2",
+                display_name=result.get("display_name", ""),
+                eppn=result.get("eppn", ""),
+            )
             auth_result["saml_name_id"] = result.get("name_id", "")
+            auth_result["saml_attributes"] = result.get("attributes", {})
+            auth_result["saml_display_name"] = result.get("display_name", "")
+            auth_result["saml_eppn"] = result.get("eppn", "")
+            auth_result["saml_issuer"] = result.get("issuer", "")
             return create_api_base_response(auth_result)
 
         except RequestException:
@@ -201,17 +211,110 @@ class InterfaceAuthSSO:
         )
 
     def _build_saml(self, domain_auth: AuthSettingsObj, domain: str) -> ModuleSAML2:
-        """Construct a SAML2 module from domain settings."""
-        if not domain_auth.SOGO_D_SAML2_URL:
+        """Construct a SAML2 module from domain settings.
+
+        Supports two modes:
+        1. Simple mode: only ``SOGO_D_SAML2_URL`` is set (backward compatible).
+        2. Federation mode: ``SOGO_D_SAML2_IDP_METADATA_URL`` or
+           ``SOGO_D_SAML2_FEDERATION_METADATA_URL`` is set, enabling metadata
+           fetching, signature verification, and replay protection.
+        """
+        if not domain_auth.SOGO_D_SAML2_URL and not domain_auth.SOGO_D_SAML2_IDP_METADATA_URL:
             raise RequestException("SAML2 not configured", err.ERROR_SAML_NOT_CONFIGURED)
 
-        # The SAML2 URL is the IdP SSO URL; we need the ACS URL (our callback)
+        # Build the ACS URL (our callback endpoint)
         acs_url = self._build_redirect_uri(domain)
 
+        # SP entity ID — use configured value or derive from ACS URL
+        sp_entity_id = domain_auth.SOGO_D_SAML2_SP_ENTITY_ID
+        if not sp_entity_id:
+            sp_entity_id = acs_url.replace("/callback/", "/metadata/").rstrip("/")
+
+        # Load SP keypair for signing / decryption
+        keypair = Saml2Keypair(self._process)
+        sp_cert, sp_key = keypair.load_keypair()
+
+        # IdP certificate (for signature verification)
+        # In federation mode, this comes from the provider DB / metadata.
+        # In simple mode, it may not be available (legacy insecure mode).
+        idp_cert = ""
+        idp_entity_id = domain_auth.SOGO_D_SAML2_IDP_ENTITY_ID
+        idp_sso_url = domain_auth.SOGO_D_SAML2_URL
+
+        # If metadata URL is configured, fetch IdP config from metadata
+        if domain_auth.SOGO_D_SAML2_IDP_METADATA_URL:
+            try:
+                from app.module.auth.Saml2Metadata import Saml2Metadata
+                metadata_fetcher = Saml2Metadata(self._process)
+                idp_config = metadata_fetcher.get_idp_config(
+                    domain_auth.SOGO_D_SAML2_IDP_METADATA_URL,
+                    entity_id=idp_entity_id or None,
+                )
+                idp_sso_url = idp_config.get("sso_url", idp_sso_url)
+                idp_cert = idp_config.get("certificate", "")
+                if not idp_entity_id:
+                    idp_entity_id = idp_config.get("entity_id", "")
+                logger_api.info(
+                    "SAML2: loaded IdP config from metadata URL (entity_id=%s)",
+                    idp_entity_id,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                logger_api.warning("SAML2: failed to fetch IdP metadata: %s", exc)
+                if not idp_sso_url:
+                    raise RequestException(
+                        f"SAML2: failed to fetch IdP metadata and no SSO URL configured: {exc}",
+                        err.ERROR_SAML_METADATA_FETCH_FAILED,
+                    ) from exc
+
+        # Load provider from DB if provider_id is set
+        if domain_auth.SOGO_D_SAML2_PROVIDER_ID:
+            try:
+                from app.module.auth.ModuleSaml2Provider import ModuleSaml2Provider
+                provider_module = ModuleSaml2Provider(self._process)
+                provider = provider_module.get_provider(domain_auth.SOGO_D_SAML2_PROVIDER_ID)
+                if provider:
+                    idp_sso_url = provider.get("sso_url", idp_sso_url)
+                    idp_entity_id = provider.get("entity_id", idp_entity_id)
+                    idp_cert = provider.get("certificate", idp_cert)
+                    logger_api.info(
+                        "SAML2: loaded provider '%s' from DB (entity_id=%s)",
+                        domain_auth.SOGO_D_SAML2_PROVIDER_ID,
+                        idp_entity_id,
+                    )
+                else:
+                    logger_api.warning(
+                        "SAML2: provider '%s' not found in DB",
+                        domain_auth.SOGO_D_SAML2_PROVIDER_ID,
+                    )
+            except Exception as exc:  # pylint: disable=broad-except
+                logger_api.warning("SAML2: failed to load provider from DB: %s", exc)
+
+        # Get Redis client for replay protection
+        redis_client = None
+        try:
+            from app.service import sogo_cache
+            redis_client = sogo_cache()
+        except Exception as exc:  # pylint: disable=broad-except
+            logger_api.debug("SAML2: Redis not available for replay protection: %s", exc)
+
+        # Attribute map from domain settings
+        attribute_map = domain_auth.SOGO_D_SAML2_ATTRIBUTE_MAP or None
+
         return ModuleSAML2(
-            idp_sso_url=domain_auth.SOGO_D_SAML2_URL,
-            entity_id=acs_url.replace("/callback/", "/metadata/").rstrip("/"),
+            idp_sso_url=idp_sso_url,
+            idp_entity_id=idp_entity_id,
+            entity_id=sp_entity_id,
             acs_url=acs_url,
+            x509_cert=sp_cert or "",
+            x509_key=sp_key or "",
+            name_id_format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+            idp_cert=idp_cert,
+            attribute_map=attribute_map,
+            clock_skew=self._process.SOGO_SAML2_CLOCK_SKEW,
+            want_assertions_signed=True,
+            want_assertions_encrypted=domain_auth.SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS,
+            want_response_signed=bool(sp_cert),
+            redis_client=redis_client,
         )
 
     def _build_redirect_uri(self, domain: str) -> str:
@@ -229,6 +332,8 @@ class InterfaceAuthSSO:
         domain: str,
         email: str,
         auth_type: str,
+        display_name: str = "",
+        eppn: str = "",
     ) -> dict[str, Any]:
         """Authenticate / create an SSO user and generate a JWT voucher.
 
@@ -280,7 +385,8 @@ class InterfaceAuthSSO:
         user = User(email, password="")  # password is empty — we use SSO
         user.domain = domain
         user.mail = email
-        user.cn = email.split("@")[0]  # fallback display name
+        # Use SAML display_name if available, otherwise derive from email
+        user.cn = display_name or email.split("@")[0]
 
         # Check if user exists in user source (domain settings)
         try:

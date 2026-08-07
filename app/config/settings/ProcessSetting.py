@@ -185,6 +185,18 @@ class ProcessSetting(FlaskConfig):
     # which installs /var/celery owned by the application user). Run a single beat instance.
     SOGO_P_AGENT_BEAT_SCHEDULE_PATH: str = "/var/celery/celerybeat-schedule"
 
+    # --- SAML2 SSO (global) ---
+    # SP X.509 certificate (PEM) for signing AuthnRequests and serving SP metadata
+    SOGO_SAML2_SP_CERT_FILE: str = "/etc/sogo/saml/sp-cert.pem"
+    # SP private key (PEM) for signing AuthnRequests and decrypting assertions
+    SOGO_SAML2_SP_KEY_FILE: str = "/etc/sogo/saml/sp-key.pem"
+    # Redis cache TTL for IdP/federation metadata (seconds, default 6h)
+    SOGO_SAML2_METADATA_CACHE_TTL: int = 21600
+    # Federation metadata signing certificate (PEM) for verifying aggregate signatures
+    SOGO_SAML2_FEDERATION_METADATA_CERT: str = ""
+    # Clock skew tolerance for SAML Conditions validation (seconds)
+    SOGO_SAML2_CLOCK_SKEW: int = 60
+
     # --- Table names ---
     SOGO_P_TABLE_SETTINGS:   str = "sogo6_sogo_settings"
     SOGO_P_TABLE_DOMAINS:    str = "sogo6_sogo_settings_domains"
@@ -205,6 +217,7 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_TABLE_MFA_TOTP:   str = "sogo6_mfa_totp"
     SOGO_P_TABLE_MFA_WEBAUTHN: str = "sogo6_mfa_webauthn"
     SOGO_P_TABLE_PWD_RESET_TOKENS: str = "sogo6_password_reset_tokens"
+    SOGO_P_TABLE_SAML2_PROVIDERS: str = "sogo6_saml2_providers"
 
     # --- Admin Authentication ---
     # WARNING: Default credentials are disabled for security. Must be set via environment or config file.

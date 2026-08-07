@@ -814,6 +814,56 @@ ALL_SNOOZE_COL = [COL_SNOOZE_ID,
 TABLE_SNOOZE = Table(name="sogo6_snoozed", columns=ALL_SNOOZE_COL,
                       primary_keys=(COL_SNOOZE_ID.name,))
 
+# ── SAML2 Providers ───────────────────────────────────────────────────────────
+"""SAML2 IdP trust relationships managed via admin API.
+
+Each row represents one IdP (identity provider) that SOGo trusts for SAML2 SSO.
+The admin can either configure an IdP manually (entity_id + sso_url + certificate)
+or provide a metadata_url and let SOGo auto-fetch and refresh the configuration.
+"""
+COL_SAML2_ID              = Column(name="id",              data_type="str", extra_args={"max_len": 255}, is_unique=True)
+COL_SAML2_NAME            = Column(name="name",            data_type="str", extra_args={"max_len": 255})
+COL_SAML2_ENTITY_ID       = Column(name="entity_id",       data_type="str", extra_args={"max_len": 500})
+COL_SAML2_SSO_URL         = Column(name="sso_url",         data_type="str", extra_args={"max_len": 500})
+COL_SAML2_SSO_BINDING     = Column(name="sso_binding",     data_type="str", extra_args={"max_len": 50},  is_nullable=True)
+COL_SAML2_SLS_URL         = Column(name="sls_url",         data_type="str", extra_args={"max_len": 500}, is_nullable=True)
+COL_SAML2_SLS_BINDING     = Column(name="sls_binding",     data_type="str", extra_args={"max_len": 50},  is_nullable=True)
+COL_SAML2_CERTIFICATE     = Column(name="certificate",     data_type="text", is_nullable=True)
+COL_SAML2_FINGERPRINT     = Column(name="fingerprint",     data_type="str", extra_args={"max_len": 100}, is_nullable=True)
+COL_SAML2_METADATA_URL    = Column(name="metadata_url",    data_type="str", extra_args={"max_len": 500}, is_nullable=True)
+COL_SAML2_METADATA_XML    = Column(name="metadata_xml",    data_type="text", is_nullable=True)
+COL_SAML2_NAMEID_FORMAT   = Column(name="nameid_format",   data_type="str", extra_args={"max_len": 100}, is_nullable=True)
+COL_SAML2_ATTRIBUTE_MAP   = Column(name="attribute_map",   data_type="dict", is_nullable=True)
+COL_SAML2_ACS_URL         = Column(name="acs_url",         data_type="str", extra_args={"max_len": 500}, is_nullable=True)
+COL_SAML2_IS_ACTIVE       = Column(name="is_active",       data_type="bool", is_nullable=False)
+COL_SAML2_CREATED_AT      = Column(name="created_at",      data_type="datetime")
+COL_SAML2_UPDATED_AT      = Column(name="updated_at",      data_type="datetime")
+
+ALL_SAML2_COL = [COL_ID,
+                 COL_SAML2_ID,
+                 COL_SAML2_NAME,
+                 COL_SAML2_ENTITY_ID,
+                 COL_SAML2_SSO_URL,
+                 COL_SAML2_SSO_BINDING,
+                 COL_SAML2_SLS_URL,
+                 COL_SAML2_SLS_BINDING,
+                 COL_SAML2_CERTIFICATE,
+                 COL_SAML2_FINGERPRINT,
+                 COL_SAML2_METADATA_URL,
+                 COL_SAML2_METADATA_XML,
+                 COL_SAML2_NAMEID_FORMAT,
+                 COL_SAML2_ATTRIBUTE_MAP,
+                 COL_SAML2_ACS_URL,
+                 COL_SAML2_IS_ACTIVE,
+                 COL_SAML2_CREATED_AT,
+                 COL_SAML2_UPDATED_AT]
+
+IDX_SAML2_ENTITY_ID = Index(name="idx_saml2_entity_id", columns=(COL_SAML2_ENTITY_ID.name,))
+
+TABLE_SAML2_PROVIDERS = Table(name=process_config.SOGO_P_TABLE_SAML2_PROVIDERS, columns=ALL_SAML2_COL,
+                              primary_keys=(COL_ID.name, COL_SAML2_ID.name),
+                              indexes=[IDX_SAML2_ENTITY_ID])
+
 ALL_TABLES = [TABLE_SETTINGS,
               TABLE_DOMAIN,
               TABLE_RULES,
@@ -834,4 +884,5 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_MFA_WEBAUTHN,
               TABLE_PWD_RESET_TOKENS,
               TABLE_RESOURCES,
-              TABLE_SNOOZE]
+              TABLE_SNOOZE,
+              TABLE_SAML2_PROVIDERS]
