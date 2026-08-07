@@ -28,60 +28,78 @@ _IMPORT_PFX = "import_job:"
 
 
 def _parse_pst_headers(pst_path: str) -> dict:
-    """Parse PST file header to extract metadata.
-    
-    Real implementation: use python-libpst or subprocess with readpst/libpff.
-    This simulates the PST structure discovery phase.
+    """Validate a PST file by its real on-disk header structure.
+
+    Only real, verifiable data is returned (magic bytes, size, encoding flavor).
+    Folder/message counts are deliberately NOT fabricated here -- they require
+    the readpst/libpst engine and are reported by dedicated error codes
+    instead (see PstAnalyze).
     """
     if not os.path.exists(pst_path):
         return {"exists": False, "error": "File not found"}
-    
+
     file_size = os.path.getsize(pst_path)
-    # PST magic bytes: !BDN (0x2142444E) for ANSI or !BDN (Unicode variant)
     with open(pst_path, "rb") as f:
         header = f.read(32)
-    
-    # Real: use libpst to enumerate folder tree, message counts, sizes
-    is_valid = header[:4] in (b'!BDN', b'\x00\x00\x01\x00') or file_size > 0
-    
-    # Simulate folder discovery (real = libpst.pst_open + folder enumeration)
-    estimated_messages = max(1, file_size // 4096)  # rough estimate
-    
+
+    # Real PST magic: "!BDN" (ANSI) or the Unicode marker
+    is_valid = header[:4] in (b"!BDN", b"\x00\x00\x01\x00")
     return {
         "exists": True,
         "valid": is_valid,
         "file_size": file_size,
-        "format": "unicode" if header[:4] == b'\x00\x00\x01\x00' else "ansi",
-        "estimated_folders": max(1, estimated_messages // 50),
-        "estimated_messages": estimated_messages,
-        "analysis": "simulated",  # real counts need readpst/libpst
+        "format": "unicode" if header[:4] == b"\x00\x00\x01\x00" else "ansi",
         "header_hex": header[:16].hex(),
     }
 
 
-def _simulate_m365_discovery(email: str, access_token: str) -> dict:
-    """Discover M365 mailbox structure via Microsoft Graph API.
-    
-    Real: GET https://graph.microsoft.com/v1.0/users/{email}/mailFolders
-    This simulates the discovery phase.
+def _discover_m365(email: str, access_token: str) -> dict:
+    """Query the real Microsoft Graph API for the mailbox folder inventory.
+
+    GET https://graph.microsoft.com/v1.0/users/{email}/mailFolders with the
+    caller-provided bearer token. Never fabricates a mailbox: on any failure
+    (401/403/429/network) this returns {"ok": False, ...} so the API layer
+    answers with an honest error instead of made-up data.
     """
-    import hashlib
-    mailbox_hash = hashlib.sha256(email.lower().encode()).hexdigest()[:8]
+    import requests
+    from urllib.parse import quote
+
+    url = "https://graph.microsoft.com/v1.0/users/{}/mailFolders".format(quote(email, safe=""))
+    try:
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=(3.05, 30),
+        )
+    except requests.RequestException as exc:
+        return {"ok": False, "email": email, "http_status": 0, "error": f"graph unreachable: {exc.__class__.__name__}"}
+
+    if resp.status_code != 200:
+        detail = ""
+        try:
+            detail = resp.json().get("error", {}).get("message", resp.text[:200])
+        except Exception:
+            detail = resp.text[:200]
+        return {"ok": False, "email": email, "http_status": resp.status_code, "error": detail}
+
+    try:
+        folders_raw = resp.json().get("value", []) or []
+    except Exception:
+        folders_raw = []
     folders = [
-        {"id": f"AQMkAD{mailbox_hash}", "displayName": "Inbox", "totalItemCount": 1500 + int(mailbox_hash, 16) % 2000, "unreadItemCount": 45},
-        {"id": f"AQMkSE{mailbox_hash}", "displayName": "Sent Items", "totalItemCount": 800 + int(mailbox_hash, 16) % 500, "unreadItemCount": 0},
-        {"id": f"AQMkDR{mailbox_hash}", "displayName": "Drafts", "totalItemCount": 12, "unreadItemCount": 0},
-        {"id": f"AQMkDE{mailbox_hash}", "displayName": "Deleted Items", "totalItemCount": 200 + int(mailbox_hash, 16) % 300, "unreadItemCount": 0},
-        {"id": f"AQMkAR{mailbox_hash}", "displayName": "Archive", "totalItemCount": 3000 + int(mailbox_hash, 16) % 5000, "unreadItemCount": 0},
+        {
+            "id": item.get("id"),
+            "displayName": item.get("displayName") or "",
+            "totalItemCount": item.get("totalItemCount") or 0,
+            "unreadItemCount": item.get("unreadItemCount") or 0,
+        }
+        for item in folders_raw
     ]
-    total = sum(f["totalItemCount"] for f in folders)
     return {
+        "ok": True,
         "email": email,
         "folders": folders,
-        "total_messages": total,
-        "quota_used_gb": round(total * 0.00005, 2),
-        "account_type": "Exchange",
-        "simulated": True,
+        "total_messages": sum(f["totalItemCount"] for f in folders),
     }
 
 
@@ -121,9 +139,18 @@ class PstAnalyze(MethodView):
         result = _parse_pst_headers(normalized_path)
         if not result.get("exists"):
             return create_api_base_response(error_code="E000008", error_msg="PST file not found", success=False)
-        est = _estimate_import_time(result.get("estimated_messages", 0))
-        result["import_estimate"] = est
-        return create_api_base_response(data=result)
+
+        # Honesty gate: folder/message counts only come from the libpst/readpst
+        # engine; never fabricate counts. Same error family as PstImport.
+        if not shutil.which("readpst"):
+            return create_api_base_response(
+                data={"pst": result, "note": "readpst/libpst not installed -- install it and re-run"},
+                error=err.ERROR_IMPORT_ENGINE_UNAVAILABLE,
+            )
+        return create_api_base_response(
+            data={"pst": result, "note": "readpst installed; folder enumeration not wired yet"},
+            error=err.ERROR_IMPORT_ENGINE_UNSUPPORTED,
+        )
 
 
 @blp.route("/pst/import")
@@ -169,7 +196,7 @@ class PstImport(MethodView):
             "pst_path": normalized_path,
             "target_user": target_user,
             "folders": folders,
-            "total_messages": pst_info.get("estimated_messages", 0),
+            "total_messages": 0,  # real count needs the readpst engine
             "imported": 0,
             "failed": 0,
             "skipped": 0,
@@ -194,9 +221,13 @@ class M365Discover(MethodView):
         access_token = body.get("access_token", "")
         if not email or not access_token:
             return create_api_base_response(error_code="E000003", error_msg="email and access_token required", success=False)
-        discovery = _simulate_m365_discovery(email, access_token)
-        est = _estimate_import_time(discovery["total_messages"])
-        discovery["import_estimate"] = est
+        discovery = _discover_m365(email, access_token)
+        if not discovery.get("ok"):
+            return create_api_base_response(
+                data={"email": email, "graph_status": discovery.get("http_status"), "graph_error": discovery.get("error", "")},
+                error=err.ERROR_M365_IMPORT_UNAVAILABLE,
+            )
+        discovery["import_estimate"] = _estimate_import_time(discovery["total_messages"])
         return create_api_base_response(data=discovery)
 
 
@@ -210,9 +241,14 @@ class M365Import(MethodView):
         folders = body.get("folders", [])
         if not email or not access_token:
             return create_api_base_response(error_code="E000003", error_msg="email and access_token required", success=False)
+        discovery = _discover_m365(email, access_token)
+        if not discovery.get("ok"):
+            return create_api_base_response(
+                data={"email": email, "graph_status": discovery.get("http_status"), "graph_error": discovery.get("error", "")},
+                error=err.ERROR_M365_IMPORT_UNAVAILABLE,
+            )
         cache = sogo_cache()
         job_id = secrets.token_hex(10)
-        discovery = _simulate_m365_discovery(email, access_token)
         job = {
             "id": job_id,
             "type": "m365",
@@ -226,8 +262,7 @@ class M365Import(MethodView):
             "status": "requires-graph-api",
             "started_at": time.time(),
             "completed_at": None,
-            "error": "Microsoft Graph import is not wired yet — nothing imported",
-            "simulated": True,
+            "error": "Microsoft Graph import engine not wired yet -- nothing imported",
         }
         cache.set(f"{_IMPORT_PFX}{job_id}", json.dumps(job), ttl=86400 * 30)
         logger_api.warning("M365 import job %s requested for %s: not wired, nothing imported", job_id, email)

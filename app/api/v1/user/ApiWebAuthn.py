@@ -748,7 +748,7 @@ class ApiAdminWebAuthnAudit(MethodView):
         limit = fields.Integer(load_default=100)
         offset = fields.Integer(load_default=0)
     
-    class AuditEntrySchema(Schema):
+    class WebAuthnAuditEntrySchema(Schema):
         id = fields.String()
         user_id = fields.String(allow_none=True)
         action = fields.String()
@@ -760,7 +760,7 @@ class ApiAdminWebAuthnAudit(MethodView):
         created_at = fields.String()
     
     @blp.arguments(AuditQuerySchema, location="query")
-    @blp.response(200, AuditEntrySchema(many=True))
+    @blp.response(200, WebAuthnAuditEntrySchema(many=True))
     @login_required
     @admin_required
     def get(self, args):

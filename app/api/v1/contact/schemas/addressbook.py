@@ -90,7 +90,7 @@ class ContactImportUploadSchema(Schema):
 #
 
 
-class ShareCreateSchema(Schema):
+class ContactShareCreateSchema(Schema):
     """Request body for sharing an address book with a user."""
 
     user_uid   = fields.String(required=True, metadata={"example": "user@example.org"})
@@ -101,30 +101,30 @@ class ShareCreateSchema(Schema):
     )
 
 
-class ShareSchema(Schema):
+class ContactShareSchema(Schema):
     """Representation of a share entry in API responses."""
 
     user_uid     = fields.String()
     share_level  = fields.String()
 
 
-class ShareListDataSchema(Schema):
+class ContactShareListDataSchema(Schema):
     """Data payload for the share list response."""
 
-    shares      = fields.List(fields.Nested(ShareSchema))
+    shares      = fields.List(fields.Nested(ContactShareSchema))
     total_count = fields.Integer()
 
 
-class ShareListResponseSchema(ApiBaseResponse):
+class ContactShareListResponseSchema(ApiBaseResponse):
     """Response schema for a list of shares."""
 
-    data = fields.Nested(ShareListDataSchema, allow_none=True)
+    data = fields.Nested(ContactShareListDataSchema, allow_none=True)
 
 
 class ContactShareResponseSchema(ApiBaseResponse):
     """Response schema for a single share."""
 
-    data = fields.Nested(ShareSchema, allow_none=True)
+    data = fields.Nested(ContactShareSchema, allow_none=True)
 
 
 #
@@ -132,7 +132,7 @@ class ContactShareResponseSchema(ApiBaseResponse):
 #
 
 
-class SyncConfigUpdateSchema(Schema):
+class ContactSyncConfigUpdateSchema(Schema):
     """Partial external address book sync configuration update."""
 
     url = fields.Url(metadata={"description": "Remote CardDAV URL."})
@@ -158,4 +158,4 @@ class ExternalAddressBookUpdateSchema(Schema):
     """Request body for updating an external CardDAV address book."""
 
     name = fields.String()
-    sync_config = fields.Nested(SyncConfigUpdateSchema, metadata={"description": "Partial sync_config update (url, sync_interval_minutes)."})
+    sync_config = fields.Nested(ContactSyncConfigUpdateSchema, metadata={"description": "Partial sync_config update (url, sync_interval_minutes)."})

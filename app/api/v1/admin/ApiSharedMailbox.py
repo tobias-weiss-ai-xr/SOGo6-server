@@ -113,7 +113,7 @@ class SharedMailboxResponseDataSchema(Schema):
     signature_plain = fields.String(allow_none=True)
 
 
-class NoteCreateSchema(Schema):
+class SharedMailboxNoteCreateSchema(Schema):
     """Request body for creating a note."""
     content = fields.String(required=True)
     email_id = fields.String(load_default=None)
@@ -507,7 +507,7 @@ class ApiSharedMailboxNotes(MethodView):
         notes = notes_mod.list_notes(mailbox_id, email_id=email_id, include_private=True)
         return create_api_base_response({"notes": notes, "total_count": len(notes)})
 
-    @blp.arguments(NoteCreateSchema, error_status_code=400)
+    @blp.arguments(SharedMailboxNoteCreateSchema, error_status_code=400)
     @blp.response(201)
     def post(self, data: dict, mailbox_id: str) -> dict[str, Any]:
         """Add a note to a shared mailbox."""

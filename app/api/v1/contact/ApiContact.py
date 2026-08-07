@@ -23,8 +23,8 @@ from .schemas.addressbook import (
     ContactImportUploadSchema,
     ContactJobResponseSchema,
     ExternalAddressBookCreateSchema,
-    ShareCreateSchema,
-    ShareListResponseSchema,
+    ContactShareCreateSchema,
+    ContactShareListResponseSchema,
     ContactShareResponseSchema,
 )
 from .schemas.contact import (
@@ -130,14 +130,14 @@ class ApiAddressBookDetail(MethodView):
 class ApiAddressBookShareList(MethodView):
     """API to list and add shares on an address book."""
 
-    @blp.response(200, ShareListResponseSchema)
+    @blp.response(200, ContactShareListResponseSchema)
     def get(self, key: str) -> ResponseReturnValue:
         """List all shares for an address book."""
         logger_api.debug("GET /addressbooks/%s/shares user=%s", key, g.user.uid)
         interface: InterfaceApiContactContact = g.inter
         return interface.list_shares(key)
 
-    @blp.arguments(ShareCreateSchema)
+    @blp.arguments(ContactShareCreateSchema)
     @blp.response(201, ContactShareResponseSchema)
     def post(self, body: dict, key: str) -> ResponseReturnValue:
         """Share an address book with a user."""

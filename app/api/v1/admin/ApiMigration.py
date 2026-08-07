@@ -33,7 +33,7 @@ class MigrationJobSchema(Schema):
     options = fields.Dict(allow_none=True, metadata={"description": "Source-specific options (host, credentials, etc.)"})
 
 
-class MigrationEntrySchema(Schema):
+class ApiMigrationHistoryEntrySchema(Schema):
     id = fields.String()
     source = fields.String()
     user_uid = fields.String()

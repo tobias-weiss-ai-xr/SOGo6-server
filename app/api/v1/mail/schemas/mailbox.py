@@ -219,7 +219,7 @@ class MailOutgoingUpdateSchema(Schema):
         }
 
 
-class QuotaSchema(Schema):
+class MailboxQuotaSchema(Schema):
     """
     Schema for mailbox quota information
     """
