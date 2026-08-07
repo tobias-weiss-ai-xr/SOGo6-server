@@ -265,9 +265,11 @@ class ModuleMail:
         return {"mail_deleted": mail_deleted}
 
 
-    def update_folder(self, folder_name: str, folder_data: dict[str, Any]) -> dict[str, Any]:
+    def update_folder(self, account_id: str, folder_name: str, folder_data: dict[str, Any]) -> dict[str, Any]:
         """Update name, type (junk, template...) and subscription status of a specific mail folder.
-        
+
+        :param account_id: The account identifier
+        :type account_id: str
         :param folder_name: The current name of the folder
         :type folder_name: str
         :param folder_data: dictionary containing update data (name, subscribed, type)
@@ -276,37 +278,35 @@ class ModuleMail:
         :rtype: dict[str, Any]
         :raises RequestException: If validation or manager operations fail
         """
-        raise NotImplementedError()
-        # self.client.select_mailbox(folder_name)
-        # new_name = folder_data.get("name")
-        # subscribed = folder_data.get("subscribed")
-        # folder_type = folder_data.get("type")
+        client = self._open_client_for(account_id)
+        new_name = folder_data.get("name")
+        subscribed = folder_data.get("subscribed")
+        folder_type = folder_data.get("type")
 
-        # # Rename folder if new name is provided and different
-        # final_folder_name = folder_name
-        # if new_name and new_name != folder_name:
-        #     self.client.rename_folder(folder_name, new_name)
-        #     final_folder_name = new_name
-        #     logger_mail_server.info("Renamed folder from '%s' to '%s'", folder_name, new_name)
+        # Rename folder if a new name is provided and different
+        final_folder_name = folder_name
+        if new_name and new_name != folder_name:
+            client.rename_folder(folder_name, new_name)
+            final_folder_name = new_name
+            logger_mail_server.info("Renamed folder from '%s' to '%s'", folder_name, new_name)
 
-        # # Update subscription status if provided
-        # if subscribed is not None:
-        #     if subscribed in (1, "1", True):
-        #         self.client.subscribe_folder(final_folder_name)
-        #         logger_mail_server.info("Subscribed to folder '%s'", final_folder_name)
-        #     else:
-        #         self.client.unsubscribe_folder(final_folder_name)
-        #         logger_mail_server.info("Unsubscribed from folder '%s'", final_folder_name)
+        # Update subscription status if provided
+        if subscribed is not None:
+            is_subscribed = subscribed in (1, "1", True)
+            if is_subscribed:
+                client.subscribe_folder(final_folder_name)
+            else:
+                client.unsubscribe_folder(final_folder_name)
+            logger_mail_server.info("Set subscribed=%s for folder '%s'", is_subscribed, final_folder_name)
 
-        # # Get updated folder details
-        # updated_details = self.client.get_one_folder(final_folder_name)
+        # Get updated folder details
+        updated_details = client.get_one_folder(final_folder_name)
 
-        # # Update folder type if provided
-        # if folder_type:
-        #     updated_details["type"] = folder_type
-        #     # Folder type update will be implemented when BDD manager is available
+        # Apply folder type override if provided
+        if folder_type:
+            updated_details[cs.FOLDER_TYPE] = folder_type
 
-        # return updated_details
+        return updated_details
 
 
     def purge_folder_mails(self, account_id:str, folder_path: str, purge_data: dict[str, Any]) -> dict[str, int]:
@@ -1038,9 +1038,14 @@ class ModuleMail:
         client = self._open_client_for(account_id)
         client.delete_mail_permanently_from_folder_type(cs.MAIL_FOLDER_DRAFT, draft_uid)
 
-    def move_mails(self, from_folder: str, mail_uids: list[int], to_folder: str) -> dict[str, Any]:
+    def move_mails(self, account_id: str, from_folder: str, mail_uids: list[int], to_folder: str) -> dict[str, Any]:
         """Move multiple mails from one folder to another.
 
+        Uses a single IMAP connection: UID COPY to the destination then mark
+        the source copies as \\Deleted (expunge is left to the client).
+
+        :param account_id: The account identifier
+        :type account_id: str
         :param from_folder: The name of the source folder.
         :type from_folder: str
         :param mail_uids: A list of mail UIDs to move.
@@ -1051,16 +1056,23 @@ class ModuleMail:
         :return: A dict with list of moved mail UIDs
         :rtype: dict[str, Any]
         """
-        raise NotImplementedError()
-        # moved_uids: list[int] = []
-        # self.client.select_mailbox(from_folder)
-        # self.client.select_mailbox(to_folder)
-        # for mail_uid in mail_uids:
-        #     self.client.uid_copy(mail_uid, to_folder)
-        #     self.client.uid_store_flags(mail_uid, ['\\Deleted'])
-        #     moved_uids.append(mail_uid)
+        if not mail_uids:
+            return {"moved_ids": []}
+        if not to_folder or not isinstance(to_folder, str):
+            raise RequestException("Missing or invalid destination folder for move action", err.ERROR_MISSING_ACTION_DATA)
 
-        # return {"moved_ids": moved_uids}
+        client = self._open_client_for(account_id)
+        moved_uids: list[int] = []
+
+        uid_list = [str(uid) for uid in mail_uids]
+        client.uid_copy(uid_list, to_folder)
+        client.add_flags_to_mail(from_folder, uid_list, ['\\Deleted'])
+        moved_uids.extend(mail_uids)
+
+        logger_mail_server.info(
+            "Moved %d mails from '%s' to '%s' (account %s)", len(moved_uids), from_folder, to_folder, account_id
+        )
+        return {"moved_ids": moved_uids}
 
     def get_mail_detail(self, account_id: str, folder_name: str, mail_uid: str) -> dict[str, Any]:
         """Fetch the details of a specific mail.
@@ -1154,15 +1166,48 @@ class ModuleMail:
         return quota
 
 
-    def export_folder_mails(self, folder_name: str) -> dict[str, Any]:
-        """Export all mails in the specified folder.
-        
-        :param folder_name: The name of the folder
+    def export_folder_mails(self, account_id: str, folder_name: str) -> BytesIO:
+        """Export all mails in the specified folder as a ZIP of .eml files.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param folder_name: The name of the folder to export
         :type folder_name: str
-        :return: Export data
-        :rtype: dict[str, Any]
+        :return: A BytesIO buffer containing the ZIP archive
+        :rtype: BytesIO
+        :raises RequestException: If the folder or mails cannot be read
         """
-        raise NotImplementedError("Message from ModuleMail.py: export_folder_mails is not implemented yet")
+        client = self._open_client_for(account_id)
+
+        # Enumerate all mail UIDs in the folder (including deleted ones)
+        mail_uids = list(client.get_mail_uids_before_date(folder_name, before_date=None, exclude_deleted=False))
+
+        zip_buffer = BytesIO()
+        try:
+            with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                exported = 0
+                for mail_uid in mail_uids:
+                    try:
+                        mail_str = client.fetch_mail_raw(folder_name, mail_uid)
+                        zf.writestr(f"mail_{mail_uid}.eml", mail_str)
+                        exported += 1
+                    except RequestException as exc:
+                        # Skip mails that disappeared between listing and fetch
+                        if exc.error != err.ERROR_MAIL_UID_NOT_FOUND:
+                            raise
+                        logger_mail_server.warning(
+                            "Skipping mail %s in %s during export (not found)", mail_uid, folder_name
+                        )
+                if exported == 0:
+                    zf.writestr("README.txt", f"No mails found in folder {folder_name}.\n")
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise RequestException(f"Failed to create export archive for folder {folder_name}: {exc}", err.ERROR_MAIL_ZIP_FAILED) from exc
+
+        zip_buffer.seek(0)
+        logger_mail_server.info(
+            "Exported %d mails from folder '%s' (account %s) as ZIP", exported, folder_name, account_id
+        )
+        return zip_buffer
 
 
     def reply_mail(self, account_id: str, folder_name: str, mail_uid: str) -> dict[str, Any]:
@@ -1817,6 +1862,12 @@ class ModuleMail:
             # Use the efficient bulk delete
             self.delete_mails(account_id, folder_name, [str(uid) for uid in mail_uids])
             return {"processed_ids": mail_uids, "action": action}
+
+        if action == "move":
+            # Efficient bulk move when all mails go to the same destination
+            if data and isinstance(data, str):
+                moved = self.move_mails(account_id, folder_name, mail_uids, data)
+                return {"processed_ids": moved.get("moved_ids", mail_uids), "action": action}
 
         # For other actions, process each mail individually
         processed_ids: list[int] = []

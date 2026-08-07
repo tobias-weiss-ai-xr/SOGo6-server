@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 from http import HTTPStatus
 
@@ -122,7 +124,7 @@ class InterfaceApiMailFolder:
         :rtype: tuple[dict[str, Any], int]
         """
         try:
-            updated_folder = self.mail_module.update_folder(folder_name, folder_data)
+            updated_folder = self.mail_module.update_folder(account_id, folder_name, folder_data)
             return create_api_base_response(updated_folder)
         except RequestException as ex:
             logger_api.error("Request exception in update_folder: %s", str(ex))
@@ -146,7 +148,7 @@ class InterfaceApiMailFolder:
         :rtype: tuple[dict[str, Any], int]
         """
         try:
-            result = self.mail_module.move_mails(folder_name, mail_uids, to_folder_name)
+            result = self.mail_module.move_mails(account_id, folder_name, mail_uids, to_folder_name)
             return create_api_base_response(result)
         except RequestException as ex:
             logger_api.error("Request exception in move_mails: %s", str(ex))
@@ -192,19 +194,18 @@ class InterfaceApiMailFolder:
             logger_api.error("Request exception in purge_folder_mails: %s", str(ex))
             return create_api_base_response(None, ex.error)
 
-    def export_folder_mails(self, account_id: str, folder_name: str) -> tuple[dict[str, Any], int]:
-        """Export all mails in the specified folder.
-        
+    def export_folder_mails(self, account_id: str, folder_name: str) -> BytesIO | tuple[dict[str, Any], int]:
+        """Export all mails in the specified folder as a ZIP archive.
+
         :param account_id: The ID of the account
         :type account_id: str
         :param folder_name: The ID of the folder
         :type folder_name: str
-        :return: A tuple of (API response dict, status code)
-        :rtype: tuple[dict[str, Any], int]
+        :return: A BytesIO buffer with the ZIP, or an error response tuple
+        :rtype: BytesIO | tuple[dict[str, Any], int]
         """
         try:
-            export_data = self.mail_module.export_folder_mails(folder_name)
-            return create_api_base_response(export_data)
+            return self.mail_module.export_folder_mails(account_id, folder_name)
         except RequestException as ex:
             logger_api.error("Request exception in export_folder_mails: %s", str(ex))
             return create_api_base_response(None, ex.error)

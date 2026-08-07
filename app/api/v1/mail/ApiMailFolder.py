@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from flask import g
+from flask import g, send_file
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -119,7 +119,6 @@ class ApiMailFolderId(MethodView):
     @blp.response(200, FolderUpdateResponseSchema, example=FolderUpdateResponseSchema.example())
     def patch(self, folder_data: dict, account_id: str, folder_name: str) -> ResponseReturnValue:
         """Update name, type (junk, template...) and subscription status of a specific mail folder.
-        Notimplemented to rework how to set a type, rename, susbribed...
 
         :param folder_data: The folder update data (name, subscribed, type).
         :type folder_data: dict
@@ -130,7 +129,6 @@ class ApiMailFolderId(MethodView):
         :return: ApiBaseResponse with updated folder info
         :rtype: ResponseReturnValue
         """
-        raise NotImplementedError()
         logger_api.debug("Calling ApiMailFolderId.patch for account_id: %s, folder_name: %s with data: %s", account_id, folder_name, folder_data)
         interface: InterfaceApiMailFolder = g.inter
         return interface.update_folder(account_id, folder_name, folder_data)
@@ -198,14 +196,26 @@ class ApiMailFolderIdPurge(MethodView):
 
 @blp.route("/<path:folder_name>/export")
 class ApiMailFolderIdExport(MethodView):
-    """API to export all mails in a specific folder. 
+    """API to export all mails in a specific folder as a ZIP of .eml files.
     """
     def post(self, account_id: str, folder_name: str) -> ResponseReturnValue:
-        """Action: Export all mails in the specified folder. (NOT IMPLEMENTED)
+        """Export all mails in the specified folder.
         """
         logger_api.debug("Calling ApiMailFolderIdExport.post for account_id: %s, folder_name: %s", account_id, folder_name)
         interface: InterfaceApiMailFolder = g.inter
-        return interface.export_folder_mails(account_id, folder_name)
+
+        result = interface.export_folder_mails(account_id, folder_name)
+
+        if isinstance(result, tuple):
+            return result
+
+        safe_name = folder_name.replace("/", "_").replace("\\", "_")
+        return send_file(
+            result,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"{safe_name}_export.zip",
+        )
 
 
 
