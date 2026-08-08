@@ -12,9 +12,6 @@ from typing import Any
 from app.auth.User import User
 from app.config.settings.DomainSettings import MailSettings, MailSettingsObj
 from app.module.mail.ModuleMail import ModuleMail
-from app.utils import constants as cs
-from app.utils.exceptions import RequestException
-from app.utils.logger.logger import logger_api
 
 
 class JmapMailGateway:
