@@ -298,6 +298,13 @@ class ModuleAdminUser:
                     continue
                 if attr == "password":
                     mod_list.append(("userPassword", [_ssha_hash(value).encode("utf-8")]))
+                elif attr == "shadowExpire":
+                    # Real LDAP account-deactivation attribute (posixAccount):
+                    # 1 disables the account; None removes the attribute (enables).
+                    if value is None or value == "":
+                        mod_list.append(("shadowExpire", None))
+                    else:
+                        mod_list.append(("shadowExpire", [str(value).encode("utf-8")]))
                 elif attr in ("cn", "sn", "givenName", "mail"):
                     mod_list.append((attr, [value.encode("utf-8")]))
                 elif attr in ("uidNumber", "gidNumber"):
