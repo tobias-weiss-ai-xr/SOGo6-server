@@ -38,6 +38,13 @@ if TYPE_CHECKING:
     from app.module.contact.source.ContactSource import ContactSource
 
 
+def _emit_webhook(event: str, payload: dict) -> None:
+    """Best-effort async webhook emitter; never raises, never blocks."""
+    from app.service.webhook.WebhookService import emit_event
+
+    emit_event(event, payload)
+
+
 class ModuleContact:  # pylint: disable=too-many-public-methods
     """Module for address book and contact operations."""
 
@@ -280,6 +287,11 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         source: ContactSource = self._get_writable_addressbook(user, addressbook_key, user_sources)
         created: CardContact = self._insert_contact(source, contact)
         created.photos = self._file.load_all(created.photos)
+        _emit_webhook("contact.created", {
+            "uid": user.uid,
+            "addressbook_key": addressbook_key,
+            "contact_uid": created.uid,
+        })
         return created
 
     def update_contact(
@@ -296,6 +308,11 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         if refetched is None:
             raise BugException(f"Contact key={key} was updated but could not be fetched back")
         refetched.photos = self._file.load_all(refetched.photos)
+        _emit_webhook("contact.updated", {
+            "uid": user.uid,
+            "addressbook_key": addressbook_key,
+            "contact_uid": refetched.uid,
+        })
         return refetched
 
     def delete_contact(
@@ -308,6 +325,11 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
             raise RequestException(error=err.ERROR_CONTACT_NOT_FOUND)
         try:
             source.delete_contact(key)
+            _emit_webhook("contact.deleted", {
+                "uid": user.uid,
+                "addressbook_key": addressbook_key,
+                "contact_uid": key,
+            })
         except RequestException:
             raise
         except Exception as exc:

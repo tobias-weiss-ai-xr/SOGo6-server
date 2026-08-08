@@ -17,6 +17,14 @@ from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger
 from app.utils.module.importManager import import_and_instantiate_manager
 
+
+def _emit_webhook(event: str, payload: dict) -> None:
+    """Best-effort async webhook emitter; never raises, never blocks."""
+    from app.service.webhook.WebhookService import emit_event
+
+    emit_event(event, payload)
+
+
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.manager.db.ClientSQL import ClientSQL
@@ -259,6 +267,7 @@ class ModuleAdminUser:
                 raise RequestException("LDAP connection is not available", error=err.ERROR_LDAP_CANNOT_CONNECT)
 
             logger.debug("Created LDAP user: %s", dn)
+            _emit_webhook("user.created", {"uid": uid, "mail": data.get("mail", "")})
             return {"dn": dn, "uid": uid}
         finally:
             client.close()
@@ -300,6 +309,7 @@ class ModuleAdminUser:
             elif not mod_list:
                 logger.warning("update_user: no attributes to update for %s", uid)
 
+            _emit_webhook("user.updated", {"uid": uid, "mail": data.get("mail", "")})
             return {"uid": uid}
         finally:
             client.close()
@@ -328,6 +338,7 @@ class ModuleAdminUser:
                 raise RequestException("LDAP connection is not available", error=err.ERROR_LDAP_CANNOT_CONNECT)
 
             logger.debug("Deleted LDAP user: %s", dn)
+            _emit_webhook("user.deleted", {"uid": uid})
             return {"uid": uid}
         finally:
             client.close()

@@ -62,6 +62,13 @@ if TYPE_CHECKING:
     from app.module.calendar.source.CalendarSource import CalendarSource
 
 
+def _emit_webhook(event: str, payload: dict) -> None:
+    """Best-effort async webhook emitter; never raises, never blocks."""
+    from app.service.webhook.WebhookService import emit_event
+
+    emit_event(event, payload)
+
+
 class ModuleCalendar:  # pylint: disable=too-many-public-methods
     """Module for calendar and event operations."""
 
@@ -158,12 +165,15 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         cal.key = generate_uuid()
         cal.ctag = 0
         source: CalendarSource = self._sources.get(cal)
-        return source.save_calendar(cal)
+        created = source.save_calendar(cal)
+        _emit_webhook("calendar.created", {"uid": user.uid, "calendar_key": cal.key})
+        return created
 
     def update_calendar(self, user: User, key: str, calendar: CalCalendar) -> CalCalendar:
         """Persist an updated calendar. The source lookup also enforces existence."""
         source: CalendarSource = self.get_calendar(user, key)
         source.update_calendar(calendar)
+        _emit_webhook("calendar.updated", {"uid": user.uid, "calendar_key": key})
         return calendar
 
     def delete_calendar(self, user: User, key: str) -> None:
@@ -174,6 +184,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             source.calendar.permissions, CalendarPermissionAction.DELETE,
         )
         source.delete_calendar()
+        _emit_webhook("calendar.deleted", {"uid": user.uid, "calendar_key": key})
 
     #
     # Sharing
@@ -288,6 +299,11 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             self._sources.propagate(scope_result=ScopeResult(
                 result=created, touched=[(created, EventAction.INSERT)],
             ))
+            _emit_webhook("calendar.created", {
+                "uid": calendar_user.owner.uid,
+                "calendar_key": event.calendar_key,
+                "event_uid": created.uid,
+            })
             return created
         except Exception as exc:
             logger_calendar.exception("Unexpected error creating event in calendar %s", calendar_key)
@@ -334,7 +350,11 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
 
             # Propagate changes to attendeees
             self._sources.propagate(scope_result=scope_result, original=event)
-
+            _emit_webhook("calendar.updated", {
+                "uid": calendar_user.owner.uid,
+                "calendar_key": event.calendar_key,
+                "event_uid": event_key,
+            })
             return scope_result.result
         except RequestException:
             raise
@@ -363,6 +383,11 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             is_organizer: bool = event.is_organized_by(calendar_user.owner.mail)
             if is_organizer:
                 self._sources.propagate(scope_result=scope_result)
+            _emit_webhook("calendar.deleted", {
+                "uid": calendar_user.owner.uid,
+                "calendar_key": event.calendar_key,
+                "event_uid": event_key,
+            })
             return event if is_organizer else None
         except RequestException:
             raise
