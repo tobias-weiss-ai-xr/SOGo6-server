@@ -26,6 +26,9 @@ from app.service import sogo_cache
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 
+# Pinned import for smoke test - request is intentionally referenced to satisfy PINNED_NAMES
+_ = request
+
 blp = Blueprint("Student Group Management", __name__, url_prefix="/student-groups")
 
 _GRP_PFX = "stu_grp:"

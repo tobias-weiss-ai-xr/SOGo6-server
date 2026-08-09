@@ -9,6 +9,7 @@ from marshmallow import fields, Schema
 
 from app.interface.auth.InterfaceWebAuthn import InterfaceWebAuthn
 from app.utils.api.ApiBaseResponse import create_api_base_response
+from app.utils.api.ratelimit import webauthn_registration_rate_limit, webauthn_authentication_rate_limit
 from app.utils.exceptions import RequestException
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ def _get_origin() -> str:
 @blp.route("/register/begin")
 class WebAuthnRegisterBegin(MethodView):
     @blp.response(200, sch.WebAuthnRegisterBeginResponseSchema)
+    @webauthn_registration_rate_limit
     def post(self) -> ResponseReturnValue:
         """Start WebAuthn credential registration.
 
@@ -99,6 +101,7 @@ class WebAuthnRegisterComplete(MethodView):
 @blp.route("/login/begin")
 class WebAuthnLoginBegin(MethodView):
     @blp.response(200, sch.WebAuthnLoginBeginResponseSchema)
+    @webauthn_authentication_rate_limit
     def post(self) -> ResponseReturnValue:
         """Start WebAuthn authentication.
 

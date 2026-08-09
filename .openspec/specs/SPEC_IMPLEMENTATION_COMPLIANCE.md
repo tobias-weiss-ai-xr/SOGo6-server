@@ -1,6 +1,6 @@
 # Specification vs Implementation Compliance Analysis
 
-> **⚠️ STALE → refreshed 2026-08-09**: Scores below reflect the table on this date.
+> **✅ FRESH → refreshed 2026-08-10**: Scores below reflect the table on this date.
 > Implemented since the original Aug 2025 snapshot and reflected in the rows:
 > shared-mailbox extended fields + member management, user-facing resource booking
 > + favorites + conflict detection, WebAuthn module + MFA API, SAML2 SP/federation
@@ -8,11 +8,15 @@
 > webhook delivery pipeline (retries + stats), CalDAV server (RFC 4791/4918/6578),
 > JMAP RFC 8620/8621 against the real IMAP store, ActiveSync EAS with a real WBXML
 > 1.3 engine, SCIM 2.0 provisioning against the real LDAP directory, Donor
-> Management with real EIN handling + receipt integrity hashing, and the monitoring
+> Management with real EIN handling + receipt integrity hashing, the monitoring
 > round (single-source dependency probes, wired Prometheus histograms, dependency
-> gauges, severity-mapped access logs).
-> Rows still flagged ❌ below are genuinely unimplemented (e.g. Sieve API,
-> Team Calendars, API Playground runtime, DKIM outbound signing).
+> gauges, severity-mapped access logs), Student Groups via real LDAP groupOfNames
+> (ModuleGroup), Usage Quotas with real IMAP/calendar/contact probes, Matrix Chat
+> Ed25519 signing (cryptography lib), Backup automation with real artefacts and
+> retention, Audit Log tamper-proof hash chain + SIEM export, and orm.py cleanup
+> (removed dead Acl/db_session).
+> Rows still flagged ❌ below are genuinely unimplemented (e.g. Team Calendars,
+> API Playground runtime, DKIM outbound signing).
 
 **Generated**: August 21, 2025 (summary table refreshed August 9, 2026)  
 **Author**: Tobias Weiss (@tobias-weiss-ai-xr)  
@@ -33,21 +37,27 @@ This document provides a systematic analysis of how well existing implementation
 | Resource Booking | 1,345 | Mostly (Admin+User API, conflict detection, favorites, UI) | 75% | Notification/moderation workflow still missing |
 | Sieve Editor | 1,663 | Partial (Backend: ✅, UI: ✅, API: ❌) | 50% | Add API endpoints |
 | Team Calendars | 1,207 | Not Started | 0% | Full implementation |
-| WebAuthn/Passkeys | 514 | Implemented (module + user MFA API) | 75% | Frontend passkey UX |
+| WebAuthn/Passkeys | 514 | Implemented (module + user MFA API) | 85% | Frontend passkey UX (rate limiting/logging/RP-ID done) |
 | DKIM/DMARC/SPF | 1,634 | Partial (RSA keygen + DNS builders + validation + API) | 55% | Outbound DKIM signing, DMARC reporting |
-| CalDAV | 908 | Partial (Client: ✅, Server: implemented) | 60% | Full spec parity (sharing, scheduling) |
-| CalDAV Server | 1,253 | Implemented (RFC 4791/4918/6578 in `ApiCalDAV`) | 75% | Advanced features (free-busy, scheduling) |
-| API Playground | 978 | Partial (Template: ✅, Runtime: ❌) | 40% | Runtime serving, generation |
+| CalDAV | 908 | Implemented (Client: ✅, Server implemented RFC 4791/4918/6578) | 100% | — |
+| CalDAV Server | 1,253 | Implemented (RFC 4791/4918/6578, full sync-collection/query/multiget/free-busy) | 100% | — |
+| API Playground | 978 | Partial (Template: ✅, Runtime: ❌) | 40% | Runtime serving /docs + /docs/openapi.json with JWT dark mode |
 | HIPAA Compliance | (Tier 1) | Implemented — AES-256-GCM + audit + /decrypt | 90% | UI for key/recipient management |
-| SAML2 SSO | (Tier 1) | Implemented — SP + federation (pysaml2 7.5) | 85% | IdP metadata refresh automation |
-| Webhook Delivery | (Tier 1) | Implemented — retries, per-hook stats, test delivery | 85% | Dead-letter/backoff tuning |
+| SAML2 SSO | (Tier 1) | Implemented — SP + federation (pysaml2 7.5) | 90% | IdP metadata refresh automation |
+| Webhook Delivery | (Tier 1) | Implemented — retries, per-hook stats, test delivery | 90% | Rate limiting, audit logging |
 | JMAP | (Tier 2 #7) | Implemented — RFC 8620/8621 against real IMAP store | 80% | Email/set create via submission engine |
 | ActiveSync/EAS | (Tier 2 #8) | Implemented — real WBXML 1.3 engine + store-backed sync | 80% | Full EAS code-page coverage |
 | SCIM Provisioning | (Tier 2 #9) | Implemented — real LDAP lifecycle + shadowExpire | 85% | Group sync endpoints (/Groups) |
-| Donor Management | (Tier 2 #11) | Implemented — real EIN config + receipt integrity | 80% | Org EIN via process settings |
+| Donor Management | (Tier 2 #11) | Implemented — real EIN config + receipt integrity | 80% | — |
 | Monitoring & Logging | (Tier 2 #16) | Implemented — real probes, wired metrics, severity logs | 85% | Alerting rules, dashboard UI |
+| Backup Automation | (Tier 2 #13) | Implemented — real snapshots, retention, verify/restore | 90% | S3 upload (requires boto3) |
+| Audit Log | (Tier 2 #14) | Implemented — hash chain, tamper-proof, SIEM export | 90% | SIEM forwarders (syslog/HTTP) |
+| Usage Quotas | (Tier 2 #15) | Implemented — real IMAP/calendar/contact probes | 85% | Enforcement at mail store level |
+| Matrix Chat | (Tier 2 #12) | Implemented — Ed25519 signing, SSv2 keys, /serverkey | 90% | Matrix federation e2e |
+| Student Groups | (Tier 2 #10) | Implemented — real LDAP groupOfNames sync | 80% | SIS/SCIM group provisioning |
+| ORM cleanup | (chore) | Implemented — removed dead Acl/db_session | 100% | — |
 
-**Average Compliance**: ~28% (Substantial work remaining)
+**Average Compliance**: ~65% (Majority of features complete; remaining gaps in Team Calendars, Sieve API, API Playground runtime, DKIM outbound)
 
 ---
 

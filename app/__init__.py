@@ -179,6 +179,22 @@ def create_app(sogo_state: int) -> Flask:
     def well_known_caldav() -> Response:
         return Response(status=301, headers={"Location": "/caldav/"})
 
+    # --- API Playground routes (/docs, /docs/openapi.json) ---
+    @app.route("/docs")
+    def docs_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/swagger-basic"})
+
+    @app.route("/docs/openapi.json")
+    def docs_openapi_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/openapi-basic.json"})
+
+    @app.route("/docs/admin")
+    def docs_admin_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/swagger-admin"})
+
+    @app.route("/docs/admin/openapi.json")
+    def docs_admin_openapi_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/openapi-admin.json"})
 
     allowed_origins = [
         process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000",
