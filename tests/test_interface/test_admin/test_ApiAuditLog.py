@@ -9,6 +9,8 @@ class TestAuditLog:
     @patch("app.api.v1.admin.ApiAuditLog.sogo_cache")
     def test_audit_adds_entry(self, mock_cache):
         cache = MagicMock()
+        cache.incr.return_value = 1
+        cache.zset_revrange.return_value = []  # no predecessor yet
         cache.zset_count.return_value = 1
         mock_cache.return_value = cache
         audit("user.login", actor="admin@test.com", target="user", detail="Login from 192.168.1.1", ip="192.168.1.1")
@@ -19,14 +21,20 @@ class TestAuditLog:
     @patch("app.api.v1.admin.ApiAuditLog.sogo_cache")
     def test_audit_trims_old_entries(self, mock_cache):
         cache = MagicMock()
+        cache.incr.return_value = 1
+        cache.zset_revrange.return_value = []
         cache.zset_count.return_value = 10001
         mock_cache.return_value = cache
         audit("test.event", actor="test@test.com")
-        assert cache.zset_remove.called
+        # real retention: zset_trim (old code removed score-strings via zset_remove,
+        # which never removed anything)
+        assert cache.zset_trim.called
 
     @patch("app.api.v1.admin.ApiAuditLog.sogo_cache")
     def test_multiple_audit_entries(self, mock_cache):
         cache = MagicMock()
+        cache.incr.return_value = 1
+        cache.zset_revrange.return_value = []
         cache.zset_count.return_value = 1
         mock_cache.return_value = cache
         for i in range(5):
