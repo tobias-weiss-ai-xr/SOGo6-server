@@ -13,6 +13,26 @@ from app.utils import errors as err
 from app.utils import constants as cs
 from app.utils.logger.logger import logger_cache
 
+from functools import wraps
+from time import perf_counter
+
+
+def _timed_cache(operation: str):
+    """Observe the cache-op duration histogram for *operation* (real measurement)."""
+
+    def _decorator(fn):
+        @wraps(fn)
+        def _wrapper(self, *args, **kwargs):
+            from app.utils.api.prometheus import CACHE_OPERATION_DURATION
+            start = perf_counter()
+            try:
+                return fn(self, *args, **kwargs)
+            finally:
+                CACHE_OPERATION_DURATION.labels(operation=operation).observe(perf_counter() - start)
+        return _wrapper
+
+    return _decorator
+
 # Mapping from hash field name to the sorted set that indexes that field.
 # When sort_by matches one of these keys, the corresponding sorted set is
 # used directly (redis-side sort + pagination via ZRANGE).
@@ -111,6 +131,7 @@ class ClientRedis():
                 retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
             )
 
+    @_timed_cache("ping")
     def ping(self) -> None:
         """
         Ping to check the availability of the redis server
@@ -126,6 +147,7 @@ class ClientRedis():
 
 
 
+    @_timed_cache("set")
     def set(self, key: str, value: str|list|dict, ttl: int, nx: bool = False) -> bool:
         """
         Set a key/value in the redis server.
@@ -168,6 +190,7 @@ class ClientRedis():
         logger_cache.debug("Set cached value for key '%s' (value length: %d)", key, len(value))
         return True
 
+    @_timed_cache("get")
     def get(self, key: str, expected_type: Type[str]|Type[list]|Type[dict]) -> str|list|dict|None:
         """
         Get the value stored in redis. The type of value expected must be given to be sure
@@ -199,6 +222,7 @@ class ClientRedis():
         logger_cache.info("Get no value for key '%s'", key)
         return None
 
+    @_timed_cache("hashset")
     def hashset(self, key:str, data: dict, ttl: int) -> bool:
         """
         Create or update a hash in redis.
@@ -226,6 +250,7 @@ class ClientRedis():
         logger_cache.debug("Hashset cached for key '%s' (data length: %d)", key, len(data))
         return True
 
+    @_timed_cache("hashget")
     def hashget(self, key:str) -> dict|None:
         """
         Return the whole dict of a hash
@@ -247,6 +272,7 @@ class ClientRedis():
 
     # -- Sorted-set helpers --------------------------------------------------
 
+    @_timed_cache("zset_add")
     def zset_add(self, zset_key: str, member: str, score: float) -> None:
         """
         Add (or update) a member in a sorted set with the given score.
@@ -258,6 +284,7 @@ class ClientRedis():
         self.redis.zadd(zset_key, {member: score})
         logger_cache.debug("zadd %s -> member=%s score=%s", zset_key, member, score)
 
+    @_timed_cache("zset_remove")
     def zset_remove(self, zset_key: str, *members: str) -> int:
         """
         Remove one or more members from a sorted set.
@@ -268,12 +295,14 @@ class ClientRedis():
         logger_cache.debug("zrem %s -> members=%s removed=%d", zset_key, members, removed)
         return removed
 
+    @_timed_cache("zset_count")
     def zset_count(self, zset_key: str) -> int:
         """
         Return the total number of members in a sorted set
         """
         return cast(int, self.redis.zcard(zset_key))
 
+    @_timed_cache("zset_revrange")
     def zset_revrange(self, zset_key: str, start: int, stop: int) -> list[str]:
         """
         Return members of a sorted set by descending score, between ranks start and stop.
@@ -426,6 +455,7 @@ class ClientRedis():
             )
         return items
 
+    @_timed_cache("delete")
     def delete(self, *keys: str) -> int:
         """
         Delete all the key given

@@ -3,12 +3,15 @@
 Returns a JSON summary of all external-service reachability so that
 load balancers, orchestrators and operators can make informed decisions
 without having to scrape individual component logs.
+
+Every probe is a real live connection attempt — see
+``app/service/monitoring/HealthChecks`` — and each result is also published
+to the Prometheus dependency gauges so scraping ``/metrics`` alone is enough
+to alert on outages.
 """
 
 from __future__ import annotations
 
-import os
-import socket as socket_module
 from time import time
 from typing import Any
 
@@ -16,134 +19,28 @@ from flask import Response, current_app
 from flask.views import MethodView
 from flask_smorest import Blueprint
 
+from app.service.monitoring.HealthChecks import check_postgres, check_ldap, check_redis, check_stalwart
+from app.utils.api.prometheus import record_dependency_health
+
 blp = Blueprint("Health", __name__, url_prefix="/health")
 blp.public_access = True  # type: ignore[attr-defined]
 
 
-def _get_process_config() -> Any:
-    """Return the ``ProcessSetting`` instance stored in the Flask app config."""
-    return current_app.config.get("process_config") or {}
-
-
-def _get_env(key: str, default: str) -> str:
-    """Return an environment variable or the process config attribute."""
-    val = os.environ.get(key)
-    if val:
-        return val
-    proc = _get_process_config()
-    if hasattr(proc, key):
-        return str(getattr(proc, key))
-    return default
-
-
-def _check_postgres() -> dict[str, Any]:
-    """Return PostgreSQL connectivity status."""
-    start = time()
-    result: dict[str, Any] = {"status": "ok", "latency_ms": 0.0}
+def _run_checks() -> dict[str, dict]:
+    """Run the real probes and publish them to Prometheus gauges."""
+    checks = {
+        "postgresql": check_postgres(),
+        "ldap": check_ldap(),
+        "redis": check_redis(),
+        "stalwart_mail": check_stalwart(),
+    }
+    # Every probe also lands in Prometheus — one scrape target for everything.
     try:
-        import psycopg
-
-        proc = _get_process_config()
-        host = str(getattr(proc, "SOGO_P_DB_HOST", "localhost"))
-        port = int(getattr(proc, "SOGO_P_DB_PORT", 5432))
-        user = str(getattr(proc, "SOGO_P_DB_USER", "sogo"))
-        password = str(getattr(proc, "SOGO_P_DB_PASS", "sogo"))
-        dbname = os.environ.get("SOGO_P_DB_NAME", "sogo")
-
-        conn = psycopg.connect(
-            host=host, port=port, user=user,
-            password=password, dbname=dbname,
-            connect_timeout=5,
-        )
-        conn.execute("SELECT 1")
-        conn.close()
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    except Exception as exc:  # pylint: disable=broad-except
-        result["status"] = "error"
-        result["error"] = str(exc)
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    return result
-
-
-def _check_ldap() -> dict[str, Any]:
-    """Return LDAP connectivity status."""
-    start = time()
-    result: dict[str, Any] = {"status": "ok", "latency_ms": 0.0}
-    try:
-        import ldap  # type: ignore[import-untyped]
-
-        ldap_uri = _get_env("SOGO_LDAP_URI", "ldap://localhost:389")
-        conn = ldap.initialize(ldap_uri)
-        # Attempt an anonymous bind; if SASL/creds are required the server
-        # will reject it, but that still proves TCP-level reachability.
-        conn.simple_bind_s("", "")
-        conn.unbind_s()
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    except ldap.SERVER_DOWN:  # type: ignore[attr-defined]
-        result["status"] = "error"
-        result["error"] = "LDAP server is down or unreachable"
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    except Exception as exc:  # pylint: disable=broad-except
-        # A successful TCP connection but failed bind is still "ok" for
-        # connectivity — the server is reachable even if auth is required.
-        if "Can't contact LDAP server" in str(exc):
-            result["status"] = "error"
-            result["error"] = "LDAP server is down or unreachable"
-        else:
-            result["status"] = "ok"
-            result["detail"] = f"Connected (bind rejected: {exc})"
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    return result
-
-
-def _check_redis() -> dict[str, Any]:
-    """Return Redis connectivity status."""
-    start = time()
-    result: dict[str, Any] = {"status": "ok", "latency_ms": 0.0}
-    try:
-        from app.manager.cache.ClientRedis import ClientRedis
-
-        proc = _get_process_config()
-        redis_url = str(getattr(proc, "SOGO_P_REDIS_URL", "redis://localhost:6379/0"))
-        client = ClientRedis(url_str=redis_url, resp3=True)
-        client.ping()
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    except Exception as exc:  # pylint: disable=broad-except
-        result["status"] = "error"
-        result["error"] = str(exc)
-        result["latency_ms"] = round((time() - start) * 1000, 1)
-    return result
-
-
-def _check_stalwart() -> dict[str, Any]:
-    """Return Stalwart (IMAP / SMTP) connectivity status (TCP port check).
-
-    The Docker dev stack maps Stalwart to these ports:
-      SMTP  25  → host 20025
-      IMAP  143 → host 20143
-      SUBM  587 → host 20587
-    Inside the container network we connect directly to the service name.
-    """
-    start = time()
-    result: dict[str, Any] = {"status": "ok", "latency_ms": 0.0}
-
-    host = _get_env("SOGO_SMTP_SERVER", "sogo6-stalwart")
-
-    # Try IMAP (143) first — it is the most protocol-agnostic indicator
-    for label, port in [("IMAP", 143), ("SMTP", 25), ("SUBM", 587)]:
-        try:
-            sock = socket_module.create_connection((host, port), timeout=5)
-            sock.close()
-            result["latency_ms"] = round((time() - start) * 1000, 1)
-            result["detail"] = f"Connected via {label}:{port}"
-            return result
-        except Exception:  # pylint: disable=broad-except
-            continue
-
-    result["status"] = "error"
-    result["error"] = f"Cannot connect to {host} on IMAP(143), SMTP(25), or SUBM(587)"
-    result["latency_ms"] = round((time() - start) * 1000, 1)
-    return result
+        for name, res in checks.items():
+            record_dependency_health(name, res.get("status", "error"), float(res.get("latency_ms", 0.0)))
+    except Exception:  # pragma: no cover - metrics collection must never break the endpoint
+        pass
+    return checks
 
 
 @blp.route("")
@@ -180,13 +77,7 @@ class ApiHealth(MethodView):
     public_access = True  # type: ignore[attr-defined]
 
     def get(self) -> Response:
-        # Run all checks sequentially (simple and deterministic)
-        checks = {
-            "postgresql": _check_postgres(),
-            "ldap": _check_ldap(),
-            "redis": _check_redis(),
-            "stalwart_mail": _check_stalwart(),
-        }
+        checks = _run_checks()
 
         overall = "ok" if all(c["status"] == "ok" for c in checks.values()) else "degraded"
 

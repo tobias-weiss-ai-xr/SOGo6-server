@@ -18,6 +18,8 @@ from app.utils.db.FullTextValue import FullTextValue
 from app.utils import errors as err
 from app.utils.exceptions import RequestException, BugException
 from app.utils.logger.logger import logger, logger_sql
+from app.utils.api.prometheus import db_op
+
 from .ClientSQL import ClientSQL
 
 
@@ -366,6 +368,7 @@ class ClientPostgreSQL(ClientSQL):
             self.create_table(table)
             self.create_indexes(table)
 
+    @db_op("insert_in_table")
     def insert_in_table(self, table_name: str, column_tuple: tuple[str, ...], values_tuple: list[list[Any]]) -> int:  # pylint: disable=too-many-locals,too-many-branches
         """
         Insert one or more row into a table
@@ -422,6 +425,7 @@ class ClientPostgreSQL(ClientSQL):
 
         return ret
 
+    @db_op("update_in_table")
     def update_in_table(self, table_name: str, column_tuple: tuple, values_list: list, condition: Condition) -> int:
         """
         Update data in a table
@@ -473,6 +477,7 @@ class ClientPostgreSQL(ClientSQL):
 
         return ret
 
+    @db_op("select_from_table")
     def select_from_table(self, table_name: str, column_tuple: tuple[str, ...], condition: Condition,  # pylint: disable=too-many-branches,too-many-locals
                           offset: int = 0, limit: int = 0,
                           sort_by: str | None = None, order: Order = Order.ASC,
@@ -561,6 +566,7 @@ class ClientPostgreSQL(ClientSQL):
             finally:
                 self.db_conn.commit()
 
+    @db_op("select_from_several_table")
     def select_from_several_table(
         self,
         table_name: str,
@@ -624,6 +630,7 @@ class ClientPostgreSQL(ClientSQL):
             finally:
                 self.db_conn.commit()
 
+    @db_op("count_row_in_table")
     def count_row_in_table(self, table_name: str, condition: Condition, column_name: str = "*") -> int:
         """
         Select values from a table under conditions
@@ -664,6 +671,7 @@ class ClientPostgreSQL(ClientSQL):
                 self.db_conn.commit()
         return count_ret
 
+    @db_op("delete_row_in_table")
     def delete_row_in_table(self, table_name: str, condition: Condition, expected_row: int = 0) -> int:
         """
         Delete rows in a table.

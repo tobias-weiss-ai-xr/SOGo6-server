@@ -3,12 +3,18 @@ Prometheus metrics collection for the SOGo API server.
 
 Exposes a ``/metrics`` endpoint (Prometheus scrape target) and provides
 middleware that tracks request count, latency, and error rate per endpoint.
+
+Also owns the timing decorators used to wire the DB and cache histograms:
+without these, ``sogo_db_query_duration_seconds`` and
+``sogo_cache_operation_duration_seconds`` would be declared-but-never-observed
+dead metrics.
 """
 
 from __future__ import annotations
 
-from time import time
-from typing import cast
+from functools import wraps
+from time import perf_counter, time
+from typing import Callable, TypeVar, cast
 
 from flask import Flask, Response, request, g
 
@@ -60,6 +66,74 @@ CACHE_OPERATION_DURATION = Histogram(
     ["operation"],
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
 )
+
+DEPENDENCY_UP = Gauge(
+    "sogo_dependency_up",
+    "Whether an external dependency is reachable (1 = up, 0 = down)",
+    ["name"],
+)
+
+DEPENDENCY_LATENCY = Gauge(
+    "sogo_dependency_latency_seconds",
+    "Measured latency of the last dependency health check, in seconds",
+    ["name"],
+)
+
+# ── Decorators that wire the DB / cache histograms ───────────────────────────
+
+_T = TypeVar("_T")
+
+
+def db_op(operation: str) -> Callable[[Callable[..., _T]], Callable[..., _T]]:
+    """Decorate a database method to observe ``DB_QUERY_DURATION``."""
+
+    def _decorator(fn: Callable[..., _T]) -> Callable[..., _T]:
+        @wraps(fn)
+        def _wrapper(*args, **kwargs) -> _T:  # type: ignore[no-untyped-def]
+            start = perf_counter()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                DB_QUERY_DURATION.labels(operation=operation).observe(perf_counter() - start)
+        return _wrapper
+
+    return _decorator
+
+
+def cache_op(operation: str) -> Callable[[Callable[..., _T]], Callable[..., _T]]:
+    """Decorate a cache (Redis) method to observe ``CACHE_OPERATION_DURATION``."""
+
+    def _decorator(fn: Callable[..., _T]) -> Callable[..., _T]:
+        @wraps(fn)
+        def _wrapper(*args, **kwargs) -> _T:  # type: ignore[no-untyped-def]
+            start = perf_counter()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                CACHE_OPERATION_DURATION.labels(operation=operation).observe(perf_counter() - start)
+        return _wrapper
+
+    return _decorator
+
+
+def record_dependency_health(name: str, status: str, latency_ms: float) -> None:
+    """Publish one dependency's latest check result to the gauges.
+
+    Called from both the ``/health`` endpoint and the admin health dashboard so
+    every probe also populates Prometheus — operators can alert on
+    ``sogo_dependency_up == 0`` without scraping the JSON endpoints.
+    """
+    try:
+        DEPENDENCY_UP.labels(name=name).set(1.0 if status == "ok" else 0.0)
+        DEPENDENCY_LATENCY.labels(name=name).set(latency_ms / 1000.0)
+    except Exception:  # pragma: no cover - label collisions never happen in practice
+        pass
+
+
+def snapshot_dependencies(results: dict[str, dict]) -> None:
+    """Record every entry of a ``{name: {status, latency_ms}}`` mapping."""
+    for name, res in results.items():
+        record_dependency_health(name, res.get("status", "error"), float(res.get("latency_ms", 0.0)))
 
 
 def init_prometheus(app: Flask) -> None:

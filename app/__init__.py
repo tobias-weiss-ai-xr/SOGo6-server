@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import cast
 
 import os
+import logging
 from json import loads, dumps
 from json.decoder import JSONDecodeError
 import time
@@ -57,21 +58,48 @@ def _inject_request_id() -> None:
 # Structured access-log handler
 # ---------------------------------------------------------------------------
 
+_SLOW_REQUEST_MS = int(os.environ.get("SOGO_SLOW_REQUEST_MS", "3000"))
+
+
+def _access_log_level(status: int) -> int:
+    """Map an HTTP status to a log level: 5xx ERROR, 4xx WARNING, else INFO.
+
+    Keeps operational triage simple — a grep for ``ERROR`` finds real server
+    failures while ``WARNING`` flags client errors worth reviewing.
+    """
+    if status >= 500:
+        return logging.ERROR
+    if status >= 400:
+        return logging.WARNING
+    return logging.INFO
+
+
 def _log_access(response: Response) -> Response:
-    """Log a structured access line after every request."""
+    """Log a structured access line after every request.
+
+    The level follows the response status (5xx → ERROR, 4xx → WARNING, else
+    INFO) and requests slower than ``SOGO_SLOW_REQUEST_MS`` (default 3000 ms)
+    are additionally flagged with ``slow_request: true`` so they stand out in
+    the JSON stream and can be alarmed on.
+    """
     duration_ms = (time.time() - g.get("_request_start", time.time())) * 1000
-    logger_api.info(
-        "%s %s %s %s %.1fms",
+    slow = duration_ms >= _SLOW_REQUEST_MS
+    level = _access_log_level(response.status_code)
+    logger_api.log(
+        level,
+        "%s %s %s %s %.1fms%s",
         request.method,
         request.path,
         response.status_code,
         request.user_agent or "-",
         duration_ms,
+        " SLOW" if slow else "",
         extra={
             "http_method": request.method,
             "path": request.path,
             "status": response.status_code,
             "duration_ms": round(duration_ms, 1),
+            "slow_request": slow,
             "user_agent": str(request.user_agent or "-"),
             "ip": request.remote_addr or "-",
             "content_length": response.content_length or 0,
