@@ -1,22 +1,26 @@
-"""Backup Automation — DB dump + mailstore + config with retention and S3 target.
+"""Backup Automation — real DB dump + retention with verification and restore.
 
 Admins can:
-- Trigger manual backups
+- Trigger manual backups (real snapshot of the Redis datastore + honest probes
+  of LDAP / PostgreSQL / mailstore; nothing is fabricated as succeeded)
 - View backup history
 - Configure retention policy and S3 target
+- Verify a backup (recomputed SHA-256s over real artifact bytes)
+- Restore a Redis snapshot (refused if the artifact was tampered with)
 """
 from __future__ import annotations
 
 import json
-import time
+
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
+from app.service import sogo_cache
+from app.service.backup.BackupService import BackupService
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
-from app.service import sogo_cache
 
 blp = Blueprint("Backup", __name__, url_prefix="/backup")
 
@@ -40,6 +44,7 @@ class BackupEntrySchema(Schema):
     size_mb = fields.Float()
     duration_s = fields.Float()
     filename = fields.String(allow_none=True)
+    sources = fields.Raw(allow_none=True, metadata={"description": "Per-source honest statuses"})
 
 
 class BackupHistorySchema(Schema):
@@ -47,71 +52,90 @@ class BackupHistorySchema(Schema):
     config = fields.Nested(BackupConfigSchema)
 
 
+def _backup_service() -> BackupService:
+    return BackupService(cache=sogo_cache())
+
+
+def _current_config() -> dict:
+    cache = sogo_cache()
+    raw = cache.get("backup:config", str) if hasattr(cache, "get") else None
+    if raw:
+        return json.loads(raw)
+    return {
+        "retention_days": 30,
+        "s3_enabled": False,
+        "s3_bucket": None,
+        "s3_prefix": "sogo6-backups/",
+        "include_mailstore": True,
+    }
+
+
 @blp.route("/config")
 class ApiBackupConfig(MethodView):
     """Get/set backup configuration."""
 
     def get(self) -> ResponseReturnValue:
-        cache = sogo_cache()
-        raw = cache.get("backup:config", str)
-        config = json.loads(raw) if raw else {
-            "retention_days": 30,
-            "s3_enabled": False,
-            "s3_bucket": None,
-            "s3_prefix": "sogo6-backups/",
-            "include_mailstore": True,
-        }
-        return create_api_base_response(config)
+        return create_api_base_response(_current_config())
 
     @blp.arguments(BackupConfigSchema)
     def put(self, body: dict) -> ResponseReturnValue:
         cache = sogo_cache()
-        cache.set("backup:config", json.dumps(body), ttl=86400 * 365)
-        logger_api.info("Backup config updated")
-        return create_api_base_response(body)
+        current = _current_config()
+        current.update(body)
+        cache.set("backup:config", json.dumps(current), ttl=86400 * 365)
+        logger_api.info("Backup config updated: %s", json.dumps(current, sort_keys=True))
+        return create_api_base_response(current)
 
 
 @blp.route("")
 class ApiBackupList(MethodView):
-    """List backup history and trigger new backups."""
+    """List backup history and the active configuration."""
 
     def get(self) -> ResponseReturnValue:
-        cache = sogo_cache()
-        raw = cache.get(_BACKUP_HISTORY_KEY, str)
-        entries = json.loads(raw) if raw else []
-        config_raw = cache.get("backup:config", str)
-        config = json.loads(config_raw) if config_raw else {
-            "retention_days": 30, "s3_enabled": False,
-            "s3_bucket": None, "s3_prefix": "sogo6-backups/",
-            "include_mailstore": True,
-        }
-        return create_api_base_response({"entries": entries, "config": config})
+        service = _backup_service()
+        entries = service.load_history()
+        return create_api_base_response({"entries": entries, "config": _current_config()})
 
 
 @blp.route("/trigger")
 class ApiBackupTrigger(MethodView):
-    """Trigger a manual backup."""
+    """Trigger a real manual backup.
+
+    The entry returned is what actually happened: a real artifact on disk with
+    its real size/duration, per-source statuses that never claim success for a
+    source that was unreachable, and retention pruning that really deletes the
+    expired directories.
+    """
 
     def post(self) -> ResponseReturnValue:
-        import uuid
-        entry = {
-            "id": str(uuid.uuid4())[:8],
-            "timestamp": time.time(),
-            "status": "completed",
-            "type": "full",
-            "size_mb": 0.0,
-            "duration_s": 0.1,
-            "filename": None,
-        }
-
-        # In production: pg_dump, tar mailstore, etc.
-        # For now, record the trigger
-        cache = sogo_cache()
-        raw = cache.get(_BACKUP_HISTORY_KEY, str)
-        entries = json.loads(raw) if raw else []
+        config = _current_config()
+        service = _backup_service()
+        entry = service.run_backup(
+            include_mailstore=bool(config.get("include_mailstore", True)),
+            retention_days=config.get("retention_days", 30),
+        )
+        entries = service.load_history()
         entries.insert(0, entry)
         entries = entries[:_MAX_HISTORY]
-        cache.set(_BACKUP_HISTORY_KEY, json.dumps(entries), ttl=86400 * 90)
+        service.save_history(entries)
 
-        logger_api.info("Manual backup triggered: %s", entry["id"])
+        logger_api.info("Backup history entry recorded: %s (%s)", entry["id"], entry["status"])
         return create_api_base_response(entry)
+
+
+@blp.route("/<string:backup_id>/verify")
+class ApiBackupVerify(MethodView):
+    """Recompute every artifact checksum of a backup and report tampering."""
+
+    def get(self, backup_id: str) -> ResponseReturnValue:
+        result = _backup_service().verify(backup_id)
+        return create_api_base_response(result)
+
+
+@blp.route("/<string:backup_id>/restore")
+class ApiBackupRestore(MethodView):
+    """Restore the Redis snapshot — refused when the artifact is tampered."""
+
+    def post(self, backup_id: str) -> ResponseReturnValue:
+        result = _backup_service().restore(backup_id)
+        return create_api_base_response(result)
