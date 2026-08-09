@@ -4,7 +4,6 @@ from typing import cast, Type
 
 from redis import Redis, exceptions as rexc
 from redis.backoff import ExponentialBackoff
-from redis.cache import CacheConfig
 from redis.retry import Retry
 from yarl import URL
 
@@ -113,12 +112,18 @@ class ClientRedis():
         
         if self.resp3:
             redis_url = redis_url.update_query(protocol=3)
-            self.cache = True
             redis_connstring = str(redis_url)
-            logger_cache.info("Setting Redis client with cache and retry for %s", redis_connstring)
+            logger_cache.info("Setting Redis client with retry for %s", redis_connstring)
+            # NOTE: redis-py's client-side caching (CacheConfig) is intentionally
+            # NOT enabled. With it on, the client serves STALE ZRANGE/ZSET reads
+            # from its local cache after writes on the same connection (verified:
+            # zadd is not invalidating a previously cached zrange). That silently
+            # corrupts every zset flow in this app — session activity indices and
+            # the audit-log hash chain (audit() reads the newest member before
+            # linking the next entry). Correctness over latency: all reads hit the
+            # server. The resp3 (protocol 3) toggle remains for the wire protocol.
             self.redis = Redis.from_url(
-                redis_connstring, 
-                cache_config=CacheConfig(),
+                redis_connstring,
                 retry=retry,
                 retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
             )
@@ -622,6 +627,43 @@ class ClientRedis():
             revoked_count, timestamp,
         )
         return revoked_count
+
+    @_timed_cache("incr")
+    def incr(self, key: str) -> int:
+        """
+        Atomically increment the integer stored at *key* (creating it as 0 first).
+
+        Provides the monotonic sequence numbers used by the tamper-evident
+        audit log.
+
+        :param key: name of the counter key
+        :type key: str
+        :return: the new value
+        :rtype: int
+        """
+        return cast(int, self.redis.incr(key))
+
+    @_timed_cache("zset_trim")
+    def zset_trim(self, zset_key: str, keep: int) -> int:
+        """
+        Trim a sorted set to its *keep* highest-scoring members.
+
+        Removes the lowest-ranked members (i.e. the oldest for a
+        timestamp/sequence ordering). Returns the number of removed members.
+
+        :param zset_key: name of the sorted set
+        :param keep: number of members to keep (highest scores)
+        :return: number of members removed
+        """
+        if keep <= 0:
+            raise ValueError("keep must be > 0")
+        total = self.zset_count(zset_key)
+        if total <= keep:
+            return 0
+        removed = cast(int, self.redis.zremrangebyrank(zset_key, 0, total - keep - 1))
+        logger_cache.info("zset_trim %s -> kept=%d removed=%d", zset_key, keep, removed)
+        return removed
+
 
     def close(self) -> None:
         """
