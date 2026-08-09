@@ -1,14 +1,22 @@
 # Specification vs Implementation Compliance Analysis
 
-> **⚠️ STALE (Aug 2025)**: Scores/statuses below reflect an early snapshot, several
-> “Missing” items have since been implemented (e.g. shared-mailbox extended fields,
-> user-facing resource booking + favorites, WebAuthn module, SAML2 SP/federation, HIPAA
-> AES-256-GCM, batch mail ops, webhook delivery pipeline, JMAP RFC 8620/8621 Mailbox+
-> Email/get/query against the real IMAP store). Re-audit before trusting any row.
+> **⚠️ STALE → refreshed 2026-08-09**: Scores below reflect the table on this date.
+> Implemented since the original Aug 2025 snapshot and reflected in the rows:
+> shared-mailbox extended fields + member management, user-facing resource booking
+> + favorites + conflict detection, WebAuthn module + MFA API, SAML2 SP/federation
+> (pysaml2 7.5), HIPAA AES-256-GCM with per-recipient HKDF keys, batch mail ops,
+> webhook delivery pipeline (retries + stats), CalDAV server (RFC 4791/4918/6578),
+> JMAP RFC 8620/8621 against the real IMAP store, ActiveSync EAS with a real WBXML
+> 1.3 engine, SCIM 2.0 provisioning against the real LDAP directory, Donor
+> Management with real EIN handling + receipt integrity hashing, and the monitoring
+> round (single-source dependency probes, wired Prometheus histograms, dependency
+> gauges, severity-mapped access logs).
+> Rows still flagged ❌ below are genuinely unimplemented (e.g. Sieve API,
+> Team Calendars, API Playground runtime, DKIM outbound signing).
 
-**Generated**: August 21, 2025  
+**Generated**: August 21, 2025 (summary table refreshed August 9, 2026)  
 **Author**: Tobias Weiss (@tobias-weiss-ai-xr)  
-**Status**: Initial Analysis  
+**Status**: Refreshed — rows updated for features implemented since the original snapshot  
 **Purpose**: Track compliance between specifications and existing implementations
 
 ---
@@ -21,15 +29,23 @@ This document provides a systematic analysis of how well existing implementation
 
 | Feature | Spec Lines | Implementation Status | Compliance Score | Actions Needed |
 |---------|-----------|---------------------|------------------|----------------|
-| Shared Mailboxes | 1,368 | Partial (API: ✅, UI: ❌) | 45% | Complete UI, advanced features |
-| Resource Booking | 1,345 | Partial (Admin API: ✅, User API: ❌) | 40% | Complete user API & UI |
+| Shared Mailboxes | 1,368 | Partial (API: ✅, UI: ✅, user API + extended fields) | 70% | Notes/assignment/analytics/search still missing |
+| Resource Booking | 1,345 | Mostly (Admin+User API, conflict detection, favorites, UI) | 75% | Notification/moderation workflow still missing |
 | Sieve Editor | 1,663 | Partial (Backend: ✅, UI: ✅, API: ❌) | 50% | Add API endpoints |
 | Team Calendars | 1,207 | Not Started | 0% | Full implementation |
-| WebAuthn/Passkeys | 514 | Not Started | 0% | Full implementation |
-| DKIM/DMARC/SPF | 1,634 | Partial (DNS gen: ✅, Signing: ❌) | 30% | Signing, verification, DMARC |
-| CalDAV | 908 | Partial (Client: ✅, Server: ❌) | 25% | Server implementation |
-| CalDAV Server | 1,253 | Not Started | 0% | Full implementation |
+| WebAuthn/Passkeys | 514 | Implemented (module + user MFA API) | 75% | Frontend passkey UX |
+| DKIM/DMARC/SPF | 1,634 | Partial (RSA keygen + DNS builders + validation + API) | 55% | Outbound DKIM signing, DMARC reporting |
+| CalDAV | 908 | Partial (Client: ✅, Server: implemented) | 60% | Full spec parity (sharing, scheduling) |
+| CalDAV Server | 1,253 | Implemented (RFC 4791/4918/6578 in `ApiCalDAV`) | 75% | Advanced features (free-busy, scheduling) |
 | API Playground | 978 | Partial (Template: ✅, Runtime: ❌) | 40% | Runtime serving, generation |
+| HIPAA Compliance | (Tier 1) | Implemented — AES-256-GCM + audit + /decrypt | 90% | UI for key/recipient management |
+| SAML2 SSO | (Tier 1) | Implemented — SP + federation (pysaml2 7.5) | 85% | IdP metadata refresh automation |
+| Webhook Delivery | (Tier 1) | Implemented — retries, per-hook stats, test delivery | 85% | Dead-letter/backoff tuning |
+| JMAP | (Tier 2 #7) | Implemented — RFC 8620/8621 against real IMAP store | 80% | Email/set create via submission engine |
+| ActiveSync/EAS | (Tier 2 #8) | Implemented — real WBXML 1.3 engine + store-backed sync | 80% | Full EAS code-page coverage |
+| SCIM Provisioning | (Tier 2 #9) | Implemented — real LDAP lifecycle + shadowExpire | 85% | Group sync endpoints (/Groups) |
+| Donor Management | (Tier 2 #11) | Implemented — real EIN config + receipt integrity | 80% | Org EIN via process settings |
+| Monitoring & Logging | (Tier 2 #16) | Implemented — real probes, wired metrics, severity logs | 85% | Alerting rules, dashboard UI |
 
 **Average Compliance**: ~28% (Substantial work remaining)
 
