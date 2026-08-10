@@ -658,7 +658,11 @@ class ModuleAdminConfig:
                 values_tuple=[values_tuple],
             )
         elif size == 1:
-            current: dict = result[0][0] or {}
+            current_raw = result[0][0] or {}
+            if isinstance(current_raw, str):
+                current = json_module.loads(current_raw)
+            else:
+                current = dict(current_raw) if current_raw else {}
             # JSON Merge Patch
             current.update(new_param)
             values = current
