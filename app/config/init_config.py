@@ -107,7 +107,10 @@ def init_infra() -> tuple[ClientRedis, JobPersistency]:
     component is unreachable.
     """
     init_module = ModuleInitSogo(process_config)
-    init_module.check_sogo_database()
+    try:
+        init_module.check_sogo_database()
+    except Exception as e:
+        logger.warning("Database not yet available (run init-sogo6.sh): %s", e)
     cache_client = init_module.check_redis()
     if init_module.errors:
         raise AggravatedException(f"Sogo cannot be initiated because: {init_module.errors}")
