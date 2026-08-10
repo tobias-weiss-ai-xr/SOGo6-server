@@ -363,8 +363,11 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
             @base_blueprint.before_request
             def block_sogo() -> ResponseReturnValue:
                 """
-                Reject requests for basic api id sogo is not init
+                Reject requests for basic api id sogo is not init.
+                Health and other public endpoints remain accessible.
                 """
+                if _is_public_endpoint():
+                    return None
                 return create_api_base_response(error=err.ERROR_SOGO_INIT)
         elif kind == cs.API_ADMIN:
             @base_blueprint.before_request
