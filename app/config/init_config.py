@@ -135,8 +135,11 @@ def init_sogo() -> tuple[int, ClientRedis, ClientAgent]:
 
     sogo_state = cs.SOGO_NOT_INIT
     #No errors, check if SOGo already has a configuration
-    if check_basic_config():
-        sogo_state = cs.SOGO_OK
+    try:
+        if check_basic_config():
+            sogo_state = cs.SOGO_OK
+    except Exception as e:
+        logger.warning("Cannot check basic config (DB not initialized): %s", e)
 
     return sogo_state, cache_client, agent_client
 
