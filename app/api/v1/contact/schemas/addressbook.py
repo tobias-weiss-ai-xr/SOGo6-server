@@ -83,3 +83,79 @@ class ContactImportUploadSchema(Schema):
         metadata={"type": "string", "format": "binary",
                   "description": "The JSON (.json), vCard (.vcf) or LDIF (.ldif) file to import."},
     )
+
+
+#
+# Sharing
+#
+
+
+class ContactShareCreateSchema(Schema):
+    """Request body for sharing an address book with a user."""
+
+    user_uid   = fields.String(required=True, metadata={"example": "user@example.org"})
+    share_level = fields.String(
+        load_default="view",
+        validate=validate.OneOf(["view", "modify"]),
+        metadata={"example": "view"},
+    )
+
+
+class ContactShareSchema(Schema):
+    """Representation of a share entry in API responses."""
+
+    user_uid     = fields.String()
+    share_level  = fields.String()
+
+
+class ContactShareListDataSchema(Schema):
+    """Data payload for the share list response."""
+
+    shares      = fields.List(fields.Nested(ContactShareSchema))
+    total_count = fields.Integer()
+
+
+class ContactShareListResponseSchema(ApiBaseResponse):
+    """Response schema for a list of shares."""
+
+    data = fields.Nested(ContactShareListDataSchema, allow_none=True)
+
+
+class ContactShareResponseSchema(ApiBaseResponse):
+    """Response schema for a single share."""
+
+    data = fields.Nested(ContactShareSchema, allow_none=True)
+
+
+#
+# External address books (CardDAV)
+#
+
+
+class ContactSyncConfigUpdateSchema(Schema):
+    """Partial external address book sync configuration update."""
+
+    url = fields.Url(metadata={"description": "Remote CardDAV URL."})
+    sync_interval_minutes = fields.Integer(
+        validate=validate.Range(min=5, max=1440),
+        metadata={"description": "Sync interval in minutes (min 5, max 1440)."},
+    )
+
+
+class ExternalAddressBookCreateSchema(Schema):
+    """Request body for creating an external CardDAV address book subscription."""
+
+    name = fields.String(required=True, metadata={"example": "Work Contacts"})
+    url = fields.Url(required=True, metadata={"example": "https://carddav.example.com/contacts/"})
+    sync_interval_minutes = fields.Integer(
+        load_default=60,
+        validate=validate.Range(min=5, max=1440),
+        metadata={"description": "Sync interval in minutes (default 60, min 5, max 1440)."},
+    )
+
+
+class ExternalAddressBookUpdateSchema(Schema):
+    """Request body for updating an external CardDAV address book."""
+
+    name = fields.String()
+    sync_config = fields.Nested(ContactSyncConfigUpdateSchema, metadata={"description": "Partial sync_config update (url, sync_interval_minutes)."})

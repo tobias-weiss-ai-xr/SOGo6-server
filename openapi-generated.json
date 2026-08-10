@@ -1,0 +1,42 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SOGo6 Server API",
+    "version": "1.0.0",
+    "description": "SOGo6 Groupware Server API - Placeholder (run with Flask app available)"
+  },
+  "paths": {
+    "/api/v1/mail/messages": {
+      "get": {
+        "summary": "List messages"
+      },
+      "post": {
+        "summary": "Send message"
+      }
+    },
+    "/api/v1/calendar/events": {
+      "get": {
+        "summary": "List events"
+      },
+      "post": {
+        "summary": "Create event"
+      }
+    },
+    "/api/v1/contacts/contacts": {
+      "get": {
+        "summary": "List contacts"
+      },
+      "post": {
+        "summary": "Create contact"
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "summary": "List users"
+      },
+      "post": {
+        "summary": "Create user"
+      }
+    }
+  }
+}

@@ -137,6 +137,125 @@ class InterfaceApiMailFilter:
             return create_api_base_response(None, ex.error)
         return create_api_base_response({"filters": value})
 
+    def get_filter(self, filter_id: str) -> tuple[dict[str, Any], int]:
+        """Return a single filter by its name/id for the current user.
+
+        :param filter_id: Name of the filter to retrieve.
+        :type filter_id: str
+        :return: Tuple of (API response dict, HTTP status code).
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            value = self.filter_module.get_filter(filter_id)
+        except RequestException as ex:
+            logger_api.error("Request exception in get_filter: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response({"filter": value})
+
+    def set_filter(self, filter_id: str, value: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Create or replace a single filter by name/id for the current user.
+
+        :param filter_id: Name of the filter to create/update.
+        :type filter_id: str
+        :param value: Validated filter payload.
+        :type value: dict[str, Any]
+        :return: Tuple of (API response dict, HTTP status code).
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            saved = self.filter_module.set_filter(filter_id, value)
+        except RequestException as ex:
+            logger_api.error("Request exception in set_filter: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(saved)
+
+    def delete_filter(self, filter_id: str) -> tuple[dict[str, Any], int]:
+        """Delete a single filter by name/id for the current user.
+
+        :param filter_id: Name of the filter to delete.
+        :type filter_id: str
+        :return: Tuple of (API response dict, HTTP status code).
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            saved = self.filter_module.delete_filter(filter_id)
+        except RequestException as ex:
+            logger_api.error("Request exception in delete_filter: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(saved)
+
+    def reorder_filters(self, ordered_names: list[str]) -> tuple[dict[str, Any], int]:
+        """Reorder filters for the current user.
+
+        :param ordered_names: Desired filter names in order.
+        :type ordered_names: list[str]
+        :return: Response with the reordered filters content.
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            saved = self.filter_module.reorder_filters(ordered_names)
+        except RequestException as ex:
+            logger_api.error("Request exception in reorder_filters: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(saved)
+
+    def push_to_sieve(self) -> tuple[dict[str, Any], int]:
+        """Re-push the current merged configuration to Sieve.
+
+        :return: Response with the pushed filters content.
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            saved = self.filter_module.push_to_sieve()
+        except RequestException as ex:
+            logger_api.error("Request exception in push_to_sieve: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(saved)
+
+    def validate_filter(self, value: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Validate a single filter payload without persisting it.
+
+        The payload is assumed to have already passed marshmallow schema
+        validation. This method performs an additional structural sanity check
+        (name present, actions present) and reports validity.
+
+        :param value: Validated filter payload.
+        :type value: dict[str, Any]
+        :return: Tuple of (API response dict, HTTP status code).
+        :rtype: tuple[dict[str, Any], int]
+        """
+        errors: list[str] = []
+        if not value.get("name"):
+            errors.append("Filter must have a non-empty 'name'.")
+        if not value.get("actions"):
+            errors.append("Filter must have at least one action.")
+        if not value.get("rules"):
+            errors.append("Filter must have a 'rules' tree.")
+        valid = len(errors) == 0
+        return create_api_base_response({"valid": valid, "errors": errors})
+
+    def preview_filter(self, value: dict[str, Any], sample: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Simulate whether a filter would execute against provided sample headers.
+
+        Evaluates the filter's rule tree against a ``headers`` dict (e.g.
+        ``{"subject": "...", "from": "...", "to": "..."}``). This is a
+        best-effort client-side preview and does not require the Sieve engine.
+
+        :param value: Validated filter payload.
+        :type value: dict[str, Any]
+        :param rules: Sample message headers used for matching.
+        :type sample: dict[str, Any]
+        :return: Response with match result and matched action.
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            from app.module.mail.filter_preview import preview_filter
+            matched, matched_action = preview_filter(value, sample=sample)
+        except Exception as ex:  # noqa: BLE001 - preview must never 500 the request
+            logger_api.error("Error in preview_filter: %s", str(ex))
+            return create_api_base_response({"matched": False, "action": None, "error": str(ex)})
+        return create_api_base_response({"matched": matched, "action": matched_action})
+
     def get_vacation(self) -> tuple[dict[str, Any], int]:
         """Return the ``Vacation`` section for the current user.
 

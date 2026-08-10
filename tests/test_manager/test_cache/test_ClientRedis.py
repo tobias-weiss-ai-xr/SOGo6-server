@@ -192,12 +192,15 @@ class TestClientRedisInit:
             client = ClientRedis("redis://localhost:6379/0", resp3=False)
         assert client.cache is False
 
-    def test_init_resp3_true_sets_cache_true(self):
+    def test_init_resp3_true_keeps_client_cache_disabled(self):
+        # client-side caching (CacheConfig) is intentionally disabled: redis-py
+        # serves stale ZRANGE reads from its local cache after writes on the
+        # same connection, silently corrupting zset flows (audit chain, session
+        # indices). resp3 still selects the RESP3 wire protocol.
         with patch("app.manager.cache.ClientRedis.Redis") as MockRedis:
-            with patch("app.manager.cache.ClientRedis.CacheConfig"):
-                MockRedis.from_url.return_value = MagicMock()
-                client = ClientRedis("redis://localhost:6379/0", resp3=True)
-        assert client.cache is True
+            MockRedis.from_url.return_value = MagicMock()
+            client = ClientRedis("redis://localhost:6379/0", resp3=True)
+        assert client.cache is False
 
     def test_init_creates_redis_instance(self):
         with patch("app.manager.cache.ClientRedis.Redis") as MockRedis:

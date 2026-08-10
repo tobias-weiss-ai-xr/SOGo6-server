@@ -13,9 +13,11 @@ from app.module.contact.jobs.JobRequestExportContact import JobRequestExportCont
 from app.module.contact.jobs.JobRequestImportContact import JobRequestImportContact
 from app.module.contact.model.AddressBookContent import AddressBookContent
 from app.module.contact.model.CardAddressBook import CardAddressBook
+from app.module.contact.model.ContactShare import ContactShare
 from app.module.contact.model.ContactImportResult import ContactImportResult
 from app.module.contact.model.enums.CardSourceType import CardSourceType
 from app.module.contact.model.enums.ContactShareLevel import ContactShareLevel
+from app.module.contact.repository.RepositoryContactShare import RepositoryContactShare
 from app.module.contact.source.ContactSources import ContactSources
 from app.utils import errors as err
 from app.utils.db.Condition import Order
@@ -36,6 +38,13 @@ if TYPE_CHECKING:
     from app.module.contact.source.ContactSource import ContactSource
 
 
+def _emit_webhook(event: str, payload: dict) -> None:
+    """Best-effort async webhook emitter; never raises, never blocks."""
+    from app.service.webhook.WebhookService import emit_event
+
+    emit_event(event, payload)
+
+
 class ModuleContact:  # pylint: disable=too-many-public-methods
     """Module for address book and contact operations."""
 
@@ -52,8 +61,9 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         self._db.connect()
         self._cache: ClientRedis | None = cache
         self._agent: ClientAgent | None = agent
-        self._sources: ContactSources = ContactSources(self._db)
-        self._acl: ContactAclEngine = ContactAclEngine()
+        self._share_repo: RepositoryContactShare = RepositoryContactShare(self._db)
+        self._sources: ContactSources = ContactSources(self._db, self._share_repo)
+        self._acl: ContactAclEngine = ContactAclEngine(self._share_repo)
         self._file: ClientStorage = import_and_instantiate_manager(
             module_path="app.manager.storage",
             module_and_class_name=f"ClientStorage{process_settings.SOGO_P_STORAGE_TYPE.capitalize()}",
@@ -145,6 +155,26 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         """Delete an address book; its contacts are tombstoned and detached (soft) or removed (hard)."""
         source: ContactSource = self._get_writable_addressbook(user, key, user_sources)
         source.delete_addressbook(hard_delete=hard_delete)
+
+    #
+    # Sharing
+    #
+    def list_shares(self, addressbook_key: str) -> list[ContactShare]:
+        """Return all share entries for an address book."""
+        return self._share_repo.find_by_addressbook_key(addressbook_key)
+
+    def add_share(self, addressbook_key: str, share: ContactShare) -> ContactShare:
+        """Add a share entry for a user on an address book."""
+        existing = self._share_repo.find_by_addressbook_and_user(addressbook_key, share.user_uid)
+        if existing is not None:
+            from app.utils import errors as err
+            from app.utils.exceptions import RequestException
+            raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_DUPLICATE)
+        return self._share_repo.insert(share)
+
+    def remove_share(self, addressbook_key: str, user_uid: str) -> None:
+        """Remove a share entry for a user on an address book."""
+        self._share_repo.delete(addressbook_key, user_uid)
 
     #
     # Contacts
@@ -257,6 +287,11 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         source: ContactSource = self._get_writable_addressbook(user, addressbook_key, user_sources)
         created: CardContact = self._insert_contact(source, contact)
         created.photos = self._file.load_all(created.photos)
+        _emit_webhook("contact.created", {
+            "uid": user.uid,
+            "addressbook_key": addressbook_key,
+            "contact_uid": created.uid,
+        })
         return created
 
     def update_contact(
@@ -273,6 +308,11 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         if refetched is None:
             raise BugException(f"Contact key={key} was updated but could not be fetched back")
         refetched.photos = self._file.load_all(refetched.photos)
+        _emit_webhook("contact.updated", {
+            "uid": user.uid,
+            "addressbook_key": addressbook_key,
+            "contact_uid": refetched.uid,
+        })
         return refetched
 
     def delete_contact(
@@ -285,6 +325,11 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
             raise RequestException(error=err.ERROR_CONTACT_NOT_FOUND)
         try:
             source.delete_contact(key)
+            _emit_webhook("contact.deleted", {
+                "uid": user.uid,
+                "addressbook_key": addressbook_key,
+                "contact_uid": key,
+            })
         except RequestException:
             raise
         except Exception as exc:
@@ -627,3 +672,53 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         tombstones. Delegated to the source layer, which owns all data access.
         """
         return self._sources.purge_orphans(self._file)
+
+    #
+    # External address books (CardDAV)
+    #
+
+    def create_external_addressbook(
+        self, user: User, name: str, url: str, sync_interval_minutes: int = 60,
+    ) -> CardAddressBook:
+        """Create a new external CardDAV address book subscription.
+
+        The address book is created in the local DB (same table, source_type=carddav) and
+        its sync_config is initialised with the remote URL and sync interval. The actual
+        sync is triggered asynchronously via enqueue_external_sync().
+        """
+        book: CardAddressBook = CardAddressBook(
+            user_uid=user.uid,
+            name=name,
+            source_type=CardSourceType.CARDDAV,
+            sync_config={
+                "url": url,
+                "sync_interval_minutes": sync_interval_minutes,
+                "sync_status": "pending",
+            },
+        )
+        return self.create_addressbook(user, book)
+
+    def sync_external_addressbook(self, user: User, key: str) -> None:
+        """Run the sync of an external CardDAV address book.
+
+        Fetches remote vCard data, parses and diffs against local contacts.
+        """
+        source: ContactSource = self.get_addressbook(user, key)
+        if source.addressbook.source_type != CardSourceType.CARDDAV:
+            raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED)
+        if self._cache is None:
+            raise BugException("ModuleContact requires a cache for CardDAV sync")
+        from app.module.contact.sync.ContactSyncEngine import ContactSyncEngine
+        engine: ContactSyncEngine = ContactSyncEngine(sources=self._sources, cache=self._cache)
+        engine.sync(source.addressbook)
+
+    def enqueue_external_sync(self, user: User, key: str) -> str:
+        """Enqueue a manual CardDAV sync for an external address book and return a job id.
+
+        Currently runs synchronously; returns a placeholder job_id. Will be replaced by
+        an async job dispatch once the agent infrastructure is wired for CardDAV.
+        """
+        if self._agent is None:
+            raise RuntimeError("ModuleContact.enqueue_external_sync requires a ClientAgent")
+        self.sync_external_addressbook(user, key)
+        return generate_uuid()

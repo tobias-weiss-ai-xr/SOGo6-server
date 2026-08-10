@@ -1,16 +1,19 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from marshmallow import EXCLUDE, ValidationError
 
-from app.config.db import tables as tbl
-from app.config.settings.DomainSettings import get_all_domain_schemas, UserSourceSettings
+from app.config.settings.DomainSettings import (
+    AuthSettings,
+    AuthSettingsObj,
+    get_all_domain_schemas,
+    UserSourceSettings,
+    UserSourceSettingsObj,
+)
 from app.module.user.ModuleUserProfile import ModuleUserProfile
 from app.utils.api.ApiBaseResponse import create_api_base_response
-from app.utils.exceptions import BugException, RequestException
+from app.utils.exceptions import RequestException
 from app.utils import errors as err
-
-
+from app.utils.logger.logger import logger_api
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
@@ -38,7 +41,7 @@ class InterfaceUserProfile:
 
         It is called by the UI to know how the UI must be handled
 
-        :return: 
+        :return:
         :rtype: tuple[dict, int]
         """
         data: dict = {}
@@ -69,3 +72,77 @@ class InterfaceUserProfile:
         data["ui"] = admin_param
 
         return create_api_base_response(data)
+
+    def change_password(self, current_password: str, new_password: str) -> tuple[dict, int]:
+        """
+        Change the password for the currently authenticated user.
+
+        Steps:
+        1. Check that password changes are enabled for the user's domain.
+        2. Verify the current password by re-authenticating against the user source.
+        3. Update the password in the user source (LDAP).
+
+        :param current_password: The user's current password (for verification)
+        :type current_password: str
+        :param new_password: The desired new password
+        :type new_password: str
+        :return: API response dict and HTTP status code
+        :rtype: tuple[dict, int]
+        """
+        # 1. Check that password change is enabled for this domain
+        auth_settings_raw: dict = self.user_domain.get(AuthSettings.subparent, {})
+        auth_settings = AuthSettingsObj(auth_settings_raw)
+        if not auth_settings.SOGO_D_PWD_CHANGE_ENABLED:
+            return create_api_base_response(
+                error=err.ERROR_PWD_CHANGE_DISABLED,
+            )
+
+        # 2. Verify current password by re-authenticating
+        from app.module.auth.ModuleUserSource import ModuleUserSource
+
+        try:
+            us_module = ModuleUserSource.init_from_domain_settings(self.user_domain)
+            # Create a temporary User-like object for password verification
+            from app.auth.User import User
+            temp_user = User(self.user.uid, current_password, domain=self.user.domain)
+            is_valid = us_module.check_login(temp_user)
+            if not is_valid:
+                return create_api_base_response(
+                    error=err.ERROR_PWD_CHANGE_REAUTH_FAILED,
+                )
+        except Exception as ex:
+            logger_api.error("Password re-authentication failed for uid=%s: %s", self.user.uid, ex)
+            return create_api_base_response(
+                error=err.ERROR_PWD_CHANGE_REAUTH_FAILED,
+            )
+
+        # 2.5. Validate new password against domain policy
+        user_source_settings_raw: dict = self.user_domain.get(UserSourceSettings.subparent, {})
+        user_source_settings = UserSourceSettingsObj(user_source_settings_raw)
+        
+        if user_source_settings.US_PWD_POLICY:
+            from app.utils.maths.password_policy import validate_password_policy
+            policy_errors = validate_password_policy(
+                new_password, user_source_settings
+            )
+            if policy_errors:
+                logger_api.warning("Password change failed for uid=%s: policy violation - %s", 
+                                    self.user.uid, ", ".join(policy_errors))
+                return create_api_base_response(
+                    error=err.ERROR_PWD_POLICY_VIOLATION,
+                    error_msg="; ".join(policy_errors)
+                )
+
+        # 3. Update password using ModuleAdminUser (which has admin LDAP bind)
+        try:
+            from app.module.admin.ModuleAdminUser import ModuleAdminUser
+            admin_module = ModuleAdminUser(process_settings=self.process_settings)
+            admin_module.update_user(self.user.uid, {"password": new_password})
+            logger_api.info("Password changed successfully for uid=%s", self.user.uid)
+            return create_api_base_response({"changed": True})
+        except RequestException as ex:
+            logger_api.error("Password change failed for uid=%s: %s", self.user.uid, ex)
+            return create_api_base_response(error=ex.error)
+        except Exception as ex:
+            logger_api.error("Password change failed for uid=%s: %s", self.user.uid, ex)
+            return create_api_base_response(error=err.ERROR_PWD_CHANGE_FAILED)

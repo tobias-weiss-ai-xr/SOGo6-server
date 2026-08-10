@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 from os import getpid
 
 from app.utils.logger.logger import logger
-from app.utils.exceptions import AggravatedException
 from app.utils.module.importManager import import_and_instantiate_manager
 from app.config.db.tables import ALL_TABLES
 from app.manager.cache.ClientRedis import ClientRedis
@@ -94,6 +93,34 @@ class ModuleInitSogo:
         elif len(table_ok) == len(ALL_TABLES):
             #All tables are ok
             self.first_init = False
+
+        # Ensure supplementary tables exist (shared mailboxes, etc.)
+        try:
+            from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
+            ModuleSharedMailbox.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure supplementary tables: %s", exc)
+
+        # Ensure shared mailbox notes and assignments tables exist
+        try:
+            from app.module.admin.ModuleSharedMailboxNotes import ModuleSharedMailboxNotes
+            ModuleSharedMailboxNotes.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure shared mailbox notes table: %s", exc)
+
+        try:
+            from app.module.admin.ModuleSharedMailboxAssignment import ModuleSharedMailboxAssignment
+            ModuleSharedMailboxAssignment.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure shared mailbox assignments table: %s", exc)
+
+        # Ensure resource favorites table exists
+        try:
+            from app.module.calendar.ModuleResourceBooking import ModuleResourceBooking
+            ModuleResourceBooking.ensure_favorites_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure resource favorites table: %s", exc)
+
         sogo_db_manager.close()
 
     
@@ -101,5 +128,4 @@ class ModuleInitSogo:
         """
         Check agent celery
         """
-        pass
 

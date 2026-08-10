@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.manager.db.ClientSQL import ClientSQL
     from app.module.contact.model.CardAddressBook import CardAddressBook
     from app.module.contact.model.CardContact import CardContact
+    from app.module.contact.model.CardContactSyncMeta import CardContactSyncMeta
     from app.module.contact.model.CardList import CardList
 
 # Relational columns a contact list may be ordered by. Guards the ORDER BY against arbitrary
@@ -156,6 +157,15 @@ class ContactSourceDb(ContactSource):
         self._repo_list.delete_by_key(self._addressbook.require_key, key)
         self._repo_list.delete_members(key)
         self._bump_ctag()
+
+    def delete_by_key(self, key: str) -> None:
+        """Soft-delete a contact by its opaque key within this book, and bump ctag."""
+        self._repo_contact.delete_by_key(self._addressbook.require_key, key)
+        self._bump_ctag()
+
+    def get_sync_metadata(self) -> list[CardContactSyncMeta]:
+        """Return sync metadata (key, uid, updated_at, rev) for every non-deleted contact in this book."""
+        return self._repo_contact.find_sync_metadata(self._addressbook.require_key)
 
     def _bump_ctag(self) -> None:
         """Increment the address book ctag so CardDAV clients detect the change (RFC 6352)."""

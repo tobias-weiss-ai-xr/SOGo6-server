@@ -129,6 +129,23 @@ class RepositoryCalendar:
             return None
         return self._row_to_calendar(rows[0])
 
+    def find_by_key_unscoped(self, key: str) -> CalCalendar | None:
+        """Return a calendar by its public key without an owner filter.
+
+        Used by CalendarSources.get_by_key when the owner-scoped lookup returns nothing,
+        to resolve calendars shared with the acting user (cross-owner access).
+        """
+        condition = EqualCondition(tbl.COL_CAL_KEY.name, key)
+        rows = list(self._db.select_from_table(
+            table_name=tbl.TABLE_CALENDAR.name,
+            column_tuple=_ALL_COLS,
+            condition=condition,
+            limit=1,
+        ))
+        if not rows:
+            return None
+        return self._row_to_calendar(rows[0])
+
     def find_by_share_token(self, share_token: str) -> CalCalendar | None:
         """Return the calendar matching the public subscription token, or None.
 
@@ -174,14 +191,19 @@ class RepositoryCalendar:
         return [self._row_to_calendar(row) for row in rows]
 
     def find_all_external(self) -> list[CalCalendar]:
-        """Return every external ICS calendar across all users, ordered by id.
+        """Return every external ICS/CalDAV calendar across all users, ordered by id.
 
         System-wide (no user filter): used by the periodic auto-sync sweep, which has no user context.
         """
+        from app.utils.db.Condition import OrCondition, EqualCondition
+
         rows = self._db.select_from_table(
             table_name=tbl.TABLE_CALENDAR.name,
             column_tuple=_ALL_COLS,
-            condition=EqualCondition(tbl.COL_CAL_SOURCE_TYPE.name, CalendarSourceType.ICS.value),
+            condition=OrCondition(
+                EqualCondition(tbl.COL_CAL_SOURCE_TYPE.name, CalendarSourceType.ICS.value),
+                EqualCondition(tbl.COL_CAL_SOURCE_TYPE.name, CalendarSourceType.CALDAV.value),
+            ),
             sort_by=tbl.COL_ID.name,
         )
         return [self._row_to_calendar(row) for row in rows]

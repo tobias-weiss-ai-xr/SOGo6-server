@@ -39,9 +39,9 @@ class ModuleMailOutgoing:
 
         For the main account (DEFAULT_IDENTITY_KEY_VALUE), use domain SMTP settings
         and the user's outgoing login. For external accounts, use the account's
-        mail_outgoing config.
+        mail_outgoing config. For shared mailboxes, use the shared mailbox email as username.
 
-        :param account_id: Account identifier (DEFAULT_IDENTITY_KEY_VALUE or external id)
+        :param account_id: Account identifier (DEFAULT_IDENTITY_KEY_VALUE, external id, or shared-{uuid})
         :type account_id: str
         :param is_system: True if the message is a system message (notificaiton, noreply...)
         :type is_system: bool
@@ -49,9 +49,62 @@ class ModuleMailOutgoing:
         :rtype: dict
         :raises RequestException: If the external account is not found
         """
+        from app.utils import errors as err
+        from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
+        from app.utils.module.importManager import import_and_instantiate_manager
+        
         conf: dict = {}
 
-        if account_id == cs.DEFAULT_IDENTITY_KEY_VALUE:
+        # Check if this is a shared mailbox (format: shared-{uuid})
+        if account_id.startswith("shared-"):
+            # Extract UUID from shared-{uuid} format
+            shared_mailbox_id = account_id[7:]
+            
+            # Get shared mailbox from database
+            db = import_and_instantiate_manager(
+                module_path="app.manager.db",
+                module_and_class_name=f"Client{self.user.profile.p_db_type}",
+                module_args=self.user.profile.get_db_settings(),
+            )
+            db.connect()
+            
+            shared_mailbox_module = ModuleSharedMailbox(db)
+            mailbox = shared_mailbox_module.get_by_id(shared_mailbox_id)
+            
+            if not mailbox:
+                raise RequestException(
+                    err.ERROR_SHARED_MAILBOX_NOT_FOUND.m,
+                    error=err.ERROR_SHARED_MAILBOX_NOT_FOUND,
+                    http_status=404
+                )
+            
+            if self.user.uid not in mailbox.get("member_uids", []):
+                raise RequestException(
+                    err.ERROR_SHARED_MAILBOX_NOT_FOUND.m,
+                    error=err.ERROR_SHARED_MAILBOX_NOT_FOUND,
+                    http_status=403
+                )
+            
+            # Use domain SMTP settings for shared mailbox
+            # Username is the shared mailbox email, password is user's password
+            outgoing_type = self.mail_settings.SOGO_D_MAIL_OUTGOING_TYPE
+            conf["username"] = mailbox.get("email", "")
+            conf["password"] = self.user.password
+            conf["type"] = outgoing_type
+            conf["authname"] = ""
+            
+            if outgoing_type == "smtp":
+                conf["args"] = {
+                    "server": self.mail_settings.SOGO_D_SMTP_SERVER,
+                    "port": self.mail_settings.SOGO_D_SMTP_PORT,
+                    "encryption": self.mail_settings.SOGO_D_SMTP_ENCRYPTION,
+                    "auth_mech": self.mail_settings.SOGO_D_SMTP_AUTH_MECH,
+                }
+            else:
+                # sendmail and future mechanisms: no connection args needed
+                conf["args"] = {}
+        
+        elif account_id == cs.DEFAULT_IDENTITY_KEY_VALUE:
             outgoing_type = self.mail_settings.SOGO_D_MAIL_OUTGOING_TYPE
 
             conf["username"] = self.user.login_mail_outgoing

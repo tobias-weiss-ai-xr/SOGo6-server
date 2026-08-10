@@ -1,0 +1,28 @@
+# OpenSpec files
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+
+# Environment
+.env
+.env.*

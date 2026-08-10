@@ -4,14 +4,13 @@
 Defines all users parameters
 """
 from typing import Type
-from marshmallow import fields, validate
 from app.config.settings.SogoSchema import SogoSchema
 from app.utils.config.generateObjFromSchema import SettingsObj
 from app.utils import constants as cs
 
 import zoneinfo
 
-from marshmallow import Schema, fields, validate, validates_schema, ValidationError
+from marshmallow import Schema, fields, validate
 
 TIMEZONES = zoneinfo.available_timezones()
 
@@ -37,10 +36,34 @@ class UserGeneralSettings(SogoSchema):
     SOGO_U_FIRST_MODULE = fields.String(load_default="mail", dump_default="mail",
                                         validate=validate.OneOf(('mail', 'calendar', 'contact', 'last'))) #Tell what module to show after login
     SOGO_U_REFRESH_MAIL_VIEW = fields.Integer(load_default=0, dump_default=0, validate=validate.OneOf((0, 1, 2, 5, 10, 20, 30, 60))) #0 means the mail view must be refreshed manually, other value are the poolin interval in minutes
+    SOGO_U_UNDO_SEND_SECONDS = fields.Integer(
+        load_default=0, dump_default=0, validate=validate.Range(min=0, max=60),
+        metadata={"description": "Grace period in seconds for Undo Send "
+                                 "(0 = disabled, max 60). During this window "
+                                 "the email can be recalled via the cancel endpoint."},
+    )
     SOGO_U_BROWSER_NOTIF = fields.Boolean(load_default=False, dump_default=False) #Enable notificaiton on browser
     SOGO_U_EXT_AVATAR_ENABLED  = fields.Boolean(load_default=False, dump_default=False) #Download external avatar (gravatar, libravatar) to display on mail list
     SOGO_U_PROFILE_PICTURE  = fields.String(load_default="default", dump_default="default",
                                         validate=validate.OneOf(('default', 'gravatar', 'libravatar', 'usersource'))) #Source of the profile picture: default sogo avatar, gravatar, libravatar, usersource (set by admin)
+
+
+class UserGeneralSettingsObj(SettingsObj):
+    """
+    Object with UserGeneralSettings params as attributes
+    """
+
+    SOGO_U_LANGUAGE: str = "English"
+    SOGO_U_TIMEZONE: str = "UTC"
+    SOGO_U_TIME_FORMAT: str = "HH:mm"
+    SOGO_U_LONG_DATE: str = ""
+    SOGO_U_SHORT_DATE: str = ""
+    SOGO_U_FIRST_MODULE: str = "mail"
+    SOGO_U_REFRESH_MAIL_VIEW: int = 0
+    SOGO_U_UNDO_SEND_SECONDS: int = 0
+    SOGO_U_BROWSER_NOTIF: bool = False
+    SOGO_U_EXT_AVATAR_ENABLED: bool = False
+    SOGO_U_PROFILE_PICTURE: str = "default"
 
 
 class UserSecuritySettings(SogoSchema):
@@ -69,9 +92,27 @@ class UserCalendarGeneralSettings(SogoSchema):
 
     SOGO_U_CALENDAR_CREATION_NOTIF = fields.Boolean(load_default=True, dump_default=True) #Send mail notification when user create a calendar or addrebook
     SOGO_U_CALENDAR_VIEW_FIRST_DAY = fields.Integer(load_default=0, dump_default=0, validate=validate.Range(min=0, max=6)) #0 means Sunday, first day of the week showns in calendar weeks and months views.
-    SOGO_U_WORKDAY_START_TIME = fields.String(load_default="09:00", dump_default="09:00") # Allow to define work hours
-    SOGO_U_WORKDAY_END_TIME = fields.String(load_default="18:00", dump_default="18:00")  #
+    SOGO_U_WORKDAY_START_TIME = fields.String(
+        load_default="09:00", dump_default="09:00",
+        validate=validate.Regexp(r"^\d{2}:\d{2}$"),
+        metadata={"description": "Workday start time in HH:MM format (24h)."},
+    )
+    SOGO_U_WORKDAY_END_TIME = fields.String(
+        load_default="18:00", dump_default="18:00",
+        validate=validate.Regexp(r"^\d{2}:\d{2}$"),
+        metadata={"description": "Workday end time in HH:MM format (24h)."},
+    )
     SOGO_U_BUSY_OFF_HOURS = fields.Boolean(load_default=False, dump_default=False) # Be shown as busy outside work hour
+    SOGO_U_NON_WORKING_WEEKDAYS = fields.List(
+        fields.Integer(validate=validate.Range(min=0, max=6)),
+        load_default=[5, 6], dump_default=[5, 6],
+        metadata={"description": "Days considered non-working for free/busy (0=Sunday, 6=Saturday). "
+                                 "Defaults to weekend (Saturday, Sunday)."},
+    )
+    SOGO_U_DEFAULT_LOCATION = fields.String(
+        load_default="", dump_default="",
+        metadata={"description": "Default meeting location pre-filled when creating new events."},
+    )
     SOGO_U_CALENDAR_DAYS_SHOWED = fields.List(fields.Integer(validate=validate.Range(min=0, max=6)),
                                               load_default=[0,1,2,3,4,5,6],
                                               dump_default=[0,1,2,3,4,5,6]) #Days to show in calendar view; 0 Sunday, 6 Saturday

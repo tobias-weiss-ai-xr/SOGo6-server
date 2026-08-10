@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields
+from marshmallow import fields
 
 from app.utils.api.ApiBaseResponse import ApiBaseResponse
 
@@ -61,7 +61,8 @@ class UserProfileGetRetSchema(ApiBaseResponse):
                 "SOGO_U_TASK_DEFAULT_CLASS": "PUBLIC",
                 "SOGO_U_TASK_DEFAULT_REMINDER": "-PT15M",
                 "SOGO_U_WORKDAY_END_TIME": "18:00",
-                "SOGO_U_WORKDAY_START_TIME": "09:00"
+                "SOGO_U_WORKDAY_START_TIME": "09:00",
+                "SOGO_U_NON_WORKING_WEEKDAYS": [5, 6]
             },
             "USER_CONTACT_CATEGORY": {},
             "USER_CONTACT_GENERAL": {

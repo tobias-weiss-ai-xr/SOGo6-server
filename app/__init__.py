@@ -1,8 +1,12 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
+import os
+import logging
 from json import loads, dumps
 from json.decoder import JSONDecodeError
+import time
+import uuid
 
 from flask import Flask, request, g, Response, current_app
 from flask.typing import ResponseReturnValue
@@ -16,13 +20,16 @@ from app.auth.Admin import Admin, AdminAnonymous
 from app.auth.service.VoucherUserService import VoucherUserService
 from app.auth.service.VoucherAdminService import VoucherAdminService
 from app.config.settings.ProcessSetting import process_config
-from app.config.settings.SystemSettings import SystemSettingsObj
 from app.config.init_config import init_get_system_and_default_domain_settings, init_get_user_domain_settings
 import app.utils.errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response, ApiBaseResponse
 from app.utils import constants as cs
 from app.utils.logger.logger import logger, logger_api
+from app.utils.logger.json_logger import enable_json_logging
+from app.utils.api.prometheus import init_prometheus
 from app.utils.exceptions import AggravatedException
+
+from pathlib import Path
 
 #Apis
 from app.api import all_apis
@@ -31,6 +38,79 @@ from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
 
 __version__ = "6.0.0-alpha1"
 
+
+# ---------------------------------------------------------------------------
+# Request ID injection (runs before all blueprints)
+# ---------------------------------------------------------------------------
+
+_USE_X_REQUEST_ID = os.environ.get("SOGO_PROPAGATE_REQUEST_ID", "0") == "1"
+
+
+def _inject_request_id() -> None:
+    """Ensure ``g.request_id`` is set (from ``X-Request-Id`` header or generated)."""
+    if _USE_X_REQUEST_ID:
+        g.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
+    else:
+        g.request_id = uuid.uuid4().hex
+
+
+# ---------------------------------------------------------------------------
+# Structured access-log handler
+# ---------------------------------------------------------------------------
+
+_SLOW_REQUEST_MS = int(os.environ.get("SOGO_SLOW_REQUEST_MS", "3000"))
+
+
+def _access_log_level(status: int) -> int:
+    """Map an HTTP status to a log level: 5xx ERROR, 4xx WARNING, else INFO.
+
+    Keeps operational triage simple — a grep for ``ERROR`` finds real server
+    failures while ``WARNING`` flags client errors worth reviewing.
+    """
+    if status >= 500:
+        return logging.ERROR
+    if status >= 400:
+        return logging.WARNING
+    return logging.INFO
+
+
+def _log_access(response: Response) -> Response:
+    """Log a structured access line after every request.
+
+    The level follows the response status (5xx → ERROR, 4xx → WARNING, else
+    INFO) and requests slower than ``SOGO_SLOW_REQUEST_MS`` (default 3000 ms)
+    are additionally flagged with ``slow_request: true`` so they stand out in
+    the JSON stream and can be alarmed on.
+    """
+    duration_ms = (time.time() - g.get("_request_start", time.time())) * 1000
+    slow = duration_ms >= _SLOW_REQUEST_MS
+    level = _access_log_level(response.status_code)
+    logger_api.log(
+        level,
+        "%s %s %s %s %.1fms%s",
+        request.method,
+        request.path,
+        response.status_code,
+        request.user_agent or "-",
+        duration_ms,
+        " SLOW" if slow else "",
+        extra={
+            "http_method": request.method,
+            "path": request.path,
+            "status": response.status_code,
+            "duration_ms": round(duration_ms, 1),
+            "slow_request": slow,
+            "user_agent": str(request.user_agent or "-"),
+            "ip": request.remote_addr or "-",
+            "content_length": response.content_length or 0,
+        },
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# App factory
+# ---------------------------------------------------------------------------
 
 def create_app(sogo_state: int) -> Flask:
     """
@@ -43,10 +123,43 @@ def create_app(sogo_state: int) -> Flask:
     # memory. See app.utils.constants.MAX_HTTP_REQUEST_BYTES for the rationale.
     app.config["MAX_CONTENT_LENGTH"] = cs.MAX_HTTP_REQUEST_BYTES
 
+    # Enable structured JSON logging (auto-detects production)
+    enable_json_logging()
+
+    # Store the process config reference for health-check access
+    app.config["process_config"] = process_config
+
+    # Initialise Prometheus metrics and expose /metrics
+    init_prometheus(app)
+
     if not app.config.get("DO_SWAGGER"):
         app.config.pop("BASIC_OPENAPI_URL_PREFIX")
         app.config.pop("ADMIN_OPENAPI_URL_PREFIX")
+    else:
+        # Load custom Swagger UI template
+        template_path = Path(__file__).resolve().parent / "templates" / "swagger-ui.html"
+        if template_path.exists():
+            swagger_template = template_path.read_text(encoding="utf-8")
+            app.config["BASIC_OPENAPI_SWAGGER_UI_TEMPLATE"] = swagger_template
+            app.config["ADMIN_OPENAPI_SWAGGER_UI_TEMPLATE"] = swagger_template
+        else:
+            logger.warning("Custom Swagger UI template not found at %s", template_path)
 
+    # --- App-level middleware (runs before/after ALL requests, incl. non-API) ---
+
+    @app.before_request
+    def _start_request() -> None:
+        _inject_request_id()
+        g._request_start = time.time()
+
+    @app.after_request
+    def _after_request(response: Response) -> Response:
+        # Inject request ID into response headers for debugging
+        if hasattr(g, "request_id"):
+            response.headers.setdefault("X-Request-Id", g.request_id)
+        return _log_access(response)
+
+    # --- Blueprint registration ---
 
     flask_api = Api(app, config_prefix="BASIC_") # type: ignore [call-arg]
     admin_api = Api(app, config_prefix="ADMIN_") # type: ignore [call-arg]
@@ -54,10 +167,46 @@ def create_app(sogo_state: int) -> Flask:
     register_route(flask_api, cs.API_BASIC, sogo_state)
     register_route(admin_api, cs.API_ADMIN, sogo_state)
 
-    CORS(app, resources={r"/api/*": {"origins": "*",
+    # --- CalDAV protocol server (RFC 4791 / RFC 4918 / RFC 6578) ---
+    # Registered directly on the app (outside the smorest /api tree) so the
+    # WebDAV methods and XML/iCalendar media types are not constrained by the
+    # JSON content-type middleware. Includes the .well-known/caldav redirect
+    # required by CalDAV client discovery (RFC 6764).
+    from app.api.v1.caldav.ApiCalDAV import blp as caldav_blueprint
+    app.register_blueprint(caldav_blueprint)
+
+    @app.route("/.well-known/caldav")
+    def well_known_caldav() -> Response:
+        return Response(status=301, headers={"Location": "/caldav/"})
+
+    # --- API Playground routes (/docs, /docs/openapi.json) ---
+    @app.route("/docs")
+    def docs_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/swagger-basic"})
+
+    @app.route("/docs/openapi.json")
+    def docs_openapi_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/openapi-basic.json"})
+
+    @app.route("/docs/admin")
+    def docs_admin_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/swagger-admin"})
+
+    @app.route("/docs/admin/openapi.json")
+    def docs_admin_openapi_redirect() -> Response:
+        return Response(status=302, headers={"Location": "/openapi-admin.json"})
+
+    allowed_origins = [
+        process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000",
+    ]
+    # In development, also allow the Docker host
+    if process_config.SOGO_P_PUBLIC_BASE_URL:
+        allowed_origins.append(process_config.SOGO_P_PUBLIC_BASE_URL)
+
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins,
                                      "allow_headers": ["authorization", "content-type"],
-                                        "expose_headers": ["X-Pagination"]}})
-    #TODO: remove CORS policy when we have a proper frontend
+                                     "expose_headers": ["X-Pagination", "X-Request-Id"],
+                                     "supports_credentials": True}})
 
     return app
 
@@ -102,14 +251,9 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
     """
 
     @base_blueprint.before_request
-    def log_entry() -> ResponseReturnValue | None:  # pylint: disable=too-many-return-statements
-        """
-        Only used in debug to log request received
-        """
-
-        # Log the information
-        logger_api.info("Received: \"%s %s %s\"", request.method, request.path, request.environ.get('SERVER_PROTOCOL', 'Unknown'))
-        return None
+    def _attach_endpoint() -> None:
+        """Tag the g object with the matched endpoint name for access-log enrichment."""
+        g.endpoint = request.endpoint
         
     @base_blueprint.before_request
     def check_content_type() -> ResponseReturnValue | None:  # pylint: disable=too-many-return-statements
@@ -180,7 +324,6 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
             """
             # Skip authentication check for OPTIONS (CORS preflight)
             if request.method == "OPTIONS":
-                print("Skipping authentication check for OPTIONS request")
                 return None
             anon_endpoints = {
                 "user#Auth.v1_Auth.Auth.ApiAuthUserMode", 
@@ -296,6 +439,29 @@ def register_after_request(base_blueprint: Blueprint) -> None:
                     response.set_data(dumps(
                         create_api_base_response(body, err.ERROR_VALIDATION_ERROR)
                     ))
+
+        # Security headers
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+        # Content-Security-Policy: restrict script/style sources
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data:; "
+            "font-src 'self' https://cdn.jsdelivr.net; "
+            "connect-src 'self' https://cdn.jsdelivr.net",
+        )
+        # Referrer-Policy
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # Permissions-Policy: disallow features by default
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=()",
+        )
+
         return response
 
 def register_route(flask_api: Api, name: str, sogo_state: int) -> None:

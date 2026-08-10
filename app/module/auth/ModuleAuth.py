@@ -13,7 +13,6 @@ from app.utils.strings import get_domain_from_mail
 from app.utils.module.importManager import import_and_instantiate_manager
 
 if TYPE_CHECKING:
-    from app.config.settings.DomainSettings import AuthSettingsObj, UserSourceSettingsObj
     from app.config.settings.SystemSettings import SystemSettingsObj
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.manager.db.ClientSQL import ClientSQL
@@ -101,23 +100,69 @@ class ModuleAuth:
 
         return domain_auth_settings, domain_user_source
 
-    def get_login_mech(self, uid:str) -> dict:
+    def get_login_mech(self, uid: str, redirect: str = "") -> dict:
         """
         Get the login mechanism for this uid
 
         :param uid: username/mail/uid of the user
         :type uid: str
+        :param redirect: Redirect URL after auth (for SSO callback flow)
+        :type redirect: str
         :return: Dictionary containing the authentication kind and location
         :rtype: dict
         """
         domain = self._check_domain(uid)
         domain_auth_settings, _ = self._get_domain_auth_and_user_source_settings(domain)
 
-        #TODO Only work for plain login, do it properly for openid,cas...
+        auth_type = domain_auth_settings.SOGO_D_AUTH_TYPE
+        location = ""
+
+        if auth_type == "openid":
+            try:
+                from app.interface.auth.InterfaceAuthSSO import InterfaceAuthSSO
+
+                sso = InterfaceAuthSSO(self.process_settings)
+                oidc = sso._build_oidc(domain_auth_settings)
+                oidc.discover()
+
+                redirect_uri = sso._build_redirect_uri(domain)
+                state = uid  # use uid as state for basic validation
+                location = oidc.create_authorization_url(
+                    redirect_uri=redirect_uri,
+                    state=state,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                from app.utils.logger.logger import logger_api
+
+                logger_api.warning("Failed to build OIDC auth URL: %s", str(exc))
+                location = ""
+
+        elif auth_type == "saml2":
+            try:
+                from app.interface.auth.InterfaceAuthSSO import InterfaceAuthSSO
+
+                sso = InterfaceAuthSSO(self.process_settings)
+                saml = sso._build_saml(domain_auth_settings, domain)
+                location = saml.create_login_request(relay_state=redirect)
+            except Exception as exc:  # pylint: disable=broad-except
+                from app.utils.logger.logger import logger_api
+
+                logger_api.warning("Failed to build SAML auth URL: %s", str(exc))
+                location = ""
+
+        # Map auth_type to the frontend kind expectation
+        kind_map = {
+            "openid": "sso",
+            "saml2": "sso",
+            "cas": "sso",
+            "plain": "plain",
+        }
+        kind = kind_map.get(auth_type, auth_type)
+
         ret = {
-            "kind": domain_auth_settings.SOGO_D_AUTH_TYPE,
+            "kind": kind,
             "SOGO_D_PWD_RECOVERY": domain_auth_settings.SOGO_D_PWD_RECOVERY,
-            "location": ""
+            "location": location,
         }
         return ret
 

@@ -19,9 +19,11 @@ SELECT TOP 1 * from sogo_settings WHERE id = 1;
 COL_SETTINGS_UNIQUE         = Column(name="settings_unique", data_type="int8")
 COL_SETTINGS_SYSTEM         = Column(name="settings_system", data_type="dict")
 COL_SETTINGS_DOMAIN_DEFAULT = Column(name="settings_domain_default", data_type="dict")
+COL_SETTINGS_THEME          = Column(name="settings_theme", data_type="dict")
 ALL_SETTINGS_COL            = [COL_SETTINGS_UNIQUE,
                                COL_SETTINGS_SYSTEM,
-                               COL_SETTINGS_DOMAIN_DEFAULT]
+                               COL_SETTINGS_DOMAIN_DEFAULT,
+                               COL_SETTINGS_THEME]
 TABLE_SETTINGS = Table(name=process_config.SOGO_P_TABLE_SETTINGS, columns=ALL_SETTINGS_COL, primary_keys=(COL_SETTINGS_UNIQUE.name,))
 
 ###############################
@@ -70,12 +72,13 @@ SELECT domain_settings,domain_origin from sogo_settings_domains WHERE domain_nam
 # rule_domains: domains affected by this rule
 # rule_setting: Settings affected by this rule
 COL_RULE_NAME        = Column(name="rule_name", data_type="str", is_unique=True, extra_args={"max_len": 255})
-COL_RULE_DESCRIPTION = Column(name="rule_description", data_type="str")
+COL_RULE_DESCRIPTION = Column(name="rule_description", data_type="text")
 COL_RULE_DOMAINS     = Column(name="rule_domains", data_type="list", extra_args={"data_type": "str", "extra_args": {"max_len": 255}})
 COL_RULE_SETTINGS    = Column(name="rule_setting", data_type="dict")
 ALL_RULE_COL      = [COL_ID,
                      COL_HASH,
                      COL_RULE_NAME,
+                     COL_RULE_DESCRIPTION,
                      COL_RULE_DOMAINS,
                      COL_RULE_SETTINGS]
 TABLE_RULES = Table(name=process_config.SOGO_P_TABLE_RULES, columns=ALL_RULE_COL, primary_keys=(COL_ID.name, COL_HASH.name, COL_RULE_NAME.name))
@@ -97,7 +100,7 @@ All queries will have WHERE uid = <uid>
 # acl_received: acl received from users
 # delegation_given: delegation given to users
 # delegation_received: delegation received from users
-COL_USER_UID              = Column(name="uid", data_type="str", extra_args={"max_len": 512}, is_unique=True)
+COL_USER_UID              = Column(name="uid", data_type="str", extra_args={"max_len": 255}, is_unique=True)
 COL_USER_DEFAULTS         = Column(name="preferences", data_type="dict")
 COL_USER_FOLDERS          = Column(name="folders", data_type="dict")
 COL_USER_MAIN_ACCOUNT     = Column(name="main_account", data_type="dict")
@@ -545,6 +548,340 @@ IDX_DRAFT_OWNER = Index(name="idx_draft_owner", columns=(COL_DRAFT_OWNER.name,))
 TABLE_DRAFT_STATE = Table(name=process_config.SOGO_P_TABLE_TMP_DRAFTS, columns=ALL_DRAFT_COL, primary_keys=(COL_ID.name, COL_DRAFT_KEY.name),
                           indexes=[IDX_DRAFT_OWNER])
 
+#############################
+# Table sogo_calendar_shares #
+#############################
+"""
+Stores per-user share entries for calendars. Each row grants a specific user a
+specific set of permissions on a specific calendar.
+
+The permission levels (public_level, confidential_level, private_level) follow the
+CalendarShareLevel enum hierarchy: none < view_date_time < view_all < respond < modify.
+"""
+# calendar_key: FK to sogo_calendar_calendars.key — the calendar being shared
+# user_uid: the uid of the user the calendar is shared with
+# public_level / confidential_level / private_level: permission levels per event visibility class
+# can_create / can_delete: calendar-wide action flags
+COL_CAL_SHARE_CALENDAR_KEY    = Column(name="calendar_key",   data_type="str",                    extra_args={"max_len": 64})
+COL_CAL_SHARE_USER_UID         = Column(name="user_uid",       data_type="str",                    extra_args={"max_len": 512})
+COL_CAL_SHARE_PUBLIC_LEVEL     = Column(name="public_level",   data_type="str",  is_nullable=False, extra_args={"max_len": 32})
+COL_CAL_SHARE_CONF_LEVEL       = Column(name="confidential_level", data_type="str", is_nullable=False, extra_args={"max_len": 32})
+COL_CAL_SHARE_PRIVATE_LEVEL    = Column(name="private_level",  data_type="str",  is_nullable=False, extra_args={"max_len": 32})
+COL_CAL_SHARE_CAN_CREATE       = Column(name="can_create",    data_type="bool",  is_nullable=False)
+COL_CAL_SHARE_CAN_DELETE       = Column(name="can_delete",    data_type="bool",  is_nullable=False)
+COL_CAL_SHARE_CREATED_AT       = Column(name="created_at",    data_type="datetime")
+
+ALL_CAL_SHARE_COL = [COL_ID,
+                     COL_CAL_SHARE_CALENDAR_KEY,
+                     COL_CAL_SHARE_USER_UID,
+                     COL_CAL_SHARE_PUBLIC_LEVEL,
+                     COL_CAL_SHARE_CONF_LEVEL,
+                     COL_CAL_SHARE_PRIVATE_LEVEL,
+                     COL_CAL_SHARE_CAN_CREATE,
+                     COL_CAL_SHARE_CAN_DELETE,
+                     COL_CAL_SHARE_CREATED_AT]
+
+IDX_CAL_SHARE_CALENDAR_KEY = Index(name="idx_calshare_calendar_key", columns=(COL_CAL_SHARE_CALENDAR_KEY.name,))
+IDX_CAL_SHARE_USER_UID = Index(name="idx_calshare_user_uid", columns=(COL_CAL_SHARE_USER_UID.name,))
+
+# ============================
+# Table sogo6_contacts_shares #
+# ============================
+"""Address book sharing entries.
+
+Maps an address book to a user it is shared with, with a single permission level.
+Unlike calendar shares which have per-visibility levels, address book shares use
+ContactShareLevel: VIEW(1) or MODIFY(2).
+"""
+# addressbook_key: FK to sogo_contacts_addressbooks.key
+# user_uid: the uid of the user the address book is shared with
+# share_level: permission level per ContactShareLevel (view, modify)
+COL_CONTACT_SHARE_ADDRESSBOOK_KEY = Column(name="addressbook_key", data_type="str", extra_args={"max_len": 64})
+COL_CONTACT_SHARE_USER_UID        = Column(name="user_uid", data_type="str", extra_args={"max_len": 512})
+COL_CONTACT_SHARE_LEVEL            = Column(name="share_level", data_type="str", is_nullable=False, extra_args={"max_len": 16})
+COL_CONTACT_SHARE_CREATED_AT       = Column(name="created_at", data_type="datetime")
+
+ALL_CONTACT_SHARE_COL = [COL_ID,
+                         COL_CONTACT_SHARE_ADDRESSBOOK_KEY,
+                         COL_CONTACT_SHARE_USER_UID,
+                         COL_CONTACT_SHARE_LEVEL,
+                         COL_CONTACT_SHARE_CREATED_AT]
+
+IDX_CONTACT_SHARE_ADDRESSBOOK_KEY = Index(name="idx_ctshare_addressbook_key", columns=(COL_CONTACT_SHARE_ADDRESSBOOK_KEY.name,))
+IDX_CONTACT_SHARE_USER_UID = Index(name="idx_ctshare_user_uid", columns=(COL_CONTACT_SHARE_USER_UID.name,))
+
+TABLE_CONTACT_SHARE = Table(name=process_config.SOGO_P_TABLE_CONTACT_SHARES, columns=ALL_CONTACT_SHARE_COL,
+                            primary_keys=(COL_ID.name,),
+                            indexes=[IDX_CONTACT_SHARE_ADDRESSBOOK_KEY, IDX_CONTACT_SHARE_USER_UID])
+
+TABLE_CALENDAR_SHARE = Table(name=process_config.SOGO_P_TABLE_CALENDAR_SHARES, columns=ALL_CAL_SHARE_COL,
+                             primary_keys=(COL_ID.name,),
+                             indexes=[IDX_CAL_SHARE_CALENDAR_KEY, IDX_CAL_SHARE_USER_UID])
+
+# ============================
+# Table sogo6_calendar_invites #
+# ============================
+"""Team calendar membership invitations.
+
+Stores pending invitations for team calendars. When a user is invited to a team
+calendar they receive a row in this table with status 'pending'. Accepting the
+invitation creates/confirms a CalendarShare row; rejecting or cancelling removes
+or marks the row.
+
+Columns:
+- id: opaque invite id (same hashing pattern as other entities)
+- calendar_key: FK to sogo6_calendar_calendars.key — the team calendar
+- user_uid: uid of the invited user
+- invited_by: uid of the user who sent the invitation
+- status: 'pending' | 'accepted' | 'rejected' | 'cancelled'
+- share_level: default share level granted upon acceptance (e.g. 'view_all')
+- created_at / updated_at: UTC timestamps
+"""
+COL_CAL_INVITE_ID          = Column(name="id",               data_type="str",      is_unique=True, extra_args={"max_len": 64})
+COL_CAL_INVITE_CALENDAR_KEY = Column(name="calendar_key",    data_type="str",      extra_args={"max_len": 64})
+COL_CAL_INVITE_USER_UID    = Column(name="user_uid",         data_type="str",      extra_args={"max_len": 512})
+COL_CAL_INVITE_INVITED_BY  = Column(name="invited_by",       data_type="str",      extra_args={"max_len": 512})
+COL_CAL_INVITE_STATUS      = Column(name="status",           data_type="str",      is_nullable=False, extra_args={"max_len": 16})
+COL_CAL_INVITE_SHARE_LEVEL = Column(name="share_level",      data_type="str",      is_nullable=False, extra_args={"max_len": 32})
+COL_CAL_INVITE_CREATED_AT  = Column(name="created_at",       data_type="datetime")
+COL_CAL_INVITE_UPDATED_AT  = Column(name="updated_at",       data_type="datetime")
+
+ALL_CAL_INVITE_COL = [COL_CAL_INVITE_ID,
+                      COL_CAL_INVITE_CALENDAR_KEY,
+                      COL_CAL_INVITE_USER_UID,
+                      COL_CAL_INVITE_INVITED_BY,
+                      COL_CAL_INVITE_STATUS,
+                      COL_CAL_INVITE_SHARE_LEVEL,
+                      COL_CAL_INVITE_CREATED_AT,
+                      COL_CAL_INVITE_UPDATED_AT]
+
+IDX_CAL_INVITE_CALENDAR_KEY = Index(name="idx_calinvite_calendar_key", columns=(COL_CAL_INVITE_CALENDAR_KEY.name,))
+IDX_CAL_INVITE_USER_UID = Index(name="idx_calinvite_user_uid", columns=(COL_CAL_INVITE_USER_UID.name,))
+
+TABLE_CALENDAR_INVITE = Table(name=process_config.SOGO_P_TABLE_CALENDAR_INVITES, columns=ALL_CAL_INVITE_COL,
+                              primary_keys=(COL_CAL_INVITE_ID.name,),
+                              indexes=[IDX_CAL_INVITE_CALENDAR_KEY, IDX_CAL_INVITE_USER_UID])
+
+
+######################
+# Table sogo_mfa_totp #
+######################
+"""
+TOTP multi-factor authentication configuration per user.
+
+Columns:
+- id: primary key
+- user_uid: unique user identifier (email)
+- secret: encrypted TOTP base32 secret
+- enabled: whether TOTP is active for this user
+- created_at: timestamp when the record was created
+"""
+COL_MFA_TOTP_USER_UID  = Column(name="user_uid", data_type="text", is_unique=True)
+COL_MFA_TOTP_SECRET    = Column(name="secret", data_type="text")
+COL_MFA_TOTP_ENABLED   = Column(name="enabled", data_type="bool", is_nullable=False)
+COL_MFA_TOTP_CREATED_AT = Column(name="created_at", data_type="datetime", is_nullable=True)
+
+ALL_MFA_TOTP_COL = [COL_ID,
+                    COL_MFA_TOTP_USER_UID,
+                    COL_MFA_TOTP_SECRET,
+                    COL_MFA_TOTP_ENABLED,
+                    COL_MFA_TOTP_CREATED_AT]
+
+TABLE_MFA_TOTP = Table(name=process_config.SOGO_P_TABLE_MFA_TOTP, columns=ALL_MFA_TOTP_COL,
+                       primary_keys=(COL_ID.name,),)
+
+############################
+# Table sogo6_mfa_webauthn #
+############################
+"""
+WebAuthn credential storage for passkey / security key authentication.
+
+Each row represents a single credential (public key credential source) registered
+by a user. A user may have multiple credentials (e.g. a YubiKey + iCloud Passkey).
+
+Columns:
+- id: primary key
+- user_uid: user identifier (email) — FK to user profile
+- credential_id: base64url-encoded Credential ID (unique)
+- public_key_cbor: COSE_Key-encoded public key bytes (base64)
+- sign_count: current signature counter for replay detection
+- device_name: human-readable label set by the user (e.g. "My YubiKey 5")
+- transports: JSON array of authenticator transports (usb, nfc, ble, internal)
+- enabled: whether this credential is active
+- created_at: timestamp when registered
+- last_used_at: timestamp of last successful assertion
+"""
+COL_WA_USER_UID        = Column(name="user_uid",        data_type="text",     extra_args={"max_len": 512})
+COL_WA_CREDENTIAL_ID   = Column(name="credential_id",   data_type="text",     is_unique=True, extra_args={"max_len": 512})
+COL_WA_PUBLIC_KEY      = Column(name="public_key",      data_type="text")
+COL_WA_SIGN_COUNT      = Column(name="sign_count",      data_type="int",      is_nullable=False)
+COL_WA_DEVICE_NAME     = Column(name="device_name",     data_type="text",     extra_args={"max_len": 128})
+COL_WA_TRANSPORTS      = Column(name="transports",      data_type="dict",     is_nullable=True)
+COL_WA_ENABLED         = Column(name="enabled",         data_type="bool",     is_nullable=False)
+COL_WA_CREATED_AT      = Column(name="created_at",      data_type="datetime", is_nullable=True)
+COL_WA_LAST_USED_AT    = Column(name="last_used_at",    data_type="datetime", is_nullable=True)
+
+ALL_MFA_WEBAUTHN_COL = [COL_ID,
+                        COL_WA_USER_UID,
+                        COL_WA_CREDENTIAL_ID,
+                        COL_WA_PUBLIC_KEY,
+                        COL_WA_SIGN_COUNT,
+                        COL_WA_DEVICE_NAME,
+                        COL_WA_TRANSPORTS,
+                        COL_WA_ENABLED,
+                        COL_WA_CREATED_AT,
+                        COL_WA_LAST_USED_AT]
+
+IDX_WA_USER_UID = Index(name="idx_webauthn_user_uid", columns=(COL_WA_USER_UID.name,))
+
+TABLE_MFA_WEBAUTHN = Table(name=process_config.SOGO_P_TABLE_MFA_WEBAUTHN, columns=ALL_MFA_WEBAUTHN_COL,
+                           primary_keys=(COL_ID.name,),
+                           indexes=[IDX_WA_USER_UID])
+
+# ── Password Reset Tokens ───────────────────────────────────────────────────────
+
+COL_PWD_RESET_TOKEN   = Column(name="token_hash", data_type="str", extra_args={"max_len": 128}, is_unique=True)
+COL_PWD_RESET_USER_UID = Column(name="user_uid", data_type="text", extra_args={"max_len": 512})
+COL_PWD_RESET_EXPIRES  = Column(name="expires_at", data_type="datetime", is_nullable=True)
+COL_PWD_RESET_USED     = Column(name="used", data_type="bool", is_nullable=False)
+COL_PWD_RESET_CREATED  = Column(name="created_at", data_type="datetime", is_nullable=True)
+
+ALL_PWD_RESET_COL = [COL_ID,
+                     COL_PWD_RESET_TOKEN,
+                     COL_PWD_RESET_USER_UID,
+                     COL_PWD_RESET_EXPIRES,
+                     COL_PWD_RESET_USED,
+                     COL_PWD_RESET_CREATED]
+
+TABLE_PWD_RESET_TOKENS = Table(name=process_config.SOGO_P_TABLE_PWD_RESET_TOKENS, columns=ALL_PWD_RESET_COL,
+                               primary_keys=(COL_ID.name,),)
+
+# ── Bookable Resources ────────────────────────────────────────────────────────
+
+COL_RES_ID = Column(name="id", data_type="str", extra_args={"max_len": 64}, is_unique=True)
+COL_RES_NAME = Column(name="name", data_type="str", extra_args={"max_len": 255})
+COL_RES_DESC = Column(name="description", data_type="text")
+COL_RES_EMAIL = Column(name="email", data_type="str", extra_args={"max_len": 512}, is_unique=True)
+COL_RES_TYPE = Column(name="resource_type", data_type="str", extra_args={"max_len": 32})
+COL_RES_CAPACITY = Column(name="capacity", data_type="int", is_nullable=True)
+COL_RES_LOCATION = Column(name="location", data_type="str", extra_args={"max_len": 512}, is_nullable=True)
+COL_RES_FEATURES = Column(name="features", data_type="list", extra_args={"data_type": "str"}, is_nullable=True)
+COL_RES_IS_ACTIVE = Column(name="is_active", data_type="bool", is_nullable=False)
+COL_RES_BOOKING_POLICY = Column(name="booking_policy", data_type="str", extra_args={"max_len": 32})
+COL_RES_ALLOWED_GROUPS = Column(name="allowed_groups", data_type="list", extra_args={"data_type": "str"}, is_nullable=True)
+COL_RES_AUTO_ACCEPT = Column(name="auto_accept", data_type="bool", is_nullable=False)
+COL_RES_CREATED = Column(name="created_at", data_type="datetime", is_nullable=True)
+COL_RES_UPDATED = Column(name="updated_at", data_type="datetime", is_nullable=True)
+
+ALL_RESOURCE_COL = [COL_RES_ID,
+                     COL_RES_NAME,
+                     COL_RES_DESC,
+                     COL_RES_EMAIL,
+                     COL_RES_TYPE,
+                     COL_RES_CAPACITY,
+                     COL_RES_LOCATION,
+                     COL_RES_FEATURES,
+                     COL_RES_IS_ACTIVE,
+                     COL_RES_BOOKING_POLICY,
+                     COL_RES_ALLOWED_GROUPS,
+                     COL_RES_AUTO_ACCEPT,
+                     COL_RES_CREATED,
+                     COL_RES_UPDATED]
+
+TABLE_RESOURCES = Table(name="sogo6_resources", columns=ALL_RESOURCE_COL,
+                         primary_keys=(COL_RES_ID.name,))
+
+# ── Resource Favorites ────────────────────────────────────────────────────────
+
+COL_RES_FAV_ID = Column(name="id", data_type="serial")
+COL_RES_FAV_USER_UID = Column(name="user_uid", data_type="str", extra_args={"max_len": 512})
+COL_RES_FAV_RESOURCE_ID = Column(name="resource_id", data_type="str", extra_args={"max_len": 64})
+COL_RES_FAV_CREATED = Column(name="created_at", data_type="datetime", is_nullable=True)
+
+ALL_RESOURCE_FAV_COL = [COL_RES_FAV_ID,
+                        COL_RES_FAV_USER_UID,
+                        COL_RES_FAV_RESOURCE_ID,
+                        COL_RES_FAV_CREATED]
+
+IDX_RES_FAV_USER = Index(name="idx_resource_fav_user", columns=(COL_RES_FAV_USER_UID.name,))
+
+TABLE_RESOURCE_FAVORITES = Table(name="sogo6_resource_favorites", columns=ALL_RESOURCE_FAV_COL,
+                                 primary_keys=(COL_RES_FAV_ID.name,),
+                                 indexes=[IDX_RES_FAV_USER])
+
+# ── Snoozed Emails ───────────────────────────────────────────────────────────
+
+COL_SNOOZE_ID = Column(name="id", data_type="serial")
+COL_SNOOZE_USER_UID = Column(name="user_uid", data_type="str", extra_args={"max_len": 512})
+COL_SNOOZE_MAIL_UID = Column(name="mail_uid", data_type="str", extra_args={"max_len": 128})
+COL_SNOOZE_FOLDER = Column(name="folder", data_type="str", extra_args={"max_len": 512})
+COL_SNOOZE_ORIGINAL_FOLDER = Column(name="original_folder", data_type="str", extra_args={"max_len": 512})
+COL_SNOOZE_UNTIL = Column(name="snooze_until", data_type="datetime")
+COL_SNOOZE_CREATED = Column(name="created_at", data_type="datetime")
+COL_SNOOZE_ACCOUNT_ID = Column(name="account_id", data_type="str", extra_args={"max_len": 128})
+
+ALL_SNOOZE_COL = [COL_SNOOZE_ID,
+                    COL_SNOOZE_USER_UID,
+                    COL_SNOOZE_MAIL_UID,
+                    COL_SNOOZE_FOLDER,
+                    COL_SNOOZE_ORIGINAL_FOLDER,
+                    COL_SNOOZE_UNTIL,
+                    COL_SNOOZE_CREATED,
+                    COL_SNOOZE_ACCOUNT_ID]
+
+TABLE_SNOOZE = Table(name="sogo6_snoozed", columns=ALL_SNOOZE_COL,
+                      primary_keys=(COL_SNOOZE_ID.name,))
+
+# ── SAML2 Providers ───────────────────────────────────────────────────────────
+"""SAML2 IdP trust relationships managed via admin API.
+
+Each row represents one IdP (identity provider) that SOGo trusts for SAML2 SSO.
+The admin can either configure an IdP manually (entity_id + sso_url + certificate)
+or provide a metadata_url and let SOGo auto-fetch and refresh the configuration.
+"""
+COL_SAML2_ID              = Column(name="id",              data_type="str", extra_args={"max_len": 255}, is_unique=True)
+COL_SAML2_NAME            = Column(name="name",            data_type="str", extra_args={"max_len": 255})
+COL_SAML2_ENTITY_ID       = Column(name="entity_id",       data_type="str", extra_args={"max_len": 500})
+COL_SAML2_SSO_URL         = Column(name="sso_url",         data_type="str", extra_args={"max_len": 500})
+COL_SAML2_SSO_BINDING     = Column(name="sso_binding",     data_type="str", extra_args={"max_len": 50},  is_nullable=True)
+COL_SAML2_SLS_URL         = Column(name="sls_url",         data_type="str", extra_args={"max_len": 500}, is_nullable=True)
+COL_SAML2_SLS_BINDING     = Column(name="sls_binding",     data_type="str", extra_args={"max_len": 50},  is_nullable=True)
+COL_SAML2_CERTIFICATE     = Column(name="certificate",     data_type="text", is_nullable=True)
+COL_SAML2_FINGERPRINT     = Column(name="fingerprint",     data_type="str", extra_args={"max_len": 100}, is_nullable=True)
+COL_SAML2_METADATA_URL    = Column(name="metadata_url",    data_type="str", extra_args={"max_len": 500}, is_nullable=True)
+COL_SAML2_METADATA_XML    = Column(name="metadata_xml",    data_type="text", is_nullable=True)
+COL_SAML2_NAMEID_FORMAT   = Column(name="nameid_format",   data_type="str", extra_args={"max_len": 100}, is_nullable=True)
+COL_SAML2_ATTRIBUTE_MAP   = Column(name="attribute_map",   data_type="dict", is_nullable=True)
+COL_SAML2_ACS_URL         = Column(name="acs_url",         data_type="str", extra_args={"max_len": 500}, is_nullable=True)
+COL_SAML2_IS_ACTIVE       = Column(name="is_active",       data_type="bool", is_nullable=False)
+COL_SAML2_CREATED_AT      = Column(name="created_at",      data_type="datetime")
+COL_SAML2_UPDATED_AT      = Column(name="updated_at",      data_type="datetime")
+
+ALL_SAML2_COL = [COL_ID,
+                 COL_SAML2_ID,
+                 COL_SAML2_NAME,
+                 COL_SAML2_ENTITY_ID,
+                 COL_SAML2_SSO_URL,
+                 COL_SAML2_SSO_BINDING,
+                 COL_SAML2_SLS_URL,
+                 COL_SAML2_SLS_BINDING,
+                 COL_SAML2_CERTIFICATE,
+                 COL_SAML2_FINGERPRINT,
+                 COL_SAML2_METADATA_URL,
+                 COL_SAML2_METADATA_XML,
+                 COL_SAML2_NAMEID_FORMAT,
+                 COL_SAML2_ATTRIBUTE_MAP,
+                 COL_SAML2_ACS_URL,
+                 COL_SAML2_IS_ACTIVE,
+                 COL_SAML2_CREATED_AT,
+                 COL_SAML2_UPDATED_AT]
+
+IDX_SAML2_ENTITY_ID = Index(name="idx_saml2_entity_id", columns=(COL_SAML2_ENTITY_ID.name,))
+
+TABLE_SAML2_PROVIDERS = Table(name=process_config.SOGO_P_TABLE_SAML2_PROVIDERS, columns=ALL_SAML2_COL,
+                              primary_keys=(COL_ID.name, COL_SAML2_ID.name),
+                              indexes=[IDX_SAML2_ENTITY_ID])
+
 ALL_TABLES = [TABLE_SETTINGS,
               TABLE_DOMAIN,
               TABLE_RULES,
@@ -557,4 +894,14 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_CONTACT_LIST,
               TABLE_CONTACT_LIST_MEMBER,
               TABLE_FILE_STORAGE,
-              TABLE_DRAFT_STATE]
+              TABLE_DRAFT_STATE,
+              TABLE_CALENDAR_SHARE,
+              TABLE_CALENDAR_INVITE,
+              TABLE_CONTACT_SHARE,
+              TABLE_MFA_TOTP,
+              TABLE_MFA_WEBAUTHN,
+              TABLE_PWD_RESET_TOKENS,
+              TABLE_RESOURCES,
+              TABLE_RESOURCE_FAVORITES,
+              TABLE_SNOOZE,
+              TABLE_SAML2_PROVIDERS]

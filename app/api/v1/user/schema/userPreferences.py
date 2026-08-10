@@ -39,6 +39,7 @@ class UserPeferencesGetRetSchema(ApiBaseResponse):
                 "SOGO_U_WORKDAY_END_TIME": "18:00",
                 "SOGO_U_TASK_DEFAULT_CLASS": "PUBLIC",
                 "SOGO_U_WORKDAY_START_TIME": "09:00",
+                "SOGO_U_NON_WORKING_WEEKDAYS": [5, 6],
                 "SOGO_U_EVENT_DEFAULT_CLASS": "PUBLIC",
                 "SOGO_U_CALENDAR_DAYS_SHOWED": [
                 0,
@@ -86,4 +87,42 @@ class UserPreferencesPatch(Schema):
                     "SOGO_U_LANGUAGE": "French",
                 }
             }
+        }
+
+
+class UserPasswordChangeSchema(Schema):
+    """
+    Schema for POST /profile/password request body.
+    """
+    current_password = fields.String(
+        required=True,
+        metadata={"description": "The user's current (existing) password for verification"},
+    )
+    new_password = fields.String(
+        required=True,
+        metadata={"description": "The new password the user wants to set"},
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "current_password": "currentPass123!",
+            "new_password": "newSecurePass456!",
+        }
+
+
+class UserPasswordChangeResponseSchema(ApiBaseResponse):
+    """
+    Schema for POST /profile/password response.
+    """
+    data = fields.Dict(required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {
+                "changed": True,
+            },
         }

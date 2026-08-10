@@ -1,27 +1,48 @@
-#base debian trixie
-FROM python:3.14-slim
+# Development Dockerfile for SOGo 6 Server
+# Single stage for development (source will be mounted by compose)
 
-#"Install packages && create dir"
-RUN apt update && apt install --no-install-recommends -y \
+FROM python:3.14-slim AS development
+
+WORKDIR /app
+
+# Install system dependencies including LDAP and PostgreSQL
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    build-essential \
-    libldap2-dev libsasl2-dev \
-    libpq5 && \
-    rm -rf /var/lib/apt/lists/* && \
-    mkdir /var/sogo
+    gcc \
+    libpq-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# "Copy project"
-COPY app /var/sogo/app
-COPY deploy/local/pyproject.toml /var/sogo
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    FLASK_ENV=development \
+    FLASK_DEBUG=1 \
+    PIP_NO_CACHE_DIR=off
 
-WORKDIR /var/sogo/
+# Install all dependencies directly via pip (avoids poetry lock file issues)
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+        debugpy watchdog flask-debugtoolbar \
+        flask flask-compress flask-cors flask-smorest \
+        gunicorn celery \
+        prometheus-client authlib pyotp qrcode[pil] webauthn \
+        marshmallow icalendar \
+        psycopg[binary] mysql-connector-python python-ldap redis \
+        cryptography pyjwt pydantic pydantic-settings \
+        sievelib yarl pysaml2 || \
+    echo "Some packages failed - will check at runtime"
 
-#Update PATH for poetry
-ENV PATH="/root/.local/bin:$PATH"
+# Copy source code (will be mounted by compose in dev)
+COPY . ./
 
-# "Install poetry and the project"
-RUN curl -sSL https://install.python-poetry.org | python - && \
-    poetry config virtualenvs.in-project true && \
-    poetry install --no-cache --no-ansi --no-interaction
+# Expose app port and debug port
+EXPOSE 5000 5678
 
-CMD ["poetry", "run", "gunicorn", "-c", "app/gunicorn.conf.py", "app.run:app"]
+# Run with debug and auto-reload using app/run.py
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", \
+     "app/run.py", "--host=0.0.0.0", "--port=5000", "--debug"]

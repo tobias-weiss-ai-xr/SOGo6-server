@@ -1,4 +1,5 @@
 from typing import Any
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.utils.exceptions import BugException
@@ -40,7 +41,22 @@ class FlaskConfig(BaseSettings):
     BASIC_OPENAPI_JSON_PATH: str       = "openapi-basic.json"
     BASIC_OPENAPI_SWAGGER_UI_PATH: str = "/swagger-basic"
     BASIC_OPENAPI_SWAGGER_UI_URL: str  = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
-    BASIC_API_SPEC_OPTIONS: dict = {'security': [{"bearerAuth": []}], 'components': {
+    BASIC_API_SPEC_OPTIONS: dict = {
+        'security': [{"bearerAuth": []}],
+        'info': {
+            'description': 'SOGo 6 groupware REST API — mail, calendar, contacts, and user management. '
+                           'Authenticate via the `/auth/login` endpoint or an app password, then '
+                           'click the **Authorize** button and paste your `Bearer <token>`.',
+            'contact': {
+                'name': 'SOGo Community Fork',
+                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized',
+            },
+            'license': {
+                'name': 'MIT',
+                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized/blob/dev/LICENSE',
+            },
+        },
+        'components': {
             "securitySchemes":
                 {
                     "bearerAuth": {
@@ -49,7 +65,28 @@ class FlaskConfig(BaseSettings):
                         "bearerFormat": "JWT"
                     }
                 }
-        }}
+        },
+        'tags': [
+            {'name': 'Auth', 'description': 'User authentication, MFA, password reset'},
+            {'name': 'MFA', 'description': 'Multi-factor authentication setup and management'},
+            {'name': 'Password Reset', 'description': 'Password recovery workflow'},
+            {'name': 'Profile', 'description': 'User profile and password change'},
+            {'name': 'Preferences', 'description': 'User preferences (locale, notification settings)'},
+            {'name': 'Customization', 'description': 'Theme settings and UI customization'},
+            {'name': 'App Passwords', 'description': 'Application-specific passwords for desktop/mobile clients'},
+            {'name': 'Mail', 'description': 'Read, manage, and perform actions on emails'},
+            {'name': 'Mail Send', 'description': 'Send emails, manage drafts and attachments'},
+            {'name': 'Mail Folder', 'description': 'Mail folder management (create, rename, delete, subscribe)'},
+            {'name': 'Mail Account', 'description': 'Mail account and mailbox settings'},
+            {'name': 'Mail Search', 'description': 'Search emails across folders'},
+            {'name': 'Mail Filter', 'description': 'Sieve filter rules, vacation, forward, notification'},
+            {'name': 'Calendar', 'description': 'Calendar CRUD, events, tasks, reminders, sharing'},
+            {'name': 'Contact', 'description': 'Address book CRUD, contacts, distribution lists, sharing'},
+            {'name': 'Job', 'description': 'Asynchronous job status and cancellation'},
+            {'name': 'System', 'description': 'System information and API version'},
+            {'name': 'Health', 'description': 'Health check endpoint for monitoring'},
+        ],
+    }
 
 
     #Flask smorest config for admin api
@@ -60,7 +97,22 @@ class FlaskConfig(BaseSettings):
     ADMIN_OPENAPI_JSON_PATH: str       = "openapi-admin.json"
     ADMIN_OPENAPI_SWAGGER_UI_PATH: str = "/swagger-admin"
     ADMIN_OPENAPI_SWAGGER_UI_URL: str  = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
-    ADMIN_API_SPEC_OPTIONS: dict = {'security': [{"bearerAuth": []}], 'components': {
+    ADMIN_API_SPEC_OPTIONS: dict = {
+        'security': [{"bearerAuth": []}],
+        'info': {
+            'description': 'SOGo 6 admin REST API — user management, domain configuration, system settings. '
+                           'Authenticate via the `/auth/login` endpoint, then click the **Authorize** button '
+                           'and paste your `Bearer <token>`.',
+            'contact': {
+                'name': 'SOGo Community Fork',
+                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized',
+            },
+            'license': {
+                'name': 'MIT',
+                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized/blob/dev/LICENSE',
+            },
+        },
+        'components': {
             "securitySchemes":
                 {
                     "bearerAuth": {
@@ -69,7 +121,13 @@ class FlaskConfig(BaseSettings):
                         "bearerFormat": "JWT"
                     }
                 }
-        }}
+        },
+        'tags': [
+            {'name': 'AdminAuth', 'description': 'Admin authentication'},
+            {'name': 'Config', 'description': 'System and domain configuration'},
+            {'name': 'Admin Users', 'description': 'User management (list, create, update, delete)'},
+        ],
+    }
 
 
 
@@ -83,11 +141,11 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_VOUCHER_SECRET: str #Fernet key must be 32 char string in utf-8.
     SOGO_AES_ENC_KEY: str #32 bytes key for AES-256
 
-    SOGO_P_DB_TYPE: str = "PostgreSQL"
-    SOGO_P_DB_USER: str = "admin"     #TODO test all that...
-    SOGO_P_DB_PASS: str = "admin"
-    SOGO_P_DB_HOST: str = "localhost"
-    SOGO_P_DB_PORT: int = 5432
+    SOGO_P_DB_TYPE: str = "MySQL"  # Database type (MySQL or PostgreSQL)
+    SOGO_P_DB_USER: str = ""  # Database username - MUST be configured
+    SOGO_P_DB_PASS: str = ""  # Database password - MUST be configured
+    SOGO_P_DB_HOST: str = os.environ.get("SOGO_P_DB_HOST", "sogo6-mariadb")
+    SOGO_P_DB_PORT: int = int(os.environ.get("SOGO_P_DB_PORT", "3306"))
     SOGO_P_DB_SSL: bool = False
     SOGO_P_DB_ENC: str  = "utf8" #encoding, needed or autodetected ?
 
@@ -127,12 +185,26 @@ class ProcessSetting(FlaskConfig):
     # which installs /var/celery owned by the application user). Run a single beat instance.
     SOGO_P_AGENT_BEAT_SCHEDULE_PATH: str = "/var/celery/celerybeat-schedule"
 
+    # --- SAML2 SSO (global) ---
+    # SP X.509 certificate (PEM) for signing AuthnRequests and serving SP metadata
+    SOGO_SAML2_SP_CERT_FILE: str = "/etc/sogo/saml/sp-cert.pem"
+    # SP private key (PEM) for signing AuthnRequests and decrypting assertions
+    SOGO_SAML2_SP_KEY_FILE: str = "/etc/sogo/saml/sp-key.pem"
+    # Redis cache TTL for IdP/federation metadata (seconds, default 6h)
+    SOGO_SAML2_METADATA_CACHE_TTL: int = 21600
+    # Federation metadata signing certificate (PEM) for verifying aggregate signatures
+    SOGO_SAML2_FEDERATION_METADATA_CERT: str = ""
+    # Clock skew tolerance for SAML Conditions validation (seconds)
+    SOGO_SAML2_CLOCK_SKEW: int = 60
+
     # --- Table names ---
     SOGO_P_TABLE_SETTINGS:   str = "sogo6_sogo_settings"
     SOGO_P_TABLE_DOMAINS:    str = "sogo6_sogo_settings_domains"
     SOGO_P_TABLE_RULES:      str = "sogo6_sogo_settings_rules"
     SOGO_P_TABLE_USERS:      str = "sogo6_sogo_user_profiles"
     SOGO_P_TABLE_CALENDARS: str = "sogo6_calendar_calendars"
+    SOGO_P_TABLE_CALENDAR_SHARES: str = "sogo6_calendar_shares"
+    SOGO_P_TABLE_CALENDAR_INVITES: str = "sogo6_calendar_invites"
     SOGO_P_TABLE_EVENTS:    str = "sogo6_calendar_events"
     SOGO_P_TABLE_REMINDERS:  str = "sogo6_calendar_reminders"
     SOGO_P_TABLE_TMP_DRAFTS:  str = "sogo6_tmp_draft"
@@ -140,13 +212,19 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_TABLE_CONTACTS:             str = "sogo6_contacts_contacts"
     SOGO_P_TABLE_CONTACT_LISTS:        str = "sogo6_contacts_lists"
     SOGO_P_TABLE_CONTACT_LIST_MEMBERS: str = "sogo6_contacts_list_members"
+    SOGO_P_TABLE_CONTACT_SHARES: str = "sogo6_contacts_shares"
     SOGO_P_TABLE_FILE_STORAGE:         str = "sogo6_file_storage"
+    SOGO_P_TABLE_MFA_TOTP:   str = "sogo6_mfa_totp"
+    SOGO_P_TABLE_MFA_WEBAUTHN: str = "sogo6_mfa_webauthn"
+    SOGO_P_TABLE_PWD_RESET_TOKENS: str = "sogo6_password_reset_tokens"
+    SOGO_P_TABLE_SAML2_PROVIDERS: str = "sogo6_saml2_providers"
 
     # --- Admin Authentication ---
-    # SOGO_P_ADMIN: str = "" # Admin username
-    # SOGO_P_ADMIN_PWD: str = "" # Admin password
-    SOGO_P_ADMIN: str = "admin" # Admin username
-    SOGO_P_ADMIN_PWD: str = "admin" # Admin password
+    # WARNING: Default credentials are disabled for security. Must be set via environment or config file.
+    # SOGO_P_ADMIN: str = "" # Admin username (MUST be set)
+    # SOGO_P_ADMIN_PWD: str = "" # Admin password (MUST be set)
+    SOGO_P_ADMIN: str = "" # Admin username - MUST be configured
+    SOGO_P_ADMIN_PWD: str = "" # Admin password - MUST be configured
 
     def __getitem__(self, i:str) -> Any:
         if hasattr(self, i):

@@ -1,3 +1,4 @@
+import os
 from functools import wraps
 from collections.abc import Callable
 from typing import Any, Type
@@ -176,7 +177,8 @@ def collection_paginate(blp: Blueprint, max_page_size:int=None,
     flask_parser = FlaskParser()
 
     if max_page_size is None or max_page_size < 1:
-        max_page_size = 100 #TODO make this default value configurable somewhere ??
+        # Configurable via environment variable, default 100
+        max_page_size = int(os.getenv("SOGO_DEFAULT_MAX_PAGE_SIZE", "100"))
 
     collection_schema = collection_pagination_parameters(max_page_size, can_sort, sort_value_set, can_filter, filter_value_set)
 

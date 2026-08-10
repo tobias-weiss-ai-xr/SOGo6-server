@@ -21,7 +21,90 @@ class InterfaceApiAdminUser:
         :param process_setting: the process settings
         :type process_setting: ProcessSetting
         """
-        self.module = ModuleAdminUser()
+        self.module = ModuleAdminUser(process_settings=process_setting)
+
+    # ── User CRUD ─────────────────────────────────────────────────────────────
+
+    def list_users(self, query: str | None = None, page: int = 1, per_page: int = 20,
+                   sort_by: str = "uid", sort_order: str = "asc") -> tuple[dict[str, Any], int]:
+        """
+        List/search users from the LDAP directory.
+
+        :param query: Optional search string
+        :param page: Page number (1-based)
+        :param per_page: Items per page
+        :param sort_by: Field to sort by
+        :param sort_order: 'asc' or 'desc'
+        :return: Tuple of (API response dict, HTTP status code)
+        """
+        try:
+            total_count, users = self.module.list_users(
+                query=query, page=page, per_page=per_page,
+                sort_by=sort_by, sort_order=sort_order,
+            )
+        except RequestException as ex:
+            logger_api.error("Request exception in list_users: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(users)
+
+    def get_user(self, uid: str) -> tuple[dict[str, Any], int]:
+        """
+        Get a single user from LDAP.
+
+        :param uid: The user ID
+        :return: Tuple of (API response dict, HTTP status code)
+        """
+        try:
+            user = self.module.get_user(uid)
+        except RequestException as ex:
+            logger_api.error("Request exception in get_user: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(user)
+
+    def create_user(self, data: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """
+        Create a new user in LDAP.
+
+        :param data: User data (uid, cn, sn, givenName, mail, password, …)
+        :return: Tuple of (API response dict, HTTP status code)
+        """
+        try:
+            result = self.module.create_user(data)
+        except RequestException as ex:
+            logger_api.error("Request exception in create_user: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(result)
+
+    def update_user(self, uid: str, data: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """
+        Update an existing user in LDAP.
+
+        :param uid: The user ID to update
+        :param data: Attributes to modify (cn, sn, givenName, mail, password)
+        :return: Tuple of (API response dict, HTTP status code)
+        """
+        try:
+            result = self.module.update_user(uid, data)
+        except RequestException as ex:
+            logger_api.error("Request exception in update_user: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(result)
+
+    def delete_user(self, uid: str) -> tuple[dict[str, Any], int]:
+        """
+        Delete a user from LDAP.
+
+        :param uid: The user ID to delete
+        :return: Tuple of (API response dict, HTTP status code)
+        """
+        try:
+            result = self.module.delete_user(uid)
+        except RequestException as ex:
+            logger_api.error("Request exception in delete_user: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+        return create_api_base_response(result)
+
+    # ── Session Management ────────────────────────────────────────────────────
 
     def get_active_users(self, collection_param: CollectionPaginateArgs) -> tuple[int, dict[str, Any], int]:
         """

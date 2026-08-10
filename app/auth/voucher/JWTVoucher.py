@@ -57,15 +57,15 @@ class JWTVoucher(Voucher):
         """
         payload = None
         try:
-            payload = jwt.decode(voucher_data, self.secret, algorithms="HS256")
+            payload = jwt.decode(voucher_data, self.secret, algorithms=["HS256"])
             return payload
-        except jwt.ExpiredSignatureError as e:
-            logger.error("JWT Token has expired: %s", str(e))
-        except jwt.InvalidSignatureError as e:
-            logger.error("JWT Token has invalid signature: %s", str(e))
-        except jwt.DecodeError as e:
-            logger.error("JWT Token decode error: %s", str(e))
-        except Exception as e:
-            logger.error("JWT Token error: %s", str(e))
+        except jwt.ExpiredSignatureError:
+            logger.error("JWT Token has expired")
+        except jwt.InvalidSignatureError:
+            logger.error("JWT Token has invalid signature")
+        except jwt.DecodeError:
+            logger.error("JWT Token decode error")
+        except Exception:
+            logger.error("JWT Token error")
 
         return payload

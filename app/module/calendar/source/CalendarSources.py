@@ -9,9 +9,11 @@ from app.module.calendar.model.CalEvent import CalEvent
 from app.module.calendar.model.CalReminder import CalReminder
 from app.module.calendar.model.enums.CalendarSourceType import CalendarSourceType
 from app.module.calendar.repository.RepositoryCalendar import RepositoryCalendar
+from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCalendarShare
 from app.module.calendar.rrule.RecurrenceScopeProcessor import EventAction, ScopeResult
 from app.module.calendar.source.CalendarSourceDb import CalendarSourceDb
 from app.module.calendar.source.CalendarSourceIcsMirror import CalendarSourceIcsMirror
+from app.module.calendar.source.CalendarSourceCalDav import CalendarSourceCalDav
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_calendar
@@ -30,9 +32,14 @@ class CalendarSources:
     operate across calendars rather than on a single resolved source.
     """
 
-    def __init__(self, db: ClientSQL) -> None:
+    def __init__(
+        self,
+        db: ClientSQL,
+        share_repo: RepositoryCalendarShare | None = None,
+    ) -> None:
         self._db = db
         self._repo_calendar = RepositoryCalendar(db)
+        self._share_repo = share_repo
 
     def get(self, calendar: CalCalendar) -> CalendarSource:
         """Return the appropriate CalendarSource for the given calendar.
@@ -47,20 +54,30 @@ class CalendarSources:
         if calendar.source_type == CalendarSourceType.ICS:
             return CalendarSourceIcsMirror(self._db, calendar)
 
+        if calendar.source_type == CalendarSourceType.CALDAV:
+            return CalendarSourceCalDav(self._db, calendar)
+
         logger_calendar.error("Unknown source_type=%s for calendar key=%s", calendar.source_type, calendar.key)
         raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
 
     def get_all(self, user_uid: str) -> list[CalendarSource]:
-        """Return a source for every calendar owned by user_uid.
+        """Return a source for every calendar visible to user_uid.
 
-        TODO(ACL module): this is the single scope chokepoint for resolution, operations and
-        listings. Today it returns only calendars OWNED by user_uid. When calendar sharing lands,
-        it must also surface calendars SHARED WITH user_uid (own + shared, read from
-        sogo_calendar_shares) - that one change activates delegated access everywhere downstream
-        (owner resolution, event lookups, get_all_events/get_all_tasks), with per-calendar permissions then
-        enforced by CalendarAclEngine.
+        Includes calendars OWNED by user_uid as well as calendars SHARED WITH user_uid
+        (from the sogo_calendar_shares table). Per-calendar permissions are enforced
+        downstream by CalendarAclEngine.get_permissions().
         """
-        return [self.get(cal) for cal in self._repo_calendar.find_all(user_uid)]
+        owned: list[CalCalendar] = self._repo_calendar.find_all(user_uid)
+        seen_keys: set[str | None] = {cal.key for cal in owned}
+        if self._share_repo is not None:
+            shared_keys: list[str] = self._share_repo.find_calendar_keys_for_user(user_uid)
+            for key in shared_keys:
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    cal = self._repo_calendar.find_by_key_unscoped(key)
+                    if cal is not None:
+                        owned.append(cal)
+        return [self.get(cal) for cal in owned]
 
     def get_default(self, user_uid: str) -> CalendarSource | None:
         """Return the default writable calendar source for user_uid, or None if the user has no local calendar."""
@@ -91,8 +108,15 @@ class CalendarSources:
         raise RequestException(error=err.ERROR_CALENDAR_EVENT_NOT_FOUND)
 
     def get_by_key(self, user_uid: str, key: str) -> CalendarSource | None:
-        """Return the source for a specific calendar, or None if not found."""
+        """Return the source for a specific calendar, or None if not found.
+
+        First tries owner-scoped lookup. If that fails, falls back to an unscoped
+        lookup by key (for calendars shared with the user).
+        """
         cal = self._repo_calendar.find_by_key(user_uid, key)
+        if cal is None:
+            # Fall back to shared-calendar lookup
+            cal = self._repo_calendar.find_by_key_unscoped(key)
         return self.get(cal) if cal is not None else None
 
     def get_by_share_token(self, share_token: str) -> CalendarSource | None:

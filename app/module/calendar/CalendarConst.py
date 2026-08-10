@@ -81,26 +81,18 @@ REMINDER_EMAIL_LAST_RUN_TTL_SECONDS: int = 24 * 3600
 # the firing window is not dropped just because a short event already finished by the time we sweep.
 REMINDER_EMAIL_LOOKAHEAD_MINUTES: int = 5
 
-# Subject-line words prepended to outgoing iMIP emails (RFC 6047), one per iTIP method. The
-# invitation itself travels in the text/calendar part; these words are only the human-facing
-# hint in the Subject header.
+# Subject-line words prepended to outgoing iMIP emails (RFC 6047), one per iTIP method.
 #
-# TODO: these strings MUST be translated. They are the only user-facing text left in an iMIP
-# email (the body is now language-neutral text/calendar) and are currently hard-coded English.
-# There is no i18n backend yet: the SOGO_U_LANGUAGE user preference exists but is never read
-# server-side. When a translation mechanism lands, resolve these per recipient locale instead
-# of using the constants below.
+# These are locale-aware and resolved per recipient via ``CalendarI18n``.
+# The legacy constants below are kept as English defaults for backward compatibility
+# but new code should use ``CalendarI18n.imip_subject_prefix(method, user)`` instead.
 IMIP_SUBJECT_PREFIX_REQUEST: str = "Invitation"
 IMIP_SUBJECT_PREFIX_REPLY: str = "Re"
 IMIP_SUBJECT_PREFIX_CANCEL: str = "Cancelled"
 
 # User-facing words of the email reminder message (subject prefix + body labels).
 #
-# TODO: these strings MUST be translated, exactly like the iMIP subject prefixes above. They are the
-# only user-facing text in a reminder email and are currently hard-coded English. There is no i18n
-# backend yet (SOGO_U_LANGUAGE is never read server-side); when a translation mechanism lands, resolve
-# them per recipient locale instead of using the constants below. Handle them together with the iMIP
-# prefixes.
+# Locale-aware: use ``CalendarI18n.reminder_*(user)`` instead of these constants.
 REMINDER_EMAIL_SUBJECT_PREFIX: str = "Reminder"
 REMINDER_EMAIL_WHEN_LABEL: str = "When"
 REMINDER_EMAIL_WHERE_LABEL: str = "Where"

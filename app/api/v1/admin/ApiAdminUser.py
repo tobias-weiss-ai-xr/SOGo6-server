@@ -31,6 +31,132 @@ def init_admin_user() -> None:
     g.inter = interface_api
 
 
+# ── User CRUD ────────────────────────────────────────────────────────────────
+
+
+@blp.route("/list")
+class ApiAdminUserList(MethodView):
+    """
+    List/search users from the LDAP directory.
+    """
+
+    @blp.arguments(sch.UserSearchQuerySchema, location="query")
+    @blp.response(200, sch.UserListResponseSchema, example=sch.UserListResponseSchema.example())
+    def get(self, args: dict) -> ResponseReturnValue:
+        """
+        Search and paginate users from the LDAP user source.
+
+        Supports searching by uid, cn, sn, givenName, mail, as well as
+        pagination and sorting.
+
+        :param args: Query parameters
+        :type args: dict
+        :return: API response dict
+        :rtype: ResponseReturnValue
+        """
+        logger_api.debug("Calling ApiAdminUserList: args=%s", args)
+        interface: InterfaceApiAdminUser = g.inter
+
+        response, status_code = interface.list_users(
+            query=args.get("query"),
+            page=args.get("page", 1),
+            per_page=args.get("per_page", 20),
+            sort_by=args.get("sort_by", "uid"),
+            sort_order=args.get("sort_order", "asc"),
+        )
+
+        return response, status_code
+
+
+@blp.route("/<string:uid>")
+class ApiAdminUserDetail(MethodView):
+    """
+    Get, update or delete a single user.
+    """
+
+    @blp.response(200, sch.UserDetailSchema, example=sch.UserDetailSchema.example())
+    def get(self, uid: str) -> ResponseReturnValue:
+        """
+        Get a single user's details from LDAP.
+
+        :param uid: The user ID to look up
+        :type uid: str
+        :return: API response dict with user data
+        :rtype: ResponseReturnValue
+        """
+        logger_api.debug("Calling ApiAdminUserDetail.get: uid=%s", uid)
+        interface: InterfaceApiAdminUser = g.inter
+
+        response, status_code = interface.get_user(uid)
+        return response, status_code
+
+    @blp.arguments(sch.UserUpdateBodySchema, example=sch.UserUpdateBodySchema.example(), error_status_code=400)
+    @blp.response(200, sch.UserDetailSchema, example=sch.UserDetailSchema.example())
+    def put(self, args: dict, uid: str) -> ResponseReturnValue:
+        """
+        Update an existing user's attributes in LDAP.
+
+        :param args: Request body with attributes to update
+        :type args: dict
+        :param uid: The user ID to update
+        :type uid: str
+        :return: API response dict
+        :rtype: ResponseReturnValue
+        """
+        logger_api.debug("Calling ApiAdminUserDetail.put: uid=%s, args=%s", uid, args)
+        interface: InterfaceApiAdminUser = g.inter
+
+        response, status_code = interface.update_user(uid, args)
+        return response, status_code
+
+    @blp.response(200, sch.UserDeleteResponseSchema, example=sch.UserDeleteResponseSchema.example())
+    def delete(self, uid: str) -> ResponseReturnValue:
+        """
+        Delete a user from LDAP.
+
+        :param uid: The user ID to delete
+        :type uid: str
+        :return: API response dict
+        :rtype: ResponseReturnValue
+        """
+        logger_api.debug("Calling ApiAdminUserDetail.delete: uid=%s", uid)
+        interface: InterfaceApiAdminUser = g.inter
+
+        response, status_code = interface.delete_user(uid)
+        return response, status_code
+
+
+@blp.route("/create")
+class ApiAdminUserCreate(MethodView):
+    """
+    Create a new user in the LDAP directory.
+    """
+
+    @blp.arguments(sch.UserCreateBodySchema, example=sch.UserCreateBodySchema.example(), error_status_code=400)
+    @blp.response(201, sch.UserCreateResponseSchema, example=sch.UserCreateResponseSchema.example())
+    def post(self, args: dict) -> ResponseReturnValue:
+        """
+        Create a new user entry in the LDAP user source.
+
+        The minimal required fields are uid, cn, sn, givenName, mail, and
+        password.  uidNumber, gidNumber, and homeDirectory are optional
+        and will be auto-generated if omitted.
+
+        :param args: Request body with user data
+        :type args: dict
+        :return: API response dict with created user DN
+        :rtype: ResponseReturnValue
+        """
+        logger_api.debug("Calling ApiAdminUserCreate: args=%s", args)
+        interface: InterfaceApiAdminUser = g.inter
+
+        response, status_code = interface.create_user(args)
+        return response, status_code
+
+
+# ── Session Management ────────────────────────────────────────────────────
+
+
 @blp.route("/active")
 class ApiAdminUserActive(MethodView):
     """

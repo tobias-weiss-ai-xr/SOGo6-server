@@ -1,7 +1,7 @@
 
 from typing import Any, Type
 from cryptography.fernet import Fernet, InvalidToken
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
 from json import loads as js_loads, dumps as js_dumps, JSONDecodeError
 from uuid import uuid4
 import time
@@ -9,7 +9,6 @@ import time
 from app.auth.User import User, UserAnonymous
 from app.auth.voucher.Voucher import Voucher
 from app.config.settings.ProcessSetting import ProcessSetting
-from app.config.settings.DomainSettings import AuthSettingsObj
 from app.service import sogo_cache
 from app.utils.dynamic_import import import_and_get_class
 from app.utils.exceptions import RequestException, AggravatedException, BugException
@@ -177,6 +176,53 @@ class VoucherUserService:
 
         raise RequestException("Wrong data type for voucher")
 
+
+    # ── MFA Voucher (short-lived, no full session) ────────────────────────────
+
+    def generate_mfa_voucher(self, user_uid: str) -> str:
+        """Generate a short-lived JWT (5 minutes) for the MFA challenge step.
+
+        Unlike a full session voucher, the MFA voucher does NOT create a
+        Redis session — it simply signs the user UID into a JWT with a
+        short TTL.
+
+        :param user_uid: The user email / uid
+        :returns: Encoded JWT string
+        """
+        import jwt
+
+        payload = {
+            "sub": user_uid,
+            "uid": user_uid,
+            "scope": "mfa_challenge",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 300,  # 5 minutes
+            "jti": str(uuid4()),
+        }
+        secret = self.process_settings.SOGO_P_VOUCHER_SECRET
+        token = jwt.encode(payload, secret, algorithm="HS256")
+        return token
+
+    def decode_mfa_voucher(self, voucher: str) -> dict[str, Any] | None:
+        """Decode and validate an MFA voucher JWT.
+
+        :param voucher: The MFA voucher JWT string
+        :returns: Decoded payload dict, or None if invalid/expired
+        """
+        import jwt
+        from jwt import PyJWTError
+
+        secret = self.process_settings.SOGO_P_VOUCHER_SECRET
+        try:
+            payload = jwt.decode(voucher, secret, algorithms=["HS256"],
+                                 options={"require": ["sub", "scope"]})
+            if payload.get("scope") != "mfa_challenge":
+                logger_auth.warning("MFA voucher has incorrect scope: %s", payload.get("scope"))
+                return None
+            return payload
+        except PyJWTError as exc:
+            logger_auth.warning("Failed to decode MFA voucher: %s", exc)
+            return None
 
     def _get_user_session_from_payload(self, payload:dict) -> User:
         """

@@ -18,12 +18,16 @@ from app.module.calendar.imip.ImipProcessor import ImipProcessor
 from app.module.calendar.acl.CalendarAclEngine import CalendarAclEngine
 from app.module.calendar.model.CalCalendar import CalCalendar
 from app.module.calendar.model.CalendarPermissions import CalendarPermissions
+from app.module.calendar.model.CalendarShare import CalendarShare
+from app.module.calendar.repository.RepositoryCalendarShare import RepositoryCalendarShare
 from app.module.calendar.model.CalendarUser import CalendarUser
 from app.module.calendar.model.enums.CalendarPermissionAction import CalendarPermissionAction
 from app.module.calendar.model.CalOrganizer import CalOrganizer
 from app.module.calendar.model.enums.AttendeeStatus import AttendeeStatus
 from app.module.calendar.model.enums.CalendarSourceType import CalendarSourceType
 from app.module.calendar.model.enums.ComponentType import ComponentType
+from app.module.calendar.model.enums.CalUserType import CalUserType
+from app.module.calendar.model.CalAttendee import CalAttendee
 from app.module.calendar.model.CalEventReminder import CalEventReminder
 from app.module.calendar.model.CalSyncResult import CalSyncResult
 from app.module.calendar.model.CalSyncStatus import CalSyncStatus
@@ -58,6 +62,13 @@ if TYPE_CHECKING:
     from app.module.calendar.source.CalendarSource import CalendarSource
 
 
+def _emit_webhook(event: str, payload: dict) -> None:
+    """Best-effort async webhook emitter; never raises, never blocks."""
+    from app.service.webhook.WebhookService import emit_event
+
+    emit_event(event, payload)
+
+
 class ModuleCalendar:  # pylint: disable=too-many-public-methods
     """Module for calendar and event operations."""
 
@@ -74,9 +85,10 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         self._db.connect()
         self._cache: ClientRedis | None = cache
         self._agent: ClientAgent | None = agent
-        self._sources: CalendarSources = CalendarSources(self._db)
+        self._share_repo: RepositoryCalendarShare = RepositoryCalendarShare(self._db)
+        self._sources: CalendarSources = CalendarSources(self._db, self._share_repo)
         self._imip: ImipProcessor = ImipProcessor(self._sources)
-        self._acl: CalendarAclEngine = CalendarAclEngine()
+        self._acl: CalendarAclEngine = CalendarAclEngine(self._share_repo)
 
     def __del__(self) -> None:
         if hasattr(self, "_db"):
@@ -153,18 +165,113 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         cal.key = generate_uuid()
         cal.ctag = 0
         source: CalendarSource = self._sources.get(cal)
-        return source.save_calendar(cal)
+        created = source.save_calendar(cal)
+        _emit_webhook("calendar.created", {"uid": user.uid, "calendar_key": cal.key})
+        return created
 
     def update_calendar(self, user: User, key: str, calendar: CalCalendar) -> CalCalendar:
         """Persist an updated calendar. The source lookup also enforces existence."""
         source: CalendarSource = self.get_calendar(user, key)
         source.update_calendar(calendar)
+        _emit_webhook("calendar.updated", {"uid": user.uid, "calendar_key": key})
         return calendar
 
     def delete_calendar(self, user: User, key: str) -> None:
         """Delete a calendar and all its events."""
         source: CalendarSource = self.get_calendar(user, key)
+        _ = CalendarUser(user=user, owner=user)
+        self._acl.check_permission(
+            source.calendar.permissions, CalendarPermissionAction.DELETE,
+        )
         source.delete_calendar()
+        _emit_webhook("calendar.deleted", {"uid": user.uid, "calendar_key": key})
+
+    #
+    # Sharing
+    #
+    def list_shares(self, calendar_key: str) -> list[CalendarShare]:
+        """Return all share entries for a calendar."""
+        return self._share_repo.find_by_calendar_key(calendar_key)
+
+    def add_share(self, calendar_key: str, share: CalendarShare) -> CalendarShare:
+        """Add a share entry for a user on a calendar."""
+        # Check that the share doesn't already exist
+        existing = self._share_repo.find_by_calendar_and_user(calendar_key, share.user_uid)
+        if existing is not None:
+            from app.utils import errors as err
+            from app.utils.exceptions import RequestException
+            raise RequestException(error=err.ERROR_CALENDAR_DUPLICATE)
+        return self._share_repo.insert(share)
+
+    def remove_share(self, calendar_key: str, user_uid: str) -> None:
+        """Remove a share entry for a user on a calendar."""
+        self._share_repo.delete(calendar_key, user_uid)
+
+    #
+    # Resource booking - conflict detection
+    #
+    @staticmethod
+    def _get_resource_attendees(event: CalEvent) -> list[CalAttendee]:
+        """Return attendees whose CUTYPE is RESOURCE or ROOM."""
+        return [
+            a for a in event.attendees
+            if a.cutype in (CalUserType.RESOURCE, CalUserType.ROOM)
+        ]
+
+    @staticmethod
+    def _resource_email_set(attendees: list[CalAttendee]) -> set[str]:
+        """Return the set of email addresses for the given attendee list."""
+        return {a.email for a in attendees}
+
+    def _check_resource_conflicts(
+        self, owner_uid: str, event: CalEvent,
+        exclude_event_key: str | None = None,
+    ) -> None:
+        """Check that resources invited to *event* are not already booked elsewhere.
+
+        Raises ERROR_CALENDAR_RESOURCE_CONFLICT if any resource attendee has a
+        conflicting event in any calendar accessible to *owner_uid*. The optional
+        *exclude_event_key* skips a specific event (used when updating an event so
+        the resource attendee's existing booking is not a self-conflict).
+        """
+        resource_attendees: list[CalAttendee] = self._get_resource_attendees(event)
+        if not resource_attendees:
+            return
+
+        resource_emails: set[str] = self._resource_email_set(resource_attendees)
+        start: datetime = event.require_date_start
+        end: datetime = event.require_date_end or start
+
+        # Collect all calendars for the owner
+        calendars: list[CalCalendar] = RepositoryCalendar(self._db).find_all(owner_uid)
+        repo_event: RepositoryEvent = RepositoryEvent(self._db)
+        conflicting: list[str] = []
+
+        for cal in calendars:
+            if not cal.key:
+                continue
+            if cal.key == event.calendar_key and exclude_event_key:
+                # Skip the event being updated within its own calendar
+                continue
+            events_in_cal: list[CalEvent] = repo_event.find_by_calendar(
+                cal.key, start, end, component_type=ComponentType.EVENT,
+            )
+            for existing in events_in_cal:
+                if exclude_event_key and existing.key == exclude_event_key:
+                    continue
+                existing_resource_emails = self._resource_email_set(
+                    self._get_resource_attendees(existing),
+                )
+                overlap = resource_emails & existing_resource_emails
+                if overlap:
+                    conflicting.extend(overlap)
+
+        if conflicting:
+            logger_calendar.info(
+                "Resource conflict for %s in calendars of user %s: %s",
+                sorted(set(conflicting)), owner_uid, event.title,
+            )
+            raise RequestException(error=err.ERROR_CALENDAR_RESOURCE_CONFLICT)
 
     #
     # Events - CRUD
@@ -184,12 +291,19 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         if not event.organizer:
             event.organizer = organizer
         event.validate()
+        # Check resource availability before creating
+        self._check_resource_conflicts(calendar_user.owner.uid, event)
         try:
             created: CalEvent = source.insert_event(event)
             # Propagate changes to attendees
             self._sources.propagate(scope_result=ScopeResult(
                 result=created, touched=[(created, EventAction.INSERT)],
             ))
+            _emit_webhook("calendar.created", {
+                "uid": calendar_user.owner.uid,
+                "calendar_key": event.calendar_key,
+                "event_uid": created.uid,
+            })
             return created
         except Exception as exc:
             logger_calendar.exception("Unexpected error creating event in calendar %s", calendar_key)
@@ -221,6 +335,13 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             # lives in the processor, not here.
             return RecurrenceScopeProcessor.process_attendee_edit(source=source, original=event, event_update=event_update)
 
+        # Check resource conflicts if attendees changed
+        if event_update.attendees:
+            self._check_resource_conflicts(
+                calendar_user.owner.uid, event_update,
+                exclude_event_key=event.key,
+            )
+
         try:
             scope_result: ScopeResult = RecurrenceScopeProcessor.process(source=source, original=event, event_update=event_update)
 
@@ -229,7 +350,11 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
 
             # Propagate changes to attendeees
             self._sources.propagate(scope_result=scope_result, original=event)
-
+            _emit_webhook("calendar.updated", {
+                "uid": calendar_user.owner.uid,
+                "calendar_key": event.calendar_key,
+                "event_uid": event_key,
+            })
             return scope_result.result
         except RequestException:
             raise
@@ -258,6 +383,11 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             is_organizer: bool = event.is_organized_by(calendar_user.owner.mail)
             if is_organizer:
                 self._sources.propagate(scope_result=scope_result)
+            _emit_webhook("calendar.deleted", {
+                "uid": calendar_user.owner.uid,
+                "calendar_key": event.calendar_key,
+                "event_uid": event_key,
+            })
             return event if is_organizer else None
         except RequestException:
             raise
@@ -367,8 +497,10 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         return self._imip.process_reply(calendar_user.owner, ical_bytes, from_email)
 
     def process_imip_request(self, calendar_user: CalendarUser, ical_bytes: bytes, from_email: str) -> CalEvent:
-        """Process an incoming iMIP REQUEST. Delegates to ImipProcessor (acts on the calendar owner)."""
-        #TODO : If no calendar provided, use default one
+        """Process an incoming iMIP REQUEST. Delegates to ImipProcessor (acts on the calendar owner).
+
+        The processor already falls back to the default calendar when no matching event is found.
+        """
         return self._imip.process_request(calendar_user.owner, ical_bytes, from_email)
 
     def process_imip_cancel(self, calendar_user: CalendarUser, ical_bytes: bytes, from_email: str) -> None:
@@ -760,15 +892,15 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         if self._agent is None:
             raise RuntimeError("ModuleCalendar.enqueue_sync requires a ClientAgent")
         source: CalendarSource = self.get_calendar(user, key)
-        if source.calendar.source_type != CalendarSourceType.ICS:
+        if source.calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
         request: JobRequestSyncExternalManual = JobRequestSyncExternalManual(calendar_key=key)
         return self._agent.enqueue(request, user_uid=user.uid)
 
     def sync_external_calendar(self, user: User, key: str) -> CalSyncResult:
-        """Run the sync of an external ICS calendar (worker-side counterpart of the manual enqueue)."""
+        """Run the sync of an external ICS/CalDAV calendar (worker-side counterpart of the manual enqueue)."""
         source: CalendarSource = self.get_calendar(user, key)
-        if source.calendar.source_type != CalendarSourceType.ICS:
+        if source.calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
         if self._cache is None:
             raise BugException("ModuleCalendar requires a cache for calendar sync")
@@ -776,7 +908,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         return engine.sync(source.calendar)
 
     def sync_all_due_external(self) -> dict[str, int]:
-        """Sync every external ICS calendar whose interval has elapsed. System-wide (no user scope).
+        """Sync every external ICS/CalDAV calendar whose interval has elapsed. System-wide (no user scope).
 
         Used by the periodic auto-sync job. Each calendar is synced independently: a failure is counted
         and never aborts the batch. A calendar already RUNNING, or not yet due, is skipped.
@@ -806,7 +938,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     def get_sync_status(self, user: User, key: str) -> CalSyncStatus:
         """Return the sync status for an external calendar."""
         source: CalendarSource = self.get_calendar(user, key)
-        if source.calendar.source_type != CalendarSourceType.ICS:
+        if source.calendar.source_type not in (CalendarSourceType.ICS, CalendarSourceType.CALDAV):
             raise RequestException(error=err.ERROR_CALENDAR_NOT_SUPPORTED)
         config: dict = source.calendar.sync_config or {}
         return CalSyncStatus(
@@ -818,7 +950,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     #
     # Maintenance
     #
-    # TODO: Implement in admin API
+    # Exposed as POST /admin/calendar/clean (ApiAdminCalendar)
     def clean(self, user_uid: str | None = None, calendar_key: str | None = None) -> int:
         """Physically remove soft-deleted event and reminder rows.
 

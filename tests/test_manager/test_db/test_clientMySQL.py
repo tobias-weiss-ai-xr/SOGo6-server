@@ -58,7 +58,7 @@ def test_table_to_query():
         "CREATE TABLE `test` (`test1` VARCHAR(255) NOT NULL, `test2` SMALLINT NOT NULL, "
         "`test3` BIGINT AUTO_INCREMENT NOT NULL, `test4` JSON NOT NULL, `test5` JSON NOT NULL, "
         "`test6` JSON NOT NULL, `test7` VARCHAR(255) , `test8` VARCHAR(255) NOT NULL UNIQUE, "
-        "PRIMARY KEY (`test1`, `test2`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        "PRIMARY KEY (`test1`, `test2`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC"
     )
     assert " ".join(sql.split()) == " ".join(expected.split())
 

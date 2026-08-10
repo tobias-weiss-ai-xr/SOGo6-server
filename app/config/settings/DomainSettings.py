@@ -46,6 +46,15 @@ class AuthSettings(SogoSchema):
         "SOGO_D_OPENID_ALLOW_REDIRECT": ("SOGO_D_AUTH_TYPE", "openid"),
 
         "SOGO_D_SAML2_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_IDP_METADATA_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_IDP_ENTITY_ID": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_FEDERATION_METADATA_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_DISCOVERY_SERVICE_URL": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_ATTRIBUTE_MAP": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_AUTHN_REQUESTS_SIGNED": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_SP_ENTITY_ID": ("SOGO_D_AUTH_TYPE", "saml2"),
+        "SOGO_D_SAML2_PROVIDER_ID": ("SOGO_D_AUTH_TYPE", "saml2"),
 
         "SOGO_D_PWD_CHANGE_ENABLED": ("SOGO_D_AUTH_TYPE", "plain"),
         "SOGO_D_LOGIN_CHECK_MAX_ATTEMPT": ("SOGO_D_AUTH_TYPE", "plain"),
@@ -86,6 +95,24 @@ class AuthSettings(SogoSchema):
 
     #IF SOGO_D_AUTH_TYPE = 'saml2'
     SOGO_D_SAML2_URL  = fields.Url(schemes={'http','https'}, require_tld=False) #TODO saml2 configuration....
+    # IdP metadata URL for auto-configuration (fetches SSO URL + signing cert)
+    SOGO_D_SAML2_IDP_METADATA_URL = fields.Url(schemes={'http','https'}, require_tld=False)
+    # Expected IdP entity ID for issuer validation
+    SOGO_D_SAML2_IDP_ENTITY_ID = fields.String()
+    # Federation aggregate metadata URL (multi-IdP, e.g., DFN-AAI)
+    SOGO_D_SAML2_FEDERATION_METADATA_URL = fields.Url(schemes={'http','https'}, require_tld=False)
+    # External WAYF/DS URL (optional; if not set, built-in discovery is used)
+    SOGO_D_SAML2_DISCOVERY_SERVICE_URL = fields.Url(schemes={'http','https'}, require_tld=False)
+    # JSON mapping of SOGo field names to SAML attribute names (OID URNs or friendly names)
+    SOGO_D_SAML2_ATTRIBUTE_MAP = fields.Dict(load_default={}, dump_default={})
+    # Require encrypted assertions from the IdP
+    SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS = fields.Boolean(load_default=False, dump_default=False)
+    # Sign AuthnRequests with the SP private key (default True if keypair is configured)
+    SOGO_D_SAML2_AUTHN_REQUESTS_SIGNED = fields.Boolean(load_default=True, dump_default=True)
+    # SP entity ID override (default: derived from public base URL)
+    SOGO_D_SAML2_SP_ENTITY_ID = fields.String()
+    # Reference to a Saml2Provider record (optional, for admin-managed IdP config)
+    SOGO_D_SAML2_PROVIDER_ID = fields.String()
 
     #If SOGO_D_AUTH_TYPE = 'plain'
     SOGO_D_PWD_CHANGE_ENABLED = fields.Boolean(load_default=False, dump_default=False) #Allow users to change the password (for ldap it means the ldap admin account is allow to do that too)
@@ -94,13 +121,17 @@ class AuthSettings(SogoSchema):
     SOGO_D_LOGIN_CHECK_MAX_ATTEMPT = fields.Integer(load_default=0, dump_default=0,validate=validate.Range(min=0)) #Number of failed attempt during SOGO_D_LOGIN_CHECK_TIME_SPAN before blocking
     SOGO_D_LOGIN_CHECK_TIME_SPAN   = fields.Integer(load_default=10, dump_default=10,validate=validate.Range(min=5)) #Time span when user can do SOGO_D_LOGIN_CHECK_MAX_ATTEMPT failed login attempt
     SOGO_D_LOGIN_CHECK_BLOCK_TIME  = fields.Integer(load_default=300, dump_default=300,validate=validate.Range(min=5)) #Time span where a user is forbidden to login after too many fail attempt.
+    
+    # Per-IP rate limiting (applied before UID-based rate limiting)
+    SOGO_D_LOGIN_IP_MAX_ATTEMPT    = fields.Integer(load_default=20, dump_default=20, validate=validate.Range(min=0)) #Max login attempts per IP per SOGO_D_LOGIN_IP_TIME_SPAN seconds (0 to disable)
+    SOGO_D_LOGIN_IP_TIME_SPAN      = fields.Integer(load_default=60, dump_default=60, validate=validate.Range(min=1)) #Time span for per-IP rate limiting
 
     SOGO_D_PWD_RECOVERY = fields.Boolean(load_default=True, dump_default=True) #Enable or not users to set a method for password recovery
     SOGO_D_PWD_RECOVERY_METHOD = fields.List(fields.String(), validate=validate.ContainsOnly(('secretQuestion', 'secondaryEmail', 'apiCall')))
     SOGO_D_PWD_RECOVERY_FORCE = fields.Boolean(load_default=False, dump_default=False) #Force users to set a recovery method, overwrite SOGO_D_PWD_RECOVERY
     SOGO_D_PWD_RECOVERY_DELAY = fields.Integer() #Delay before the user can ask again for a password recovery
     SOGO_D_LOGIN_MFA = fields.Boolean(load_default=True, dump_default=True) #Enable or not users to set a MFA method for password
-    SOGO_D_LOGIN_MFA_METHOD = fields.List(fields.String(), validate=validate.ContainsOnly(('totp',)))
+    SOGO_D_LOGIN_MFA_METHOD = fields.List(fields.String(), validate=validate.ContainsOnly(('totp', 'webauthn')))
     SOGO_D_LOGIN_MFA_FORCE = fields.Boolean(load_default=False, dump_default=False) #Force users to set a recovery method, overwrite SOGO_D_PWD_RECOVERY
 
 class AuthSettingsObj(SettingsObj):
@@ -122,10 +153,21 @@ class AuthSettingsObj(SettingsObj):
     SOGO_D_OPENID_FETCH_USER_PROFILE: bool = True
     SOGO_D_OPENID_ALLOW_REDIRECT: list[str] = []
     SOGO_D_SAML2_URL: str = ""
+    SOGO_D_SAML2_IDP_METADATA_URL: str = ""
+    SOGO_D_SAML2_IDP_ENTITY_ID: str = ""
+    SOGO_D_SAML2_FEDERATION_METADATA_URL: str = ""
+    SOGO_D_SAML2_DISCOVERY_SERVICE_URL: str = ""
+    SOGO_D_SAML2_ATTRIBUTE_MAP: dict = {}
+    SOGO_D_SAML2_WANT_ENCRYPTED_ASSERTIONS: bool = False
+    SOGO_D_SAML2_AUTHN_REQUESTS_SIGNED: bool = True
+    SOGO_D_SAML2_SP_ENTITY_ID: str = ""
+    SOGO_D_SAML2_PROVIDER_ID: str = ""
     SOGO_D_PWD_CHANGE_ENABLED: bool = False
     SOGO_D_LOGIN_CHECK_MAX_ATTEMPT: int = 0
     SOGO_D_LOGIN_CHECK_TIME_SPAN: int = 10
     SOGO_D_LOGIN_CHECK_BLOCK_TIME: int = 300
+    SOGO_D_LOGIN_IP_MAX_ATTEMPT: int = 20
+    SOGO_D_LOGIN_IP_TIME_SPAN: int = 60
     SOGO_D_PWD_RECOVERY: bool = True
     SOGO_D_PWD_RECOVERY_METHOD: list[str] = []
     SOGO_D_PWD_RECOVERY_FORCE: bool = False

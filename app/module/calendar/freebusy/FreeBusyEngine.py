@@ -15,11 +15,6 @@ from app.utils.datetime.DateTimeUtils import combine_in_tz_to_utc, resolve_tz
 if TYPE_CHECKING:
     from app.module.calendar.model.CalEvent import CalEvent
 
-# Weekdays considered non-working (weekday() convention: Monday=0 ... Sunday=6).
-# Saturday=5, Sunday=6.
-# TODO: Check if this can be defined by users  # pylint: disable=fixme
-_NON_WORKING_WEEKDAYS: frozenset[int] = frozenset({5, 6})
-
 _SHOW_AS_TO_FB_TYPE: dict[ShowAs, FreeBusyType] = {
     ShowAs.BUSY: FreeBusyType.BUSY,
     ShowAs.OUT_OF_OFFICE: FreeBusyType.UNAVAILABLE,
@@ -35,6 +30,7 @@ class FreeBusyPrefs:
     workday_start: str = "09:00"   # HH:MM in the user's local timezone
     workday_end: str = "18:00"     # HH:MM in the user's local timezone
     timezone: str = "UTC"          # IANA timezone name (SOGO_U_TIMEZONE)
+    non_working_weekdays: frozenset[int] = frozenset({5, 6})  # weekday(): 0=Mon..6=Sun
 
 
 class FreeBusyEngine:
@@ -81,7 +77,9 @@ class FreeBusyEngine:
             user_tz = resolve_tz(prefs.timezone)
             work_start = self._parse_time(prefs.workday_start)
             work_end = self._parse_time(prefs.workday_end)
-            periods.extend(self._unavailable_periods(start, end, work_start, work_end, user_tz))
+            periods.extend(self._unavailable_periods(
+                start, end, work_start, work_end, user_tz, prefs.non_working_weekdays,
+            ))
 
         return self._merge(periods)
 
@@ -92,8 +90,13 @@ class FreeBusyEngine:
         work_start: time,
         work_end: time,
         user_tz: ZoneInfo,
+        non_working_weekdays: frozenset[int] = frozenset({5, 6}),
     ) -> list[CalFreeBusyPeriod]:
-        """Generate UNAVAILABLE periods for time outside working hours."""
+        """Generate UNAVAILABLE periods for time outside working hours.
+
+        :param non_working_weekdays: Weekdays considered non-working (0=Mon..6=Sun).
+            Defaults to weekend (Saturday=5, Sunday=6).
+        """
         periods: list[CalFreeBusyPeriod] = []
 
         # Convert to user's local timezone to iterate over calendar days as they appear to the user.
@@ -112,7 +115,7 @@ class FreeBusyEngine:
                 current_date += timedelta(days=1)
                 continue
 
-            if current_date.weekday() in _NON_WORKING_WEEKDAYS:
+            if current_date.weekday() in non_working_weekdays:
                 periods.append(CalFreeBusyPeriod(p_start, p_end, FreeBusyType.UNAVAILABLE))
             else:
                 work_start_utc = combine_in_tz_to_utc(current_date, work_start, user_tz)
@@ -159,7 +162,8 @@ class FreeBusyEngine:
         """Parse a time string into a datetime.time object.
 
         Expects 24-hour format HH:MM. Any other format (e.g. AM/PM) raises ValueError.
-        # TODO: validate HH:MM format at settings write time to prevent silent failures here.
+        Validation is enforced at the settings schema level (UserCalendarGeneralSettings
+        uses ``validate.Regexp(r"^\\d{2}:\\d{2}$")``), so this is a safety net.
         """
         h, m = value.split(":")
         return time(int(h), int(m), 0)

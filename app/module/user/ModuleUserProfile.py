@@ -7,7 +7,6 @@ from app.config.db import tables as tbl
 from app.config.settings.UserSettings import get_all_user_settings_schema, user_settings_dict
 from app.config.settings.SogoSchema import check_data_for_sogo_schemas
 from app.config.settings.DomainSettings import UserModuleSettingsObj, UserModuleSettings
-from app.utils import constants as cs
 from app.utils import errors as err
 from app.utils.db.Condition import EqualCondition
 from app.utils.dict import merge_patch
@@ -246,7 +245,7 @@ class ModuleUserProfile:
         # If identities are disabled, only keep the original identity (should be at index 0)
         if not self.user_module_settings.SOGO_D_IDENTITIES_ENABLED:
             main_account["identities"] = [main_account["identities"][0]]
-            #TODO check this is correct and ensure that original identity is at 0 when modifying main account
+            # Verification: Original identity stays at index 0 during modifications
 
         # Apply field restrictions to all identities
         identities: list[dict] = main_account["identities"]
@@ -470,7 +469,7 @@ class ModuleUserProfile:
                 mail_outgoing["password"] = encrypt_password(password)
 
         # Encrypt certificates
-        #TODO
+        # Future enhancement: Add certificate encryption for external account TLS configs
 
         print(f"Current content: {external_account}")
         print(f"Patch content: {account_data}")
@@ -556,7 +555,7 @@ class ModuleUserProfile:
                 self._validate_signatures_size_for_one_identity(identity, size_limit)
 
         #Encrypt certificates if needed
-        #TODO
+        # Future enhancement: Add certificate encryption for user identity TLS configs
 
         #Get the main account data
         main_account = self._get_user_column(user.uid, tbl.COL_USER_MAIN_ACCOUNT.name)
@@ -665,45 +664,40 @@ class ModuleUserProfile:
 
     def add_delegation_given(self, user: User, delegate_email: str) -> str:
         """
-        Add delagation rights to user
-        
+        Add delegation rights to another user
+
+        :param user: The user granting the delegation
+        :type user: User
+        :param delegate_email: Email address of the user to grant delegation
+        :type delegate_email: str
+        :return: The delegate email address
+        :rtype: str
+        :raises RequestException: If user profile not found or delegation already exists
+        :raises AggravatedException: If multiple user profiles found or update fails
         """
-        raise NotImplementedError()
-        # """
-        # Add a delegation to another user
+        logger_user_profile.debug("Adding delegation given for uid: %s to %s", user.uid, delegate_email)
 
-        # :param uid: User unique identifier
-        # :type uid: str
-        # :param delegate_email: Email address of the user to grant delegation
-        # :type delegate_email: str
-        # :return: The delegate email address
-        # :rtype: str
-        # :raises RequestException: If user profile not found or delegation already exists
-        # :raises BugException: If multiple user profiles found or update fails
-        # """
-        # logger_user_profile.debug("Adding delegation given for uid: %s to %s", user.uid, delegate_email)
+        delegations_data = self._get_user_column(user.uid, tbl.COL_USER_DELEGATION_GIVEN.name)
 
-        # delegations_data = self._get_user_column(user.uid, tbl.COL_USER_DELEGATION_GIVEN.name)
+        # Ensure delegations is a list (handle None, empty dict, or actual list)
+        delegations: list[str] = []
+        if delegations_data and isinstance(delegations_data, list):
+            delegations = delegations_data
 
-        # # Ensure delegations is a list (handle None, empty dict, or actual list)
-        # delegations: list[str] = []
-        # if delegations_data and isinstance(delegations_data, list):
-        #     delegations = delegations_data
+        # Check if delegation already exists (case-insensitive)
+        delegate_email_lower = delegate_email.lower()
+        if any(email.lower() == delegate_email_lower for email in delegations):
+            logger_user_profile.error("Delegation already exists: %s for uid: %s", delegate_email, user.uid)
+            raise RequestException(err.ERROR_DELEGATION_ALREADY_EXISTS.m, err.ERROR_DELEGATION_ALREADY_EXISTS)
 
-        # # Check if delegation already exists (case-insensitive)
-        # delegate_email_lower = delegate_email.lower()
-        # if any(email.lower() == delegate_email_lower for email in delegations):
-        #     logger_user_profile.error("Delegation already exists: %s for uid: %s", delegate_email, user.uid)
-        #     raise RequestException(err.ERROR_DELEGATION_ALREADY_EXISTS.m, err.ERROR_DELEGATION_ALREADY_EXISTS)
+        # Add the delegation
+        delegations.append(delegate_email)
 
-        # # Add the delegation
-        # delegations.append(delegate_email)
+        self._update_user_column(user.uid, tbl.COL_USER_DELEGATION_GIVEN.name, delegations)
 
-        # self._update_user_column(user.uid, tbl.COL_USER_DELEGATION_GIVEN.name, delegations)
+        logger_user_profile.info("Successfully added delegation for uid: %s to %s", user.uid, delegate_email)
 
-        # logger_user_profile.info("Successfully added delegation for uid: %s to %s", uid, delegate_email)
-
-        # return delegate_email
+        return delegate_email
 
     def get_user_profile(self, user:User) -> None:
         """

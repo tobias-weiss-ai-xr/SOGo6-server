@@ -123,7 +123,7 @@ class ClientLdap(ClientUserSource):
 
         #bind
         self.bind_dn = ldap_bind_dn
-        self.bind_pwd = ldap_bind_pwd
+        self.bind_pwd = SecretString(ldap_bind_pwd)
         self.bind_as_user = ldap_bind_as_user
         self.pwd_policy = ldap_pwd_policy
         self.bind_fields = ldap_bind_fields
@@ -241,8 +241,8 @@ class ClientLdap(ClientUserSource):
         """
         #check that dn is correct
         if not ldap.dn.is_dn(bind_dn):
-            logger_ldap.error("Cannot bind with bind dn: %s. Because it's not a valid dn", bind_dn)
-            raise exc.RequestException(f"Cannot bind with bind dn: {bind_dn}. Because it's not a valid dn", error=err.ERROR_LDAP_BIND_WRONG_CRED)
+            logger_ldap.error("Cannot bind with bind dn: invalid dn format")
+            raise exc.RequestException("Cannot bind: invalid bind dn format", error=err.ERROR_LDAP_BIND_WRONG_CRED)
         
         #Censored the password for the log
         h_password = SecretString(bind_pwd)
@@ -259,14 +259,14 @@ class ClientLdap(ClientUserSource):
                 return True, ret
             except ldap.INVALID_CREDENTIALS as e:
                 if throw_error:
-                    logger_ldap.error("Invalid bind Credentials for bind dn: %s", bind_dn)
-                    raise exc.RequestException(f"Invalid bind Credentials for bind {bind_dn}", error=err.ERROR_LDAP_BIND_WRONG_CRED) from e
+                    logger_ldap.error("Invalid bind Credentials")
+                    raise exc.RequestException("Invalid bind Credentials", error=err.ERROR_LDAP_BIND_WRONG_CRED) from e
                 else:
-                    logger_ldap.warning("Invalid bind Credentials for bind dn: %s", bind_dn)
+                    logger_ldap.warning("Invalid bind Credentials")
                     return False, {}
             except ldap.LDAPError as e:
-                logger_ldap.error("Cannot bind with bind dn: %s. Because: %s", bind_dn, e)
-                raise exc.RequestException(f"Cannot bind with bind dn: {bind_dn}" , error=err.ERROR_LDAP_CANNOT_BIND) from e
+                logger_ldap.error("Cannot bind: %s", e)
+                raise exc.RequestException("Cannot bind to LDAP server" , error=err.ERROR_LDAP_CANNOT_BIND) from e
         raise exc.BugException("self.connection is still None, meaning self.connect() method didn't catch or raise correctly an error")
 
 
@@ -278,7 +278,7 @@ class ClientLdap(ClientUserSource):
         base_dn = self._get_base_dn(username, domain)
 
         #bind
-        #TODO ret is useless for now  but wIll be useful later when the password policy will be implemented
+        # Keep 'ret' for future password policy implementation (LDAP password policy control)
         success, ret = self._bind(base_dn, password, throw_error=False)
 
         if not success:
@@ -355,6 +355,30 @@ class ClientLdap(ClientUserSource):
 
         raise exc.BugException("self.connection is still None, meaning self.connect() method didn't catch or raise correctly an error")
 
+
+    def search_entries(
+        self, base_dn: str | None = None, l_filter: str | None = None,
+        attributes: list | None = None,
+    ) -> list[dict[str, list[str]]]:
+        """Search the LDAP directory for entries matching a filter, return parsed dicts.
+
+        Binds with the admin credentials first (the caller must have called connect() already),
+        then searches under base_dn (defaults to self.base_dn). Returns a list of attribute dicts
+        keyed by lower-case attribute name, each value a list of strings. The DN is included as
+        the special key ``"dn"``.
+
+        :param base_dn: Search base DN (defaults to the configured base_dn).
+        :param l_filter: LDAP filter string. When None, all entries are returned.
+        :param attributes: Attribute names to fetch (defaults to all).
+        :return: List of parsed entry dicts.
+        """
+        if not self.connected:
+            raise exc.BugException("ClientLdap.search_entries called before connect()")
+        # Ensure we are bound with admin creds
+        self._bind(self.bind_dn, self.bind_pwd, use_admin=True, throw_error=False)
+        base: str = base_dn or self.base_dn
+        raw: list[tuple[str, dict[str, list[bytes]]]] = self._search(base, l_filter, attributes)
+        return [parse_python_ldap_record(record) for record in raw]
 
     def close(self) -> None:
         """

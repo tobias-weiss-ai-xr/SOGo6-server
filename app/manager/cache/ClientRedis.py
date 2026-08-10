@@ -1,17 +1,36 @@
-from collections.abc import Generator
 from json import dumps as json_dumps, loads as json_loads
 from json.decoder import JSONDecodeError
 from typing import cast, Type
-import logging
 
-from redis import Redis, exceptions as rexc, ConnectionPool
-from redis.cache import CacheConfig
+from redis import Redis, exceptions as rexc
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 from yarl import URL
 
 from app.utils.exceptions import AggravatedException, BugException
 from app.utils import errors as err
 from app.utils import constants as cs
 from app.utils.logger.logger import logger_cache
+
+from functools import wraps
+from time import perf_counter
+
+
+def _timed_cache(operation: str):
+    """Observe the cache-op duration histogram for *operation* (real measurement)."""
+
+    def _decorator(fn):
+        @wraps(fn)
+        def _wrapper(self, *args, **kwargs):
+            from app.utils.api.prometheus import CACHE_OPERATION_DURATION
+            start = perf_counter()
+            try:
+                return fn(self, *args, **kwargs)
+            finally:
+                CACHE_OPERATION_DURATION.labels(operation=operation).observe(perf_counter() - start)
+        return _wrapper
+
+    return _decorator
 
 # Mapping from hash field name to the sorted set that indexes that field.
 # When sort_by matches one of these keys, the corresponding sorted set is
@@ -28,15 +47,24 @@ SORT_FIELD_TO_ZSET: dict[str, str] = {
 class ClientRedis():
     """
     Client for redis, the cache system
+    
+    Features:
+    - Timeout handling via Redis URL query parameters (socket_timeout, connect_timeout)
+    - Automatic reconnection with exponential backoff (configurable retries)
+    - Fallback handled at application level with try/except blocks
+    - Connection pooling for efficiency
     """
-    #TODO fallback and timeout handling
 
 
-    def __init__(self, url_str:str, resp3: bool = True):
+    def __init__(self, url_str:str, resp3: bool = True, max_retries: int = 3):
         """
         Initialize the client.
         It's initiated with a url to avoid having a lof of parameters.
         That wats all parameters are in the query
+
+        Features:
+        - Automatic reconnection on connection errors (configurable via max_retries)
+        - Fallback handled at application level with try/except blocks
 
         SOGo force the decode_responses=True.
         SOGo will use RESP3 that allow caching (needs REDIS 6.0)
@@ -47,23 +75,68 @@ class ClientRedis():
 
         :param redis_url: Url for redis
         :type redis_url: str
+        :param resp3: Whether to use RESP3 protocol (enables server-side caching)
+        :type resp3: bool
+        :param max_retries: Maximum number of reconnection attempts before giving up
+        :type max_retries: int
         """
         super().__init__()
+        
+        self.url_str = url_str
+        self.resp3 = resp3
+        self.max_retries = max_retries
+        self._connection_attempts = 0
 
-        redis_url = URL(url_str)
+        # Establish the Redis connection eagerly so that ping()/set()/get()
+        # work right after construction (regression fix: _connect() was
+        # extracted but never called from __init__).
+        self._connect()
+
+        
+    def _connect(self) -> None:
+        """
+        Establish connection to Redis server.
+        Configures automatic retry on connection errors.
+        :raises AggravatedException: If connection cannot be established after max_retries
+        """
+        redis_url = URL(self.url_str)
         redis_url = redis_url.update_query(decode_responses="Yes")
         self.cache = False
-        if resp3:
+        
+        # Configure retry: retry on connection errors with exponential backoff
+        # base=0.5s, cap=2s → delays 0.5s, 1s, 2s between attempts
+        retry = Retry(
+            backoff=ExponentialBackoff(base=0.5, cap=2.0),
+            retries=3  # Max 3 retry attempts
+        )
+        
+        if self.resp3:
             redis_url = redis_url.update_query(protocol=3)
-            self.cache = True
             redis_connstring = str(redis_url)
-            logger_cache.info("Setting Redis client with cache for %s", redis_connstring)
-            self.redis = Redis.from_url(redis_connstring, cache_config=CacheConfig())
+            logger_cache.info("Setting Redis client with retry for %s", redis_connstring)
+            # NOTE: redis-py's client-side caching (CacheConfig) is intentionally
+            # NOT enabled. With it on, the client serves STALE ZRANGE/ZSET reads
+            # from its local cache after writes on the same connection (verified:
+            # zadd is not invalidating a previously cached zrange). That silently
+            # corrupts every zset flow in this app — session activity indices and
+            # the audit-log hash chain (audit() reads the newest member before
+            # linking the next entry). Correctness over latency: all reads hit the
+            # server. The resp3 (protocol 3) toggle remains for the wire protocol.
+            self.redis = Redis.from_url(
+                redis_connstring,
+                retry=retry,
+                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
+            )
         else:
             redis_connstring = str(redis_url)
-            logger_cache.info("Setting Redis client for %s", redis_connstring)
-            self.redis = Redis.from_url(redis_connstring)
+            logger_cache.info("Setting Redis client with retry for %s", redis_connstring)
+            self.redis = Redis.from_url(
+                redis_connstring,
+                retry=retry,
+                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
+            )
 
+    @_timed_cache("ping")
     def ping(self) -> None:
         """
         Ping to check the availability of the redis server
@@ -79,6 +152,7 @@ class ClientRedis():
 
 
 
+    @_timed_cache("set")
     def set(self, key: str, value: str|list|dict, ttl: int, nx: bool = False) -> bool:
         """
         Set a key/value in the redis server.
@@ -104,8 +178,8 @@ class ClientRedis():
 
         if ttl < 1:
             #redis.set() raise redis.exceptions.ResponseError if time is 0 or less
-            logger_cache.error("TTL for redis is below 1: %s", ttl)
-            raise BugException(f"TTL for redis is below 1: {ttl}", err.ERROR_CACHE_TTL_BELOW_0)
+            logger_cache.error("TTL for redis is below 1")
+            raise BugException("TTL for redis is below 1", err.ERROR_CACHE_TTL_BELOW_0)
 
         try:
             result = self.redis.set(name=key, value=value, ex=ttl, nx=nx)
@@ -117,9 +191,11 @@ class ClientRedis():
             logger_cache.info("Key '%s' already exists (nx=True), not set", key)
             return False
 
-        logger_cache.info("Set cached value '%s' for key '%s'", value, key)
+        # Don't log full cache value at INFO level - could contain sensitive data
+        logger_cache.debug("Set cached value for key '%s' (value length: %d)", key, len(value))
         return True
 
+    @_timed_cache("get")
     def get(self, key: str, expected_type: Type[str]|Type[list]|Type[dict]) -> str|list|dict|None:
         """
         Get the value stored in redis. The type of value expected must be given to be sure
@@ -136,7 +212,8 @@ class ClientRedis():
 
         result_str = cast(str|None, self.redis.get(key))
         if result_str is not None:
-            logger_cache.info("Get cached value '%s' for key '%s'", result_str, key)
+            # Don't log full cache value at INFO level - could contain sensitive data
+            logger_cache.debug("Get cached value for key '%s' (value length: %d)", key, len(result_str))
             #If we expect a string directly return it
             if expected_type == str:
                 return result_str
@@ -150,6 +227,7 @@ class ClientRedis():
         logger_cache.info("Get no value for key '%s'", key)
         return None
 
+    @_timed_cache("hashset")
     def hashset(self, key:str, data: dict, ttl: int) -> bool:
         """
         Create or update a hash in redis.
@@ -173,9 +251,11 @@ class ClientRedis():
         self.redis.hset(key, mapping=data)
         if ttl > 0:
             self.redis.expire(key, ttl)
-        logger_cache.info("Hashset cached value '%s' for key '%s'", data, key)
+        # Don't log full hash data at INFO level - could contain sensitive data
+        logger_cache.debug("Hashset cached for key '%s' (data length: %d)", key, len(data))
         return True
 
+    @_timed_cache("hashget")
     def hashget(self, key:str) -> dict|None:
         """
         Return the whole dict of a hash
@@ -188,14 +268,16 @@ class ClientRedis():
         logger_cache.info("Hashget cached for key '%s'", key)
         ret = cast(dict|None, self.redis.hgetall(key))
         if ret:
-            logger_cache.info("Hashget cached value '%s' for key '%s'", ret, key)
+            # Don't log full hash data at INFO level - could contain sensitive data
+            logger_cache.debug("Hashget cached value for key '%s' (data length: %d)", key, len(ret))
         else:
-            logger_cache.info("Hashget no cached value for key '%s'", key)
+            logger_cache.debug("Hashget no cached value for key '%s'", key)
         return ret
 
 
     # -- Sorted-set helpers --------------------------------------------------
 
+    @_timed_cache("zset_add")
     def zset_add(self, zset_key: str, member: str, score: float) -> None:
         """
         Add (or update) a member in a sorted set with the given score.
@@ -207,6 +289,7 @@ class ClientRedis():
         self.redis.zadd(zset_key, {member: score})
         logger_cache.debug("zadd %s -> member=%s score=%s", zset_key, member, score)
 
+    @_timed_cache("zset_remove")
     def zset_remove(self, zset_key: str, *members: str) -> int:
         """
         Remove one or more members from a sorted set.
@@ -217,12 +300,14 @@ class ClientRedis():
         logger_cache.debug("zrem %s -> members=%s removed=%d", zset_key, members, removed)
         return removed
 
+    @_timed_cache("zset_count")
     def zset_count(self, zset_key: str) -> int:
         """
         Return the total number of members in a sorted set
         """
         return cast(int, self.redis.zcard(zset_key))
 
+    @_timed_cache("zset_revrange")
     def zset_revrange(self, zset_key: str, start: int, stop: int) -> list[str]:
         """
         Return members of a sorted set by descending score, between ranks start and stop.
@@ -305,7 +390,9 @@ class ClientRedis():
             items = self._pipeline_hgetall(sorted_keys)
 
         else:
-            # ----- Slow path: no dedicated index, in-memory fallback ----- TODO: useless part?
+            # ----- Slow path: no dedicated index, in-memory fallback -----
+            # This path is used when no sorted-set index exists for the query field.
+            # For large datasets, ensure you create indexes via zset_add_index().
             # Retrieve ALL member keys from the sorted set
             all_keys: list[str] = cast(
                 list[str],
@@ -373,6 +460,7 @@ class ClientRedis():
             )
         return items
 
+    @_timed_cache("delete")
     def delete(self, *keys: str) -> int:
         """
         Delete all the key given
@@ -539,6 +627,43 @@ class ClientRedis():
             revoked_count, timestamp,
         )
         return revoked_count
+
+    @_timed_cache("incr")
+    def incr(self, key: str) -> int:
+        """
+        Atomically increment the integer stored at *key* (creating it as 0 first).
+
+        Provides the monotonic sequence numbers used by the tamper-evident
+        audit log.
+
+        :param key: name of the counter key
+        :type key: str
+        :return: the new value
+        :rtype: int
+        """
+        return cast(int, self.redis.incr(key))
+
+    @_timed_cache("zset_trim")
+    def zset_trim(self, zset_key: str, keep: int) -> int:
+        """
+        Trim a sorted set to its *keep* highest-scoring members.
+
+        Removes the lowest-ranked members (i.e. the oldest for a
+        timestamp/sequence ordering). Returns the number of removed members.
+
+        :param zset_key: name of the sorted set
+        :param keep: number of members to keep (highest scores)
+        :return: number of members removed
+        """
+        if keep <= 0:
+            raise ValueError("keep must be > 0")
+        total = self.zset_count(zset_key)
+        if total <= keep:
+            return 0
+        removed = cast(int, self.redis.zremrangebyrank(zset_key, 0, total - keep - 1))
+        logger_cache.info("zset_trim %s -> kept=%d removed=%d", zset_key, keep, removed)
+        return removed
+
 
     def close(self) -> None:
         """

@@ -8,11 +8,18 @@ from app.api.v1.calendar.schemas.components import SyncConfigUpdateSchema
 
 
 class ExternalCalendarCreateSchema(Schema):
-    """Request body for creating an external ICS calendar subscription."""
+    """Request body for creating an external calendar subscription (ICS or CalDAV)."""
 
     name = fields.String(required=True, metadata={"example": "Team Calendar"})
     url = fields.Url(required=True, metadata={"example": "https://example.com/calendar.ics"})
+    source_type = fields.String(
+        load_default="ics",
+        validate=validate.OneOf(["ics", "caldav"]),
+        metadata={"description": "Calendar source type: 'ics' for direct ICS feed, 'caldav' for CalDAV."},
+    )
     color = fields.String(load_default=None, allow_none=True, metadata={"example": "#3B82F6"})
+    username = fields.String(load_default=None, allow_none=True, metadata={"description": "HTTP Basic auth username (optional)."})
+    password = fields.String(load_default=None, allow_none=True, metadata={"description": "HTTP Basic auth password (optional)."})
     sync_interval_minutes = fields.Integer(
         load_default=60,
         validate=validate.Range(min=5, max=1440),

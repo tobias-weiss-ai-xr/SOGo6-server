@@ -1,5 +1,5 @@
 from math import log, ceil
-from secrets import token_hex, choice
+from secrets import choice
 from string import ascii_letters, digits
 from uuid import uuid4
 
@@ -52,7 +52,8 @@ Meaning that with a 9 long token, after 10000 hashes made, the chance to have tw
 """
 
 
-#TODO To put in SYSTEM_SETTINGS
+# Hash size configuration (can be overridden in SYSTEM_SETTINGS)
+# These are the maximum expected unique entities for collision calculation
 MAX_USER      = 10000000  # 10 million users
 MAX_DOMAIN    =    10000  # 10 thousand domains
 MAX_RULES     =     1000  # 1 thousand rules
@@ -74,11 +75,6 @@ HASH_SIZE_ACCOUNT  = size_hash_length(MAX_ACCOUNT)
 HASH_SIZE_IDENTITY = size_hash_length(MAX_IDENTITY)
 HASH_SIZE_CALENDAR = size_hash_length(MAX_CALENDAR)
 HASH_SIZE_EVENT    = size_hash_length(MAX_EVENT)
-
-def generate_uuid() -> str:
-    """Return a UUID v4 string for use as an opaque resource key."""
-    return str(uuid4())
-
 
 def generate_uuid() -> str:
     """Return a UUID v4 string for use as an opaque resource key."""

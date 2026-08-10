@@ -3,12 +3,14 @@ Module for admin authentication
 """
 
 from __future__ import annotations
+import secrets
 from typing import TYPE_CHECKING
 
 from app.auth.service.VoucherAdminService import VoucherAdminService
 from app.service import sogo_cache
 from app.utils.exceptions import RequestException
 from app.utils import errors as err
+from app.utils.logger.logger import logger
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
@@ -29,10 +31,21 @@ class ModuleAdminAuth:
         :raises RequestException: If admin credentials are not configured
         """
         self.process_settings = process
+        # Validate that admin credentials are configured
+        admin_user = getattr(process, 'SOGO_P_ADMIN', None)
+        admin_pwd = getattr(process, 'SOGO_P_ADMIN_PWD', None)
+        if not admin_user or not admin_pwd:
+            logger.error("Admin authentication not configured. SOGO_P_ADMIN or SOGO_P_ADMIN_PWD is missing.")
+            raise RequestException(
+                "Admin authentication is not configured properly. Please set SOGO_P_ADMIN and SOGO_P_ADMIN_PWD.",
+                err.ERROR_ADMIN_AUTH_NOT_CONFIG
+            )
 
     def check_admin_login(self, username: str, password: str) -> bool:
         """
         Check admin credentials against process settings.
+        
+        Uses constant-time comparison to prevent timing attacks.
 
         :param username: Admin username
         :type username: str
@@ -42,8 +55,12 @@ class ModuleAdminAuth:
         :rtype: bool
         """
         try:
-            return (username == self.process_settings.SOGO_P_ADMIN and
-                    password == self.process_settings.SOGO_P_ADMIN_PWD)
+            admin_user = self.process_settings.SOGO_P_ADMIN
+            admin_pwd = self.process_settings.SOGO_P_ADMIN_PWD
+            # Use constant-time comparison to prevent timing attacks
+            username_ok = secrets.compare_digest(username, admin_user)
+            password_ok = secrets.compare_digest(password, admin_pwd)
+            return username_ok and password_ok
         except (AttributeError, TypeError):
             return False
 

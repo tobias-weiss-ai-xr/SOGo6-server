@@ -1,5 +1,33 @@
 from http import HTTPStatus
 
+
+class SOGo6Error(Exception):
+    """Base class for SOGo 6 domain errors.
+
+    Subclasses declare class attributes ``http_status``, ``error_code`` and
+    ``message`` (optionally an ``error_code_prefix``). The HTTP status defaults
+    to 500 when not overridden.
+    """
+
+    error_code_prefix: str = "SOGO"
+    http_status: int = HTTPStatus.INTERNAL_SERVER_ERROR
+    error_code: str = "SOGO_ERROR"
+    message: str = "An unexpected error occurred"
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or self.message)
+        if message is not None:
+            self.message = message
+
+    def to_dict(self) -> dict:
+        """Return the error as a serialisable dict."""
+        return {
+            "error_code": self.error_code,
+            "error_msg": self.message,
+            "http_status": self.http_status,
+        }
+
+
 class E:
     """
     Class to represent a SOGo 6 API error.
@@ -75,6 +103,7 @@ ERROR_LOGIN_FAILED             = E("S000208", "Login Failed: Invalid Credentials
 
 #API
 ERROR_VALIDATION_ERROR      = E("S000300", "Request Data Incorrect Format", HTTPStatus.BAD_REQUEST)
+ERROR_VALIDATION_FAILED      = ERROR_VALIDATION_ERROR  # alias kept for module callers
 ERROR_DOMAIN_NAME_TAKEN     = E("S000301", "Domain's Name Already Taken", HTTPStatus.BAD_REQUEST)
 ERROR_DOMAIN_NAME_NOT_FOUND = E("S000302", "Domain's Name Not Found", HTTPStatus.NOT_FOUND)
 
@@ -89,28 +118,89 @@ ERROR_MISSING_ACTION_DATA    = E("S001306", "Missing Required Data For Action", 
 
 ERROR_IMAP_UNAUTHORIZED      = E("S000310", "IMAP Unauthorized - Invalid Credentials Or Insufficient Permissions", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_CONNECTION_FAILED = E("S000311", "IMAP connection failed", HTTPStatus.SERVICE_UNAVAILABLE)
-ERROR_MAILBOX_NOT_FOUND      = E("S000312", "Mailbox Not Found", HTTPStatus.NOT_FOUND)
+ERROR_MAILBOX_NOT_FOUND          = E("S000312", "Mailbox Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SHARED_MAILBOX_DUPLICATE    = E("S000382", "Shared Mailbox Already Exists", HTTPStatus.CONFLICT)
+ERROR_SHARED_MAILBOX_NOT_FOUND    = E("S000383", "Shared Mailbox Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SHARED_MAILBOX_MEMBER_NOT_FOUND = E("S000397", "Shared Mailbox Member Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SHARED_MAILBOX_MEMBER_ALREADY_EXISTS = E("S000398", "Shared Mailbox Member Already Exists", HTTPStatus.CONFLICT)
+ERROR_SHARED_MAILBOX_ACCESS_DENIED = E("S000399", "Shared Mailbox Access Denied", HTTPStatus.FORBIDDEN)
+ERROR_SHARED_MAILBOX_ROLE_INVALID = E("S00039A", "Shared Mailbox Role Is Invalid", HTTPStatus.BAD_REQUEST)
+ERROR_SHARED_MAILBOX_NOTE_NOT_FOUND = E("S00039B", "Shared Mailbox Note Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SHARED_MAILBOX_ASSIGNMENT_NOT_FOUND = E("S00039C", "Shared Mailbox Assignment Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SHARED_MAILBOX_ASSIGNMENT_ALREADY_EXISTS = E("S00039D", "Shared Mailbox Assignment Already Exists", HTTPStatus.CONFLICT)
+ERROR_SHARED_MAILBOX_ASSIGNMENT_ACCESS_DENIED = E("S00039E", "Shared Mailbox Assignment Access Denied", HTTPStatus.FORBIDDEN)
+ERROR_SHARED_MAILBOX_QUOTA_EXCEEDED = E("S00039F", "Shared Mailbox Quota Exceeded", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_SHARED_MAILBOX_NOT_ACTIVE = E("S0003A0", "Shared Mailbox Is Not Active", HTTPStatus.CONFLICT)
+ERROR_RESOURCE_DUPLICATE          = E("S000384", "Resource Already Exists", HTTPStatus.CONFLICT)
+ERROR_RESOURCE_NOT_FOUND          = E("S000385", "Resource Not Found", HTTPStatus.NOT_FOUND)
+ERROR_RESOURCE_ACCESS_DENIED      = E("S000386", "Resource Access Denied", HTTPStatus.FORBIDDEN)
+ERROR_RESOURCE_NOT_AVAILABLE      = E("S000387", "Resource Not Available", HTTPStatus.CONFLICT)
+ERROR_RESOURCE_CONFLICT           = E("S000388", "Resource Booking Conflict", HTTPStatus.CONFLICT)
+ERROR_BOOKING_NOT_FOUND           = E("S000389", "Booking Not Found", HTTPStatus.NOT_FOUND)
+ERROR_BOOKING_ACCESS_DENIED       = E("S000390", "Booking Access Denied", HTTPStatus.FORBIDDEN)
+ERROR_BOOKING_CANCEL_FAILED       = E("S000391", "Booking Cancellation Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_SNOOZE_DUPLICATE            = E("S001386", "Mail Already Snoozed", HTTPStatus.CONFLICT)
+ERROR_SNOOZE_NOT_FOUND            = E("S001387", "Snooze Record Not Found", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_DELETION          = E("S000313", "Mail Deletion Error", HTTPStatus.BAD_REQUEST)
+ERROR_RULE_NAME_TAKEN       = E("S000380", "Rule's Name Already Taken", HTTPStatus.BAD_REQUEST)
+ERROR_RULE_NOT_FOUND        = E("S000381", "Rule Not Found", HTTPStatus.NOT_FOUND)
 ERROR_IMAP_LOGOUT            = E("S001300", "Try To Make An IMAP Command While Being In LOGOUT state", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_UNAIVALABLE       = E("S001301", "IMAP Command Failed Momenteraly, Try Again Later", HTTPStatus.SERVICE_UNAVAILABLE)
 ERROR_IMAP_FAILED            = E("S001302", "IMAP Command Failed, See Logs To Get More Details", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_UNKNWON_AUTH_MECH = E("S001303", "IMAP Auth Mechanism Unknown", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_IMAP_NOT_ASCII         = E("S001304", "Name for imap command is not ascii", HTTPStatus.BAD_REQUEST)
-ERROR_IMAP_READONLY          = E("S001305", "Writting Command to a readonly folder", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_IMAP_INVALID_CHARS     = E("S001305", "Name for imap command contains invalid characters", HTTPStatus.BAD_REQUEST)
+ERROR_IMAP_READONLY          = E("S001320", "Writting Command to a readonly folder", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_MAIL_UID_INVALID       = E("S001307", "Mail UID Must Be A Valid Positive Integer", HTTPStatus.BAD_REQUEST)
 
 ERROR_MAIL_DOWNLOAD_FAILED          = E("S000360", "Mail Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_ZIP_FAILED               = E("S000361", "Mail Zip Archive Creation Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_ENCRYPTION_KEY_NOT_CONFIGURED = E("S0003A1", "Encryption Key Not Configured (set SOGO_AES_ENC_KEY)", HTTPStatus.PRECONDITION_FAILED)
+ERROR_ENCRYPTION_FAILED             = E("S0003A2", "Encryption Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_DECRYPTION_FAILED             = E("S0003A3", "Decryption Failed Or Data Corrupted", HTTPStatus.BAD_REQUEST)
+ERROR_ENCRYPTED_DATA_INVALID        = E("S0003A4", "Encrypted Data Format Is Invalid", HTTPStatus.BAD_REQUEST)
+ERROR_PUSH_PROVIDER_NOT_CONFIGURED = E("S0003B1", "Push Provider Not Configured (set SOGO_PUSH_PROVIDER=apns or fcm)", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_PUSH_PROVIDER_UNSUPPORTED    = E("S0003B2", "Push Provider Delivery Backend Unsupported", HTTPStatus.NOT_IMPLEMENTED)
+ERROR_IMPORT_ENGINE_UNAVAILABLE    = E("S0003B3", "Import Engine Unavailable (install readpst/libpst)", HTTPStatus.NOT_IMPLEMENTED)
+ERROR_IMPORT_ENGINE_UNSUPPORTED    = E("S0003B4", "Import Engine Not Wired Yet", HTTPStatus.NOT_IMPLEMENTED)
+ERROR_M365_IMPORT_UNAVAILABLE      = E("S0003B5", "Microsoft 365 Import Not Wired Yet", HTTPStatus.NOT_IMPLEMENTED)
 ERROR_MAIL_ATTACHMENT_NOT_FOUND     = E("S000367", "Mail Attachment Not Found", HTTPStatus.NOT_FOUND)
 ERROR_MAIL_ATTACHMENT_DOWNLOAD_FAILED = E("S000368", "Mail Attachment Download Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_EDIT_FAILED       = E("S000366", "Failed To Open Mail For Editing", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_INVALID_ENCRYPTED_DATA = E("S000362", "Encrypted Password Is Not Valid Base64 Data", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_INVALID_LIMIT         = E("S000369", "Invalid Limit Value - Must Be Non-Negative Integer", HTTPStatus.BAD_REQUEST)
+ERROR_INVALID_OFFSET        = E("S000370", "Invalid Offset Value - Must Be Non-Negative Integer", HTTPStatus.BAD_REQUEST)
 ERROR_MAIL_SAVE_DRAFT_FAILED = E("S000365", "Mail Draft Save Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_SAVE_SENT_FAILED  = E("S000363", "Saving Sent Mail To Folder Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_MAIL_DELETE_DRAFT_FAILED = E("S000364", "Deleting Draft Mail After Sending Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_MAIL_UNDO_SEND_NOT_FOUND  = E("S000392", "Pending Send Not Found Or Already Expired", HTTPStatus.NOT_FOUND)
+ERROR_MAIL_UNDO_SEND_EXPIRED    = E("S000393", "Undo Send Window Has Expired", HTTPStatus.GONE)
+ERROR_MAIL_SCHEDULE_SEND_FAILED = E("S000394", "Failed To Schedule Send For Later Delivery", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_MAIL_SCHEDULE_NOT_FOUND        = E("S000395", "Scheduled Send Not Found Or Already Delivered", HTTPStatus.NOT_FOUND)
+ERROR_MAIL_SCHEDULE_IN_DELIVERY      = E("S000488", "Scheduled Send Is Currently Being Delivered", HTTPStatus.CONFLICT)
+ERROR_MAIL_SCHEDULE_MAX_DELAY        = E("S000489", "Scheduled Date Exceeds Maximum Allowed Delay", HTTPStatus.BAD_REQUEST)
+ERROR_MIGRATION_NOT_FOUND             = E("S000490", "Migration Job Not Found", HTTPStatus.NOT_FOUND)
+ERROR_INTERCOM_UNREACHABLE            = E("S000491", "Intercom Service Unreachable", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_MAIL_SCHEDULE_INVALID_DATE     = E("S000396", "Invalid Scheduled Date Format — expected ISO 8601", HTTPStatus.BAD_REQUEST)
+
+# PGP / End-to-End Encryption
+ERROR_PGP_KEY_ALREADY_EXISTS          = E("S000505", "PGP Key Already Exists", HTTPStatus.CONFLICT)
+ERROR_PGP_KEY_NOT_FOUND               = E("S000506", "PGP Key Not Found", HTTPStatus.NOT_FOUND)
+ERROR_PGP_RECIPIENT_KEY_NOT_FOUND     = E("S000507", "Recipient PGP Key Not Found", HTTPStatus.NOT_FOUND)
+ERROR_PGP_ENCRYPT_FAILED              = E("S000508", "PGP Encryption Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PGP_DECRYPT_FAILED              = E("S000509", "PGP Decryption Failed — Invalid Key Or Corrupted Message", HTTPStatus.BAD_REQUEST)
+
+# API Tokens
+ERROR_API_TOKEN_NOT_FOUND             = E("S000510", "API Token Not Found", HTTPStatus.NOT_FOUND)
+ERROR_API_TOKEN_EXPIRED               = E("S000511", "API Token Has Expired", HTTPStatus.UNAUTHORIZED)
+ERROR_API_TOKEN_INVALID               = E("S000512", "API Token Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_OAUTH_INVALID_CLIENT            = E("S000520", "OAuth Client Not Found", HTTPStatus.NOT_FOUND)
+ERROR_POLL_CLOSED                     = E("S000530", "Scheduling Poll Is Closed", HTTPStatus.BAD_REQUEST)
+ERROR_POLL_PARTICIPANT_NOT_FOUND      = E("S000531", "Participant Not Found In Poll", HTTPStatus.NOT_FOUND)
 
 # tmp_draft
-ERROR_TMP_DRAFT_NOT_FOUND       = E("S000370", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
-ERROR_TMP_DRAFT_LOCKED          = E("S000371", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
+ERROR_TMP_DRAFT_NOT_FOUND       = E("S000371", "Tmp Draft Not Found", HTTPStatus.NOT_FOUND)
+ERROR_TMP_DRAFT_LOCKED          = E("S000636", "Tmp Draft Is Locked By Another Operation", HTTPStatus.CONFLICT)
 ERROR_TMP_DRAFT_OWNER_MISMATCH  = E("S000372", "Tmp Draft Does Not Belong To This User", HTTPStatus.FORBIDDEN)
 ERROR_TMP_DRAFT_INSERT_FAILED   = E("S000373", "Failed To Insert Tmp Draft", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_TMP_DRAFT_UPDATE_FAILED   = E("S000374", "Failed To Update Tmp Draft", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -126,6 +216,7 @@ ERROR_USER_PROFILE_DUPLICATE         = E("S000314", "Multiple User Profiles Foun
 ERROR_USER_PROFILE_CREATION_FAILED   = E("S000315", "User Profile Creation Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_USER_PROFILE_INSERT_MISMATCH   = E("S000316", "User Profile Insert Row Count Mismatch", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_USER_PROFILE_NOT_FOUND         = E("S000317", "User Profile Not Found", HTTPStatus.NOT_FOUND)
+ERROR_FILTER_NOT_FOUND               = E("S000637", "Filter Not Found", HTTPStatus.NOT_FOUND)
 ERROR_USER_PROFILE_UPDATE_FAILED     = E("S000318", "User Profile Update Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_USER_PROFILE_NO_IDENTITY       = E("S000319", "Account must have at least wone identity", HTTPStatus.BAD_REQUEST)
 ERROR_USER_PROFILE_MISMATCH_CLASS_DB = E("S000326", "User profile colums differentiate from UserProfile class attributes", HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -223,6 +314,35 @@ ERROR_CALENDAR_IMPORT_TOO_LARGE              = E("S000622", "Import Payload Exce
 ERROR_CALENDAR_PUBLIC_LINK_DISABLED          = E("S000623", "Public Calendar Link Is Disabled For This Domain", HTTPStatus.FORBIDDEN)
 ERROR_CALENDAR_EXPORT_FORMAT_UNSUPPORTED     = E("S000624", "Requested Export Format Is Not Supported", HTTPStatus.NOT_ACCEPTABLE)
 ERROR_CALENDAR_IMIP_SENDER_MISMATCH          = E("S000625", "iMIP Sender Is Not The Event Organizer", HTTPStatus.FORBIDDEN)
+ERROR_CALENDAR_SYNC_FAILED                  = E("S000626", "Calendar Synchronization Failed", HTTPStatus.BAD_GATEWAY)
+ERROR_CALENDAR_CALDAV_DISCOVERY_FAILED      = E("S000627", "CalDAV Calendar Discovery Failed", HTTPStatus.BAD_GATEWAY)
+ERROR_CALENDAR_MAINTENANCE_REQUIRE_TARGET    = E("S000628", "At Least One Of user_uid Or calendar_key Is Required", HTTPStatus.BAD_REQUEST)
+ERROR_CALENDAR_RESOURCE_CONFLICT              = E("S000629", "Resource Is Not Available At The Requested Time", HTTPStatus.CONFLICT)
+ERROR_CALENDAR_RESOURCE_NOT_FOUND             = E("S000630", "Resource Not Found", HTTPStatus.NOT_FOUND)
+ERROR_CALENDAR_INVITE_NOT_FOUND               = E("S000631", "Calendar Invitation Not Found", HTTPStatus.NOT_FOUND)
+ERROR_CALENDAR_INVITE_ALREADY_EXISTS          = E("S000632", "User Already Invited To This Calendar", HTTPStatus.CONFLICT)
+ERROR_CALENDAR_INVITE_INVALID_STATUS          = E("S000633", "Invitation Is Not In A Valid State For This Operation", HTTPStatus.CONFLICT)
+ERROR_CALENDAR_NOT_TEAM                       = E("S000634", "Calendar Is Not A Team Calendar", HTTPStatus.BAD_REQUEST)
+ERROR_CALENDAR_MEMBER_NOT_FOUND               = E("S000635", "Team Calendar Member Not Found", HTTPStatus.NOT_FOUND)
+
+#the email auth wizard
+ERROR_EMAIL_AUTH_DOMAIN_NOT_FOUND        = E("S000638", "Email Auth Domain Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS   = E("S000639", "Email Auth Domain Already Exists", HTTPStatus.CONFLICT)
+ERROR_EMAIL_AUTH_DKIM_NOT_FOUND          = E("S000640", "DKIM Configuration Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_DMARC_NOT_FOUND         = E("S000641", "DMARC Configuration Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_SPF_NOT_FOUND           = E("S000642", "SPF Configuration Not Found", HTTPStatus.NOT_FOUND)
+ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH      = E("S000643", "Invalid DKIM Key Length", HTTPStatus.BAD_REQUEST)
+
+#the caldav server
+ERROR_CALDAV_PATH_NOT_FOUND          = E("S000644", "CalDAV Resource Not Found", HTTPStatus.NOT_FOUND)
+ERROR_CALDAV_CALENDAR_EXISTS         = E("S000645", "Calendar Collection Already Exists", HTTPStatus.CONFLICT)
+ERROR_CALDAV_PRECONDITION_FAILED     = E("S000646", "If-Match / If-None-Match Precondition Failed", HTTPStatus.PRECONDITION_FAILED)
+ERROR_CALDAV_SYNC_TOKEN_INVALID      = E("S000647", "Invalid CalDAV Sync Token", HTTPStatus.BAD_REQUEST)
+ERROR_CALDAV_INVALID_ICAL            = E("S000648", "Invalid iCalendar Body", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_CALDAV_NO_COMPONENT            = E("S000649", "iCalendar Body Has No Matching VEVENT/VTODO/VJOURNAL", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_CALDAV_AUTH_REQUIRED           = E("S000650", "CalDAV Authentication Required", HTTPStatus.UNAUTHORIZED)
+ERROR_CALDAV_PROP_READ_ONLY          = E("S000651", "Property Is Read-Only", HTTPStatus.FORBIDDEN)
+ERROR_CALDAV_REPORT_UNSUPPORTED      = E("S000652", "Unsupported CalDAV REPORT Type", HTTPStatus.BAD_REQUEST)
 
 #the contacts
 ERROR_CONTACT_JSON_PARSE_FAILED              = E("S000700", "Failed To Parse Contact JSON Content", HTTPStatus.UNPROCESSABLE_ENTITY)
@@ -245,6 +365,7 @@ ERROR_CONTACT_IMPORT_NO_FILE                 = E("S000716", "No File Provided In
 ERROR_CONTACT_IMPORT_TOO_LARGE               = E("S000717", "Import Payload Exceeds Maximum Allowed Size", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
 ERROR_CONTACT_IMPORT_PARSE_FAILED            = E("S000718", "Failed To Parse The Import Document", HTTPStatus.UNPROCESSABLE_ENTITY)
 ERROR_CONTACT_DISPLAY_NAME_REQUIRED          = E("S000719", "Contact Display Name Is Required", HTTPStatus.UNPROCESSABLE_ENTITY)
+ERROR_CONTACT_ADDRESSBOOK_SYNC_FAILED        = E("S000720", "External Address Book Sync Failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 
 #AGENT / TASK
 ERROR_JOB_NOT_FOUND        = E("S000800", "Job Not Found", HTTPStatus.NOT_FOUND)
@@ -266,3 +387,69 @@ ERROR_ADMIN_AUTH_NOT_CONFIG = E("S001001", "Admin Authentication Not Configured"
 
 #the bugs
 ERROR_UNKOWN = E("S999999", "Undefined Error", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+# ── Password Change (S0011xx) ────────────────────────────────────────────────
+ERROR_PWD_CHANGE_DISABLED     = E("S001100", "Password Change Is Not Enabled For This Domain", HTTPStatus.FORBIDDEN)
+ERROR_PWD_CHANGE_REAUTH_FAILED = E("S001101", "Current Password Is Incorrect", HTTPStatus.UNAUTHORIZED)
+ERROR_PWD_CHANGE_FAILED        = E("S001102", "Failed To Change Password", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PWD_POLICY_VIOLATION     = E("S001103", "Password Does Not Meet Domain Security Requirements", HTTPStatus.BAD_REQUEST)
+
+# ── OIDC Authentication (S0012xx) ─────────────────────────────────────────────
+ERROR_OIDC_NOT_CONFIGURED     = E("S001200", "OIDC Is Not Configured For This Domain", HTTPStatus.PRECONDITION_FAILED)
+ERROR_OIDC_DISCOVERY_FAILED   = E("S001201", "OIDC Provider Discovery Failed", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_OIDC_TOKEN_EXCHANGE_FAILED = E("S001202", "OIDC Token Exchange Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_OIDC_ID_TOKEN_INVALID   = E("S001203", "OIDC ID Token Validation Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_OIDC_USERINFO_FAILED     = E("S001204", "OIDC User Info Retrieval Failed", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_OIDC_STATE_MISMATCH      = E("S001205", "OIDC State Parameter Mismatch", HTTPStatus.UNAUTHORIZED)
+ERROR_OIDC_REDIRECT_NOT_ALLOWED = E("S001206", "OIDC Redirect URI Not In Allowlist", HTTPStatus.BAD_REQUEST)
+
+# ── SAML2 Authentication (S00121x) ────────────────────────────────────────────
+ERROR_SAML_NOT_CONFIGURED      = E("S001210", "SAML2 Is Not Configured For This Domain", HTTPStatus.PRECONDITION_FAILED)
+ERROR_SAML_RESPONSE_INVALID    = E("S001211", "SAML2 Response Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_ISSUER_MISMATCH     = E("S001212", "SAML2 Assertion Issuer Mismatch", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_STATUS_FAILURE      = E("S001213", "SAML2 IdP Returned Failure Status", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_SIGNATURE_INVALID   = E("S001214", "SAML2 Signature Verification Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_REPLAY_DETECTED     = E("S001215", "SAML2 Replay Detected (InResponseTo Already Consumed)", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_REQUEST_EXPIRED     = E("S001216", "SAML2 AuthnRequest Expired Or Unknown", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_CONDITIONS_EXPIRED  = E("S001217", "SAML2 Conditions Expired Or Not Yet Valid", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_AUDIENCE_MISMATCH   = E("S001218", "SAML2 Audience Restriction Does Not Include SP", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_ENCRYPTED_ASSERTION_NO_KEY = E("S001219", "SAML2 Encrypted Assertion Received But No SP Key Configured", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_METADATA_FETCH_FAILED = E("S00121A", "SAML2 IdP Metadata Fetch Failed", HTTPStatus.SERVICE_UNAVAILABLE)
+ERROR_SAML_FEDERATION_METADATA_SIGNATURE_INVALID = E("S00121B", "SAML2 Federation Metadata Signature Verification Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_SAML_SP_KEYPAIR_NOT_CONFIGURED = E("S00121C", "SAML2 SP Keypair Not Configured", HTTPStatus.PRECONDITION_FAILED)
+ERROR_SAML_PROVIDER_NOT_FOUND  = E("S00121D", "SAML2 Provider Not Found", HTTPStatus.NOT_FOUND)
+ERROR_SAML_DISCOVERY_REQUIRED  = E("S00121E", "SAML2 Discovery Service Required (Multiple IdPs Available)", HTTPStatus.BAD_REQUEST)
+
+# ── App Passwords (S00122x) ───────────────────────────────────────────────────
+ERROR_APP_PASSWORD_NOT_FOUND   = E("S001220", "App Password Not Found", HTTPStatus.NOT_FOUND)
+ERROR_APP_PASSWORD_NOT_OWNED   = E("S001221", "App Password Does Not Belong To User", HTTPStatus.FORBIDDEN)
+ERROR_APP_PASSWORD_INVALID     = E("S001222", "App Password Token Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_APP_PASSWORD_LABEL_EMPTY = E("S001223", "App Password Label Cannot Be Empty", HTTPStatus.BAD_REQUEST)
+
+# ── MFA / TOTP (S00123x) ──────────────────────────────────────────────────────
+ERROR_MFA_TOTP_NOT_CONFIGURED = E("S001230", "TOTP Is Not Configured For This Account", HTTPStatus.PRECONDITION_FAILED)
+ERROR_MFA_TOTP_ALREADY_ENABLED = E("S001231", "TOTP Is Already Enabled For This Account", HTTPStatus.CONFLICT)
+ERROR_MFA_TOTP_ALREADY_DISABLED = E("S001232", "TOTP Is Already Disabled For This Account", HTTPStatus.CONFLICT)
+ERROR_MFA_TOTP_INVALID_CODE   = E("S001233", "TOTP Verification Code Is Invalid", HTTPStatus.UNAUTHORIZED)
+ERROR_MFA_TOTP_SETUP_REQUIRED = E("S001234", "TOTP Setup Required Before Enabling", HTTPStatus.PRECONDITION_FAILED)
+ERROR_MFA_TOTP_NOT_ENABLED    = E("S001235", "TOTP Is Not Enabled For This Account", HTTPStatus.PRECONDITION_FAILED)
+ERROR_MFA_TOTP_VOUCHER_INVALID = E("S001236", "MFA Voucher Token Is Invalid Or Expired", HTTPStatus.UNAUTHORIZED)
+
+# ── WebAuthn / Passkeys (S00124x) ──────────────────────────────────────────────
+ERROR_WEBAUTHN_NOT_CONFIGURED      = E("S001240", "WebAuthn Is Not Configured For This Account", HTTPStatus.PRECONDITION_FAILED)
+ERROR_WEBAUTHN_ALREADY_ENABLED     = E("S001241", "WebAuthn Credential Already Exists", HTTPStatus.CONFLICT)
+ERROR_WEBAUTHN_CREDENTIAL_NOT_FOUND = E("S001242", "WebAuthn Credential Not Found", HTTPStatus.NOT_FOUND)
+ERROR_WEBAUTHN_REGISTRATION_FAILED = E("S001243", "WebAuthn Registration Verification Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_WEBAUTHN_AUTHENTICATION_FAILED = E("S001244", "WebAuthn Authentication Verification Failed", HTTPStatus.UNAUTHORIZED)
+ERROR_WEBAUTHN_CHALLENGE_EXPIRED   = E("S001245", "WebAuthn Challenge Has Expired", HTTPStatus.UNAUTHORIZED)
+
+#Password Recovery
+ERROR_PWD_RESET_DISABLED          = E("S001310", "Password Recovery Is Not Enabled For This Domain", HTTPStatus.FORBIDDEN)
+ERROR_PWD_RESET_USER_NOT_FOUND    = E("S001311", "User Not Found For Password Recovery", HTTPStatus.NOT_FOUND)
+ERROR_PWD_RESET_TOKEN_INVALID     = E("S001312", "Password Reset Token Is Invalid Or Expired", HTTPStatus.UNAUTHORIZED)
+ERROR_PWD_RESET_TOKEN_USED        = E("S001313", "Password Reset Token Has Already Been Used", HTTPStatus.CONFLICT)
+ERROR_PWD_RESET_TOKEN_EXPIRED     = E("S001314", "Password Reset Token Has Expired", HTTPStatus.UNAUTHORIZED)
+ERROR_PWD_RESET_RATE_LIMITED      = E("S001315", "Password Reset Requested Too Frequently. Please Wait Before Trying Again", HTTPStatus.TOO_MANY_REQUESTS)
+ERROR_PWD_RESET_UPDATE_FAILED     = E("S001316", "Failed To Update Password During Reset", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PWD_RESET_TOKEN_GEN_FAILED  = E("S001317", "Failed To Generate Password Reset Token", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_PWD_RESET_EMAIL_FAILED      = E("S001318", "Failed To Send Password Reset Email", HTTPStatus.SERVICE_UNAVAILABLE)

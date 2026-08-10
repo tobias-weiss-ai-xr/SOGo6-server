@@ -7,7 +7,10 @@ from app.module.contact.model.enums.CardSourceType import CardSourceType
 from app.module.contact.repository.RepositoryAddressBook import RepositoryAddressBook
 from app.module.contact.repository.RepositoryContact import RepositoryContact
 from app.module.contact.repository.RepositoryContactList import RepositoryContactList
+from app.module.contact.repository.RepositoryContactShare import RepositoryContactShare
+from app.module.contact.source.ContactSourceCardDav import ContactSourceCardDav
 from app.module.contact.source.ContactSourceDb import SORTABLE_COLUMNS, ContactSourceDb
+from app.module.contact.source.ContactSourceDirectory import ContactSourceDirectory
 from app.utils import errors as err
 from app.utils.db.Condition import Order
 from app.utils.exceptions import RequestException
@@ -35,9 +38,14 @@ class ContactSources:
     for the annuaire (SQL or LDAP), one ContactSourceDirectory per source.
     """
 
-    def __init__(self, db: ClientSQL) -> None:
+    def __init__(
+        self,
+        db: ClientSQL,
+        share_repo: RepositoryContactShare | None = None,
+    ) -> None:
         self._db = db
         self._repo_addressbook = RepositoryAddressBook(db)
+        self._share_repo = share_repo
 
     def purge_orphans(self, file_store: ClientStorage) -> int:
         """Physically remove soft-deleted rows, dangling list memberships and orphan media; return total reclaimed.
@@ -57,20 +65,67 @@ class ContactSources:
     def get(self, addressbook: CardAddressBook, user_sources: dict[str, UserSourceSettingsObj] | None = None) -> ContactSource:
         """Return the appropriate ContactSource for the given address book.
 
-        Local books are served from the DB; user_sources is reserved for building the directory
-        source of a directory address book (the matching US_IS_ADDRESSBOOK source is picked from it).
+        Local books are served from the DB, CardDAV books from the sync engine.
+        Directory books (synthetic, read-only) are backed by the matching
+        US_IS_ADDRESSBOOK entry in user_sources.
         """
         if addressbook.source_type == CardSourceType.LOCAL:
             return ContactSourceDb(self._db, addressbook)
-        # TODO directory: a non-LOCAL source builds a read-only ContactSourceDirectory from the
-        # matching US_IS_ADDRESSBOOK entry in user_sources. Blocked on the user source query
-        # primitive; wired together with the key routing in get_by_key (see TODO there).
+
+        if addressbook.source_type == CardSourceType.CARDDAV:
+            return ContactSourceCardDav(self._db, addressbook)
+
+        if addressbook.source_type == CardSourceType.DIRECTORY:
+            if user_sources is None:
+                raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED)
+            source_uid: str | None = _parse_directory_key(addressbook.key)
+            if source_uid is None:
+                raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED)
+            user_source: UserSourceSettingsObj | None = user_sources.get(source_uid)
+            if user_source is None:
+                logger_contact.error(
+                    "Directory address book %s references unknown user source %s",
+                    addressbook.key, source_uid)
+                raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED)
+            return ContactSourceDirectory(addressbook, user_source)
+
         logger_contact.error("Unknown source_type=%s for address book key=%s", addressbook.source_type, addressbook.key)
         raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED)
 
     def get_all(self, user_uid: str, user_sources: dict[str, UserSourceSettingsObj] | None = None) -> list[ContactSource]:
-        """Return a source for every address book owned by user_uid (local books; directory later)."""
-        return [self.get(book, user_sources) for book in self._repo_addressbook.find_all(user_uid)]
+        """Return a source for every address book visible to user_uid.
+
+        Includes address books OWNED by user_uid, books SHARED WITH user_uid
+        (from sogo6_contacts_shares), and synthetic directory address books for each
+        user source flagged with US_IS_ADDRESSBOOK. Per-book permissions are enforced
+        downstream by ContactAclEngine.get_share_level().
+        """
+        owned: list[CardAddressBook] = self._repo_addressbook.find_all(user_uid)
+        seen_keys: set[str | None] = {book.key for book in owned}
+        if self._share_repo is not None:
+            shared_keys: list[str] = self._share_repo.find_addressbook_keys_for_user(user_uid)
+            for key in shared_keys:
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    book = self._repo_addressbook.find_by_key_unscoped(key)
+                    if book is not None:
+                        owned.append(book)
+
+        # Add synthetic directory books from US_IS_ADDRESSBOOK user sources
+        if user_sources is not None:
+            for source_uid, us_cfg in user_sources.items():
+                if us_cfg.US_IS_ADDRESSBOOK:
+                    dir_key: str = f"dir:{source_uid}"
+                    if dir_key not in seen_keys:
+                        seen_keys.add(dir_key)
+                        dir_book: CardAddressBook = _make_directory_book(source_uid, us_cfg, user_uid)
+                        owned.append(dir_book)
+
+        return [self.get(book, user_sources) for book in owned]
+
+    def update_sync_config(self, addressbook: CardAddressBook) -> None:
+        """Persist sync_config changes for an external address book."""
+        self._repo_addressbook.update(addressbook)
 
     def get_default(self, user_uid: str) -> ContactSource | None:
         """Return the default address book source for user_uid, or None if the user has none."""
@@ -80,12 +135,25 @@ class ContactSources:
     def get_by_key(
         self, user_uid: str, key: str, user_sources: dict[str, UserSourceSettingsObj] | None = None,
     ) -> ContactSource | None:
-        """Return the source for a specific address book, or None if not found."""
-        # TODO directory: route on the key. Directory books carry a reserved "dir:<source_uid>"
-        # prefix (a raw UUID never starts with it), so the branch is unambiguous: strip the prefix,
-        # look the source_uid up in user_sources, build a synthetic directory book. A plain UUID
-        # falls through to the DB lookup below. Blocked on the user source query primitive.
+        """Return the source for a specific address book, or None if not found.
+
+        Directory books carry a reserved "dir:<source_uid>" prefix (a raw UUID never
+        starts with it), so the branch is unambiguous: strip the prefix, look the
+        source_uid up in user_sources, build a synthetic directory book. A plain UUID
+        falls through to the DB lookup below.
+        """
+        if key.startswith("dir:") and user_sources is not None:
+            source_uid = _parse_directory_key(key)
+            if source_uid and source_uid in user_sources:
+                us_cfg: UserSourceSettingsObj = user_sources[source_uid]
+                if us_cfg.US_IS_ADDRESSBOOK:
+                    book: CardAddressBook = _make_directory_book(source_uid, us_cfg, user_uid)
+                    return self.get(book, user_sources)
+            return None
+
         book = self._repo_addressbook.find_by_key(user_uid, key)
+        if book is None:
+            book = self._repo_addressbook.find_by_key_unscoped(key)
         return self.get(book, user_sources) if book is not None else None
 
     def get_contacts(  # pylint: disable=too-many-locals
@@ -183,3 +251,29 @@ class ContactSources:
         """Stamp each contact's originating address book name (display only) from a key->name cache."""
         for contact in contacts:
             contact.addressbook_name = book_names.get(contact.addressbook_key)
+
+
+def _parse_directory_key(key: str) -> str | None:
+    """Extract the source_uid from a ``dir:<source_uid>`` key, or None if the key format is invalid."""
+    if not key or not key.startswith("dir:"):
+        return None
+    parts: list[str] = key.split(":", 2)
+    if len(parts) < 2:
+        return None
+    return parts[1]
+
+
+def _make_directory_book(source_uid: str, us_cfg: UserSourceSettingsObj, user_uid: str) -> CardAddressBook:
+    """Build a synthetic CardAddressBook representing the domain directory backed by *source_uid*.
+
+    The book is not persisted in the DB; it exists only as a runtime object so the
+    contact source layer can dispatch queries to ContactSourceDirectory.
+    """
+    return CardAddressBook(
+        user_uid=user_uid,
+        key=f"dir:{source_uid}",
+        name=us_cfg.US_NAME or "Domain Directory",
+        description=us_cfg.US_NAME or "",
+        is_default=False,
+        source_type=CardSourceType.DIRECTORY,
+    )

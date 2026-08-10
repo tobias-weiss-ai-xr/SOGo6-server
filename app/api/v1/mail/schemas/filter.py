@@ -1,9 +1,8 @@
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
-from marshmallow import Schema, ValidationError, fields, validate, validates_schema, post_load
-from marshmallow.validate import Email
+from marshmallow import Schema, ValidationError, fields, validate, validates_schema
 from app.utils.api.ApiBaseResponse import ApiBaseResponse
 from app.utils import constants as cs
 
@@ -57,29 +56,26 @@ class DateTimeWithTzField(fields.Field):
             datetime.strptime(date_part, "%Y-%m-%d")
 
             time_part_base = time_part
-            has_tz = False
 
             # Check for Z (UTC)
             if time_part_base.endswith("Z"):
                 time_part_base = time_part_base[:-1]
-                has_tz = True
+                _ = True
             # Check for +/- timezone offset
             elif "+" in time_part_base:
                 idx = time_part_base.rfind("+")
                 time_part_base = time_part_base[:idx]
-                has_tz = True
+                _ = True
             elif time_part_base.count("-") > 0:
                 idx = time_part_base.rfind("-")
                 if idx > 7:  # After HH:MM:SS minimum
                     time_part_base = time_part_base[:idx]
-                    has_tz = True
             elif ":" in time_part_base and time_part_base.count(":") > 2:
                 # Check for :Zone format
                 parts = time_part_base.rsplit(":", 1)
                 tz_candidate = parts[1]
                 if "/" in tz_candidate or tz_candidate.startswith("UTC") or tz_candidate.startswith("GMT"):
                     time_part_base = parts[0]
-                    has_tz = True
 
             # Validate the time part (HH:MM:SS or HH:MM:SS.ffffff)
             # Try to parse it
@@ -689,4 +685,132 @@ class NotificationGetResponseSchema(ApiBaseResponse):
             "error_code": "S000000",
             "error_msg": "No Error",
             "data": NotificationPayloadSchema.example(),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Sieve Editor granular filter endpoints (spec: sieve-editor)
+# ---------------------------------------------------------------------------
+
+class FilterItemPayloadSchema(Schema):
+    """Payload for creating/updating a single filter (PUT /filters/{id})."""
+    name    = fields.String(required=True)
+    enabled = fields.Boolean(load_default=True, dump_default=True)
+    actions = fields.List(fields.Nested(FilterSchema), required=True)
+    rules   = fields.Nested(FilterRuleSchema, required=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "name": "Move from CEO with urgent subject to INBOX",
+            "enabled": True,
+            "actions": [{"method": "fileinto", "arguments": {"folders": ["INBOX"]}}],
+            "rules": {
+                "op": "and",
+                "rules": [
+                    {"field": "from", "operator": "contains", "value": "ceo@example.com"},
+                ],
+            },
+        }
+
+
+class FilterGetResponseSchema(ApiBaseResponse):
+    """Response for GET /filters/{id} — returns a single filter."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {"filter": FilterItemPayloadSchema.example()},
+        }
+
+
+class FilterIdSchema(Schema):
+    """Path parameter schema for a single filter id/name."""
+    filter_id = fields.String(required=True)
+
+
+
+
+class FilterValidateResponseSchema(ApiBaseResponse):
+    """Response for POST /filters/validate."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {"valid": True, "errors": []},
+        }
+
+
+class FilterPreviewPayloadSchema(Schema):
+    """Payload for POST /filters/preview — a filter plus sample headers."""
+    filter  = fields.Nested(FilterItemPayloadSchema, required=True)
+    headers = fields.Dict(required=True)
+
+
+class FilterPreviewResponseSchema(ApiBaseResponse):
+    """Response for POST /filters/preview."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {"matched": True, "action": {"method": "fileinto", "arguments": {"folders": ["INBOX"]}}},
+        }
+
+
+class FilterReorderPayloadSchema(Schema):
+    """Payload for PATCH /filters/reorder — desired filter names in order."""
+    order = fields.List(fields.String(), required=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {"order": ["Filter 1", "Copy to Archive"]}
+
+
+class FilterReorderResponseSchema(ApiBaseResponse):
+    """Response for PATCH /filters/reorder."""
+    data = fields.Dict(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": FiltersPayloadSchema.example(),
+        }
+
+
+class FilterPushResponseSchema(ApiBaseResponse):
+    """Response for POST /filters/push."""
+    data = fields.String(allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": "OK",
+        }
+
+
+class FilterTemplatesResponseSchema(ApiBaseResponse):
+    """Response for GET /filters/templates — built-in filter templates."""
+    data = fields.List(fields.Nested(FilterItemPayloadSchema))
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": [
+                {"name": "Backup", "enabled": True, "actions": [], "rules": {"op": "and", "rules": []}},
+            ],
         }

@@ -397,7 +397,7 @@ class RruleEngine:
                     try:
                         matches.append(month_base.replace(day=actual))
                     except ValueError:
-                        pass
+                        continue
             return matches
 
         if rule.by_day:
@@ -483,7 +483,7 @@ class RruleEngine:
                         tzinfo=dtstart.tzinfo,
                     ))
                 except ValueError:
-                    pass  # week_no does not exist in this year (e.g. week 53)
+                    continue
         return matches
 
     def _year_matches_byyearday(
@@ -545,7 +545,7 @@ class RruleEngine:
                 try:
                     matches.append(dtstart.replace(year=year, month=month))
                 except ValueError:
-                    pass
+                    continue
         return matches
 
     # Helpers

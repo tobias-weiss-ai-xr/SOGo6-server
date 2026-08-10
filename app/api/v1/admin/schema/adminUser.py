@@ -3,6 +3,220 @@ from marshmallow import Schema, fields, validates_schema, ValidationError
 from app.utils.api.ApiBaseResponse import ApiBaseResponse
 
 
+# ── User CRUD Schemas ──────────────────────────────────────────────────────
+
+
+class UserSearchQuerySchema(Schema):
+    """
+    Schema for GET /users/list query parameters.
+    Supports pagination, search query, and sorting.
+    """
+    query = fields.String(
+        load_default=None,
+        metadata={"description": "Search string (matches uid, cn, mail, sn, givenName)"},
+    )
+    page = fields.Integer(
+        load_default=1,
+        metadata={"description": "Page number (1-based)"},
+    )
+    per_page = fields.Integer(
+        load_default=20,
+        metadata={"description": "Items per page"},
+    )
+    sort_by = fields.String(
+        load_default="uid",
+        metadata={"description": "Field to sort by (uid, cn, mail)"},
+    )
+    sort_order = fields.String(
+        load_default="asc",
+        metadata={"description": "Sort order: asc or desc"},
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "query": "test",
+            "page": 1,
+            "per_page": 20,
+            "sort_by": "uid",
+            "sort_order": "asc",
+        }
+
+
+class UserCreateBodySchema(Schema):
+    """
+    Schema for POST /users request body.
+    """
+    uid = fields.String(
+        required=True,
+        metadata={"description": "User ID (e.g. email-format login)"},
+    )
+    cn = fields.String(
+        required=True,
+        metadata={"description": "Common name / full name"},
+    )
+    sn = fields.String(
+        required=True,
+        metadata={"description": "Surname"},
+    )
+    givenName = fields.String(
+        required=True,
+        metadata={"description": "Given name"},
+    )
+    mail = fields.String(
+        required=True,
+        metadata={"description": "Email address"},
+    )
+    password = fields.String(
+        required=True,
+        metadata={"description": "Initial password"},
+    )
+    uidNumber = fields.Integer(
+        load_default=None,
+        metadata={"description": "POSIX UID number (auto-generated if omitted)"},
+    )
+    gidNumber = fields.Integer(
+        load_default=None,
+        metadata={"description": "POSIX GID number (auto-generated if omitted)"},
+    )
+    homeDirectory = fields.String(
+        load_default=None,
+        metadata={"description": "Home directory path (auto-generated if omitted)"},
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "uid": "newuser@example.org",
+            "cn": "New User",
+            "sn": "User",
+            "givenName": "New",
+            "mail": "newuser@example.org",
+            "password": "s3cret!Pass",
+            "uidNumber": 2000,
+            "gidNumber": 2000,
+            "homeDirectory": "/home/newuser",
+        }
+
+
+class UserUpdateBodySchema(Schema):
+    """
+    Schema for PUT /users/<uid> request body.
+    All fields are optional.
+    """
+    cn = fields.String(
+        load_default=None,
+        metadata={"description": "Common name / full name"},
+    )
+    sn = fields.String(
+        load_default=None,
+        metadata={"description": "Surname"},
+    )
+    givenName = fields.String(
+        load_default=None,
+        metadata={"description": "Given name"},
+    )
+    mail = fields.String(
+        load_default=None,
+        metadata={"description": "Email address"},
+    )
+    password = fields.String(
+        load_default=None,
+        metadata={"description": "New password (SSHA-hashed on write)"},
+    )
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "cn": "Updated User Name",
+            "mail": "updated@example.org",
+        }
+
+
+class UserDetailSchema(ApiBaseResponse):
+    """
+    Schema for GET /users/<uid> response.
+    """
+    data = fields.Dict(required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {
+                "dn": "uid=testuser@example.org,ou=users,dc=example,dc=org",
+                "uid": ["testuser@example.org"],
+                "cn": ["Test User"],
+                "sn": ["User"],
+                "givenName": ["Test"],
+                "mail": ["testuser@example.org"],
+            }
+        }
+
+
+class UserListResponseSchema(ApiBaseResponse):
+    """
+    Schema for GET /users/list response.
+    """
+    data = fields.List(fields.Dict(), required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": [
+                {
+                    "dn": "uid=testuser@example.org,ou=users,dc=example,dc=org",
+                    "uid": ["testuser@example.org"],
+                    "cn": ["Test User"],
+                    "sn": ["User"],
+                    "mail": ["testuser@example.org"],
+                }
+            ]
+        }
+
+
+class UserCreateResponseSchema(ApiBaseResponse):
+    """
+    Schema for POST /users response.
+    """
+    data = fields.Dict(required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {
+                "dn": "uid=newuser@example.org,ou=users,dc=example,dc=org",
+                "uid": "newuser@example.org",
+            }
+        }
+
+
+class UserDeleteResponseSchema(ApiBaseResponse):
+    """
+    Schema for DELETE /users/<uid> response.
+    """
+    data = fields.Dict(required=False, allow_none=True)
+
+    @classmethod
+    def example(cls) -> dict:
+        return {
+            "error_code": "S000000",
+            "error_msg": "No Error",
+            "data": {
+                "deleted": True,
+                "uid": "testuser@example.org",
+            }
+        }
+
+
+# ── Session-Management Schemas (existing) ─────────────────────────────────
+
+
 class AdminUserActiveSchema(ApiBaseResponse):
     """
     Schema for GET /users/active response.

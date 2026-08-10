@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.module.contact.model.CardContact import CardContact
     from app.module.contact.model.CardList import CardList
-    from app.module.contact.model.ContactImportResult import ContactImportResult
 
 
 class InterfaceAgentContact:

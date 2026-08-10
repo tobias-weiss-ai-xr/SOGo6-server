@@ -75,6 +75,56 @@ class AdminConfigSystemPatchSchema(Schema):
         }
 
 
+class AdminConfigThemeGetRetSchema(ApiBaseResponse):
+    """
+    Schema for GET /theme
+    """
+    data = fields.Dict()
+
+    @classmethod
+    def example(cls) -> dict:
+        """
+        Example of result for GET /theme
+
+        :return: example
+        :rtype: dict
+        """
+        return {
+            "error_code": 0,
+            "error_msg": "",
+            "data": {
+                "primary": "180 25% 40%",
+                "sidebar_background": "180 25% 40%",
+                "logo_url": "",
+                "custom_css": ""
+            }
+        }
+
+
+class AdminConfigThemePatchSchema(Schema):
+    """
+    Schema for PATCH /theme
+    """
+    settings = fields.Dict(required=True, keys=fields.String(), values=fields.Raw())
+
+    @classmethod
+    def example(cls) -> dict:
+        """
+        Example of data for the patch request
+
+        :return: Example data
+        :rtype: dict
+        """
+        return {
+            "settings": {
+                "primary": "180 25% 40%",
+                "sidebar_background": "180 25% 40%",
+                "logo_url": "",
+                "custom_css": ""
+            }
+        }
+
+
 class AdminConfigDefaultDomainGetSchema(ApiBaseResponse):
     """
     Sceham for GET domain
@@ -120,7 +170,7 @@ class AdminConfigDefaultDomainGetSchema(ApiBaseResponse):
                         "US_TYPE": "ldap",
                         "US_LDAP_HOSTNAME": "ldap://openldap:390",
                         "US_LDAP_BIND_DN": "cn=admin,dc=example,dc=org",
-                        "US_LDAP_BIND_DN_PWD": "password",
+                        "US_LDAP_BIND_DN_PWD": "[REDACTED]",
                         "US_LDAP_BASE_DN": "ou=users,dc=example,dc=org",
                         "US_LDAP_UID": "uid",
                         "US_LDAP_CN": "cn",
@@ -268,7 +318,7 @@ class AdminConfigDefaultDomainPatchSchema(Schema):
                             "US_TYPE": "ldap",
                             "US_LDAP_HOSTNAME": "ldap://openldap:390",
                             "US_LDAP_BIND_DN": "cn=admin,dc=example,dc=org",
-                            "US_LDAP_BIND_DN_PWD": "password",
+                            "US_LDAP_BIND_DN_PWD": "[REDACTED]",
                             "US_LDAP_BASE_DN": "ou=users,dc=example,dc=org",
                             "US_LDAP_UID": "uid",
                             "US_LDAP_CN": "cn",
@@ -455,7 +505,7 @@ class AdminConfigDomainGetSchema(ApiBaseResponse):
                             "US_TYPE": "ldap",
                             "US_LDAP_HOSTNAME": "ldap://openldap:390",
                             "US_LDAP_BIND_DN": "cn=admin,dc=example,dc=org",
-                            "US_LDAP_BIND_DN_PWD": "password",
+                            "US_LDAP_BIND_DN_PWD": "[REDACTED]",
                             "US_LDAP_BASE_DN": "ou=users,dc=example,dc=org",
                             "US_LDAP_UID": "uid",
                             "US_LDAP_CN": "cn",
@@ -610,7 +660,7 @@ class AdminConfigDomainPostSchema(Schema):
                         "US_TYPE": "ldap",
                         "US_LDAP_HOSTNAME": "ldap://openldap:390",
                         "US_LDAP_BIND_DN": "cn=admin,dc=example,dc=org",
-                        "US_LDAP_BIND_DN_PWD": "password",
+                        "US_LDAP_BIND_DN_PWD": "[REDACTED]",
                         "US_LDAP_BASE_DN": "ou=users,dc=example,dc=org",
                         "US_LDAP_UID": "uid",
                         "US_LDAP_CN": "cn",
@@ -716,6 +766,105 @@ class AdminConfigDomainPostSchema(Schema):
             }
         }
 
+class AdminConfigRuleGetSchema(ApiBaseResponse):
+    """
+    Schema for a single rule
+    """
+    data = fields.Dict()
+
+    @classmethod
+    def example(cls) -> dict:
+        """
+        Example of result for a single rule
+
+        :return: example
+        :rtype: dict
+        """
+        return {
+            "error_code": 0,
+            "error_msg": "",
+            "data": {
+                "id": 1,
+                "hash": "abc123",
+                "rule_name": "Example Rule",
+                "rule_description": "An example rule",
+                "rule_domains": ["example.org"],
+                "rule_setting": {"AUTH_SETTINGS": {"SOGO_D_AUTH_TYPE": "plain"}}
+            }
+        }
+
+
+class AdminConfigRulePostSchema(Schema):
+    """
+    Schema for creating a rule
+    """
+    rule_name = fields.String(required=True)
+    rule_description = fields.String(load_default="")
+    rule_domains = fields.List(fields.String(), load_default=[])
+    rule_setting = fields.Dict(keys=fields.String(), values=fields.Raw(), load_default={})
+
+    @classmethod
+    def example(cls) -> dict:
+        """
+        Example of data for the post request
+
+        :return: Example data
+        :rtype: dict
+        """
+        return {
+            "rule_name": "New Rule",
+            "rule_description": "A new rule",
+            "rule_domains": ["example.org"],
+            "rule_setting": {"AUTH_SETTINGS": {"SOGO_D_AUTH_TYPE": "plain"}}
+        }
+
+
+class AdminConfigRulePatchSchema(Schema):
+    """
+    Schema for updating a rule
+    """
+    rule_name = fields.String()
+    rule_description = fields.String()
+    rule_domains = fields.List(fields.String())
+    rule_setting = fields.Dict(keys=fields.String(), values=fields.Raw())
+
+    @classmethod
+    def example(cls) -> dict:
+        """
+        Example of data for the patch request
+
+        :return: Example data
+        :rtype: dict
+        """
+        return {
+            "rule_description": "Updated description"
+        }
+
+
+class AdminConfigRuleListGetSchema(ApiBaseResponse):
+    """
+    Schema for listing rules
+    """
+    data = fields.List(fields.Dict())
+
+    @classmethod
+    def example(cls) -> dict:
+        """
+        Example of result for GET /rules
+
+        :return: example
+        :rtype: dict
+        """
+        return {
+            "error_code": 0,
+            "error_msg": "",
+            "data": [
+                {"id": 1, "name": "suisse"},
+                {"id": 2, "name": "Université"},
+            ]
+        }
+
+
 class AdminConfigDomainPatchSchema(Schema):
     """
     Schema of the body expected for posting default domain settings
@@ -760,7 +909,7 @@ class AdminConfigDomainPatchSchema(Schema):
                         "US_TYPE": "ldap",
                         "US_LDAP_HOSTNAME": "ldap://openldap:390",
                         "US_LDAP_BIND_DN": "cn=admin,dc=example,dc=org",
-                        "US_LDAP_BIND_DN_PWD": "password",
+                        "US_LDAP_BIND_DN_PWD": "[REDACTED]",
                         "US_LDAP_BASE_DN": "ou=users,dc=example,dc=org",
                         "US_LDAP_UID": "uid",
                         "US_LDAP_CN": "cn",

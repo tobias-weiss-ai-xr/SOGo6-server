@@ -9,13 +9,13 @@ REX_VALID_NAMES = r"^[A-Za-z_0-9]+$" #We force the fact that tables and columns'
 
 SOGO_DB_DATA_TYPE = {"dict", "str", "list", "serial", "json", "int8", "bool", "datetime", "int", "text", "tsvector", "bytes"}
 SOGO_DB_DATA_TYPE_VALIDATION = {
-    "dict":     {"dict", "json"},
+    "dict":     {"dict", "json", "text"},  # text for MariaDB (JSON → LONGTEXT)
     "str":      {"str"},
-    "list":     {"list"},
+    "list":     {"list", "text"},  # text for MariaDB (JSON → LONGTEXT for lists)
     "serial":   {"serial", "int"},
-    "json":     {"dict", "json"},
+    "json":     {"dict", "json", "text"},  # text for MariaDB
     "int8":     {"number", "smallint", "int8"},
-    "bool":     {"bool", "boolean", "int8"},
+    "bool":     {"bool", "boolean", "int8", "int"},  # int for MariaDB (TINYINT(1) reported as tinyint → int)
     "datetime": {"datetime", "timestamp"},
     "int":      {"int", "number", "integer", "bigint"},
     "text":     {"str", "text"},

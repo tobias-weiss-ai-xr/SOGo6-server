@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any
 from io import BytesIO
 
 from marshmallow import ValidationError
-from http import HTTPStatus
 
 from app.utils.exceptions import RequestException
 from app.module.mail.ModuleMail import ModuleMail
@@ -14,7 +13,6 @@ from app.config.settings.DomainSettings import MailSettings, MailSettingsObj
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils import errors as err
 from app.utils.logger.logger import logger_api
-from app.utils import constants as cs
 
 if TYPE_CHECKING:
     from app.auth.User import User
@@ -35,6 +33,26 @@ class InterfaceApiMailMail:
         self.user = user
 
         self.mail_module = ModuleMail(self.user, self.mail_settings, self.process_setting)
+
+    def search_mails(self, account_id: str, search_params: dict[str, Any]) -> tuple[int, dict[str, Any], int]:
+        """Search mails across folders.
+
+        :param account_id: The ID of the account
+        :type account_id: str
+        :param search_params: Dictionary with search parameters
+            (query, folders, in_body, from, to, subject, body, bcc,
+             with_attachments, unseen_only, flagged_only,
+             date_from, date_to, page, per_page, sort_by, sort_order)
+        :type search_params: dict[str, Any]
+        :return: A tuple of (total_count, API response dict, status code)
+        :rtype: tuple[int, dict[str, Any], int]
+        """
+        try:
+            result, total_count = self.mail_module.search_mails(account_id, search_params)
+            return total_count, *create_api_base_response(result)
+        except RequestException as ex:
+            logger_api.error("Request exception in search_mails: %s", str(ex))
+            return 0, *create_api_base_response(None, ex.error)
 
     def get_mail_list(self, account_id: str, folder_name: str, collection_param: CollectionPaginateArgs) -> tuple[int, dict[str, Any], int]:
         """Retrieve a list of mails in a specific folder.
@@ -226,6 +244,28 @@ class InterfaceApiMailMail:
             return self.mail_module.download_attachment(account_id, folder_name, mail_uid, filename)
         except RequestException as ex:
             logger_api.error("Request exception in download_attachment: %s", str(ex))
+            return create_api_base_response(None, ex.error)
+
+    def batch_mail_action(self, account_id: str, folder_name: str, batch_data: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """Perform a batch action on multiple mails.
+
+        :param account_id: The ID of the account
+        :type account_id: str
+        :param folder_name: The name of the folder containing the mails
+        :type folder_name: str
+        :param batch_data: Dictionary containing 'action', 'mail_uids' and optional 'data'
+        :type batch_data: dict[str, Any]
+        :return: A tuple of (API response dict, status code)
+        :rtype: tuple[dict[str, Any], int]
+        """
+        try:
+            result = self.mail_module.batch_mail_action(account_id, folder_name, batch_data)
+            return create_api_base_response(result)
+        except ValidationError as ex:
+            logger_api.error("Validation error in batch_mail_action: %s", ex.messages)
+            return create_api_base_response(None, err.ERROR_VALIDATION_ERROR)
+        except RequestException as ex:
+            logger_api.error("Request exception in batch_mail_action: %s", str(ex))
             return create_api_base_response(None, ex.error)
 
     def open_mail_for_edit(self, account_id: str, folder_name: str, mail_uid: str) -> tuple[dict[str, Any], int]:

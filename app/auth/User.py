@@ -45,7 +45,8 @@ class UserProfile:
         exts = "["
         if self.external_accounts:
             for ext in self.external_accounts.values():
-                exts += f"(name={ext.get("name", None)}),"
+                name_val = ext.get("name", None)
+                exts += f"(name={name_val}),"
         exts += "]"
 
         return f"""{self.__class__.__name__}:

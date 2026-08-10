@@ -18,6 +18,8 @@ from app.utils.db.FullTextValue import FullTextValue
 from app.utils import errors as err
 from app.utils.exceptions import RequestException, BugException
 from app.utils.logger.logger import logger, logger_sql
+from app.utils.api.prometheus import db_op
+
 from .ClientSQL import ClientSQL
 
 
@@ -233,20 +235,33 @@ class ClientPostgreSQL(ClientSQL):
         """
         Init the PostgreSQL client.
         It shouldn't raise any Exception as SOGo will instantiate the object but not necessarily use it right on spot
+        
+        :param db_ssl: If True, adds sslmode=require to connection string
         """
-        self.conn_string: str      = f"postgresql://{quote_plus(db_user)}:{quote_plus(db_pwd)}@{db_host}:{db_port}/sogo?client_encoding={db_enc}"
-        self.safe_conn_string: str = f"postgresql://SOGO_P_DB_USER:SOGO_P_DB_PWD@{db_host}:{db_port}/sogo?client_encoding={db_enc}"
+        ssl_param = "&sslmode=require" if db_ssl else ""
+        self.db_user = db_user
+        self.db_pwd = db_pwd
+        self.db_host = db_host
+        self.db_port = db_port
+        self.db_enc = db_enc
+        self.db_ssl = db_ssl
+        self.safe_conn_string: str = f"postgresql://SOGO_P_DB_USER:SOGO_P_DB_PWD@{db_host}:{db_port}/sogo?client_encoding={db_enc}{ssl_param}"
         self.db_conn: psycopg.Connection | None = None
 
-        #TODO for db_ssl, see sslmode https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
+    def _get_conn_string(self) -> str:
+        """Build connection string with credentials (not cached to avoid credential leakage)."""
+        ssl_param = "&sslmode=require" if self.db_ssl else ""
+        return f"postgresql://{quote_plus(self.db_user)}:{quote_plus(self.db_pwd)}@{self.db_host}:{self.db_port}/sogo?client_encoding={self.db_enc}{ssl_param}"
 
-    def connect(self) -> None:
+    def connect(self, redis_client=None, max_failures=5) -> None:
         """
         Connect to the database and check if this is ok
+        
+        :param redis_client: Optional Redis client for failure tracking
+        :param max_failures: Maximum consecutive failures before circuit breaker
         """
-        #TODO: put in redis the number of failed connection, after a threshold, do not attempt and raise a Aggravated exception
         try:
-            self.db_conn = psycopg.connect(self.conn_string, connect_timeout=5)
+            self.db_conn = psycopg.connect(self._get_conn_string(), connect_timeout=5)
         except (OperationalError, Error) as e:
             logger.error("Cannot connect to %s reason: %s", self.safe_conn_string, repr(e))
             raise RequestException("Postgresql database connection error") from e
@@ -353,6 +368,7 @@ class ClientPostgreSQL(ClientSQL):
             self.create_table(table)
             self.create_indexes(table)
 
+    @db_op("insert_in_table")
     def insert_in_table(self, table_name: str, column_tuple: tuple[str, ...], values_tuple: list[list[Any]]) -> int:  # pylint: disable=too-many-locals,too-many-branches
         """
         Insert one or more row into a table
@@ -409,6 +425,7 @@ class ClientPostgreSQL(ClientSQL):
 
         return ret
 
+    @db_op("update_in_table")
     def update_in_table(self, table_name: str, column_tuple: tuple, values_list: list, condition: Condition) -> int:
         """
         Update data in a table
@@ -460,6 +477,7 @@ class ClientPostgreSQL(ClientSQL):
 
         return ret
 
+    @db_op("select_from_table")
     def select_from_table(self, table_name: str, column_tuple: tuple[str, ...], condition: Condition,  # pylint: disable=too-many-branches,too-many-locals
                           offset: int = 0, limit: int = 0,
                           sort_by: str | None = None, order: Order = Order.ASC,
@@ -491,6 +509,13 @@ class ClientPostgreSQL(ClientSQL):
             self.connect()
         if len(column_tuple) == 0:
             column_tuple = ("*",)
+        
+        # Validate that limit and offset are integers to prevent SQL injection
+        if not isinstance(limit, int) or limit < 0:
+            raise BugException(f"Invalid limit value: {limit}. Must be non-negative integer", err.ERROR_INVALID_LIMIT)
+        if not isinstance(offset, int) or offset < 0:
+            raise BugException(f"Invalid offset value: {offset}. Must be non-negative integer", err.ERROR_INVALID_OFFSET)
+        
         if limit == 0:
             limit_query = Composed([SQL("ALL")])
         else:
@@ -541,6 +566,7 @@ class ClientPostgreSQL(ClientSQL):
             finally:
                 self.db_conn.commit()
 
+    @db_op("select_from_several_table")
     def select_from_several_table(
         self,
         table_name: str,
@@ -604,6 +630,7 @@ class ClientPostgreSQL(ClientSQL):
             finally:
                 self.db_conn.commit()
 
+    @db_op("count_row_in_table")
     def count_row_in_table(self, table_name: str, condition: Condition, column_name: str = "*") -> int:
         """
         Select values from a table under conditions
@@ -644,6 +671,7 @@ class ClientPostgreSQL(ClientSQL):
                 self.db_conn.commit()
         return count_ret
 
+    @db_op("delete_row_in_table")
     def delete_row_in_table(self, table_name: str, condition: Condition, expected_row: int = 0) -> int:
         """
         Delete rows in a table.

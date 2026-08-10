@@ -88,6 +88,27 @@ class ApiMailSendAccountSendWithDraft(MethodView):
         return interface.send_mail(account_id, mail_data, key=key)
 
 
+@blp.route("/pending/<string:pending_key>/cancel")
+class ApiMailSendCancelPending(MethodView):
+    """
+    Action: Cancel a pending send (Undo Send).
+    """
+    @blp.response(200)
+    def post(self, account_id: str, pending_key: str) -> ResponseReturnValue:
+        """Cancel a pending send identified by *pending_key*.
+
+        Only works within the Undo Send grace period. After the period expires,
+        the email is sent and can no longer be recalled.
+        """
+        logger_api.debug(
+            "Calling ApiMailSendCancelPending.post for account_id: %s, pending_key: %s",
+            account_id,
+            pending_key,
+        )
+        interface: InterfaceApiMailSend = g.inter
+        return interface.cancel_pending_send(account_id, pending_key)
+
+
 
 @blp.route("/save")
 class ApiMailSendAccountCreateDraft(MethodView):

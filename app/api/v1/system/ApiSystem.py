@@ -1,20 +1,13 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
-
-from flask import g, Response
+from flask import g
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
-from app.service import sogo_cache
 from app.interface.system.InterfaceSystem import InterfaceSystem
 from app.utils.logger.logger import logger_api
 
 from .schema import system as sch
-
-if TYPE_CHECKING:
-    from app.config.settings.ProcessSetting import ProcessSetting
-    from app.auth.User import User
 
 
 

@@ -14,9 +14,12 @@ dynamic = [ "version" ]
 requires-python = ">=3.13,<4.0"
 keywords = ["sogo", "webmail", "mail", "calendar"]
 dependencies = [
+    "webauthn>=1.9.0",
+    "bcrypt",
     "celery",
     "click",
     "cryptography",
+    "defusedxml",
     "flask",
     "flask-compress",
     "flask-cors",
@@ -30,10 +33,12 @@ dependencies = [
     "pydantic-settings",
     "pyjwt",
     "python-ldap",
+    "pysaml2>=7.4",
     "pytest-mock",
     "redis",
     "sievelib",
     "types-smorest",
+    "webauthn",
     "yarl",
 ]
 

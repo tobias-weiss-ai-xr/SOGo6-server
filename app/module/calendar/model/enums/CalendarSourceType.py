@@ -10,3 +10,4 @@ class CalendarSourceType(Enum):
     LOCAL = "local"
     ICS = "ics"
     CALDAV = "caldav"
+    TEAM = "team"

@@ -85,7 +85,8 @@ def test_sanitize_listing_unknown_calendar_passthrough():
 
 def test_owner_gets_full_permissions():
     engine = CalendarAclEngine()
-    perms = engine.get_permissions(_make_cal(), _make_calendar_user("alice@test"))
+    # The acting user must match the calendar's user_uid to be recognized as owner
+    perms = engine.get_permissions(_make_cal(), _make_calendar_user("owner@test"))
     assert perms.public_level == CalendarShareLevel.MODIFY
     assert perms.confidential_level == CalendarShareLevel.MODIFY
     assert perms.private_level == CalendarShareLevel.MODIFY
@@ -103,7 +104,8 @@ def test_non_owner_gets_denied():
 
 def test_ics_calendar_is_read_only():
     engine = CalendarAclEngine()
-    perms = engine.get_permissions(_make_cal(CalendarSourceType.ICS), _make_calendar_user("alice@test"))
+    # The acting user must match the calendar's user_uid to be recognized as owner
+    perms = engine.get_permissions(_make_cal(CalendarSourceType.ICS), _make_calendar_user("owner@test"))
     assert perms.public_level == CalendarShareLevel.VIEW_ALL
     assert perms.can_create is False
     assert perms.can_delete is False

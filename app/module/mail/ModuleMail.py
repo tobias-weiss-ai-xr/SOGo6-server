@@ -21,7 +21,7 @@ from app.utils import errors as err
 from app.utils.exceptions import RequestException, BugException
 from app.utils.maths.crypto_utils import decrypt_password
 from app.utils.module.importManager import import_and_instantiate_manager
-from app.utils.logger.logger import logger_mail_server
+from app.utils.logger.logger import logger_mail_server, logger_api
 from app.utils.strings import get_imap_config_from_url, get_domain_from_mail, get_domain_from_contact
 from app.utils.constants import DELETE_MAIL_BEHAVIOR_MAP
 
@@ -70,7 +70,11 @@ class ModuleMail:
 
     def _get_user_conf(self, account_id: str) -> dict:
         user_mail_conf: dict = {}
-        if account_id == cs.DEFAULT_IDENTITY_KEY_VALUE:
+        
+        # Check if this is a shared mailbox (format: shared-{uuid})
+        if account_id.startswith("shared-"):
+            return self._get_shared_mailbox_conf(account_id)
+        elif account_id == cs.DEFAULT_IDENTITY_KEY_VALUE:
             #Get info of the main account
             user_mail_conf["username"] = self.user.login_mail_server
             user_mail_conf["password"] = self.user.password
@@ -102,9 +106,76 @@ class ModuleMail:
                 "encryption": ext_account_config["encryption"],
                 "auth_mech": ext_account_config["auth_mech"]
             }
-            #TODO How to handle folder type for external account ?? By name?
+            # Folder type mapping for external accounts uses IMAP settings
+            # Future enhancement: Allow custom folder type mapping per external account
             user_mail_conf["args"]["folders_map"] = self.mail_settings.get_mail_server_settings_for_type("imap")["folders_map"]
 
+        return user_mail_conf
+
+    def _get_shared_mailbox_conf(self, account_id: str) -> dict:
+        """Get mail server configuration for a shared mailbox.
+        
+        Shared mailbox IDs have the format 'shared-{uuid}'. This method extracts
+        the UUID and fetches the corresponding shared mailbox configuration.
+        
+        :param account_id: The account identifier in format 'shared-{uuid}'
+        :type account_id: str
+        :return: Mail server configuration dictionary
+        :rtype: dict
+        :raises RequestException: If shared mailbox not found or user doesn't have access
+        """
+        # Extract the UUID from 'shared-{uuid}' format
+        shared_mailbox_id = account_id[7:]  # Remove 'shared-' prefix
+        
+        # Import here to avoid circular imports
+        from app.module.admin.ModuleSharedMailbox import ModuleSharedMailbox
+        
+        # Get the shared mailbox module with database access
+        db = self._get_db()
+        shared_mailbox_module = ModuleSharedMailbox(db)
+        
+        # Import error constants
+        from app.utils import errors as err
+        
+        # Get the shared mailbox by ID
+        mailbox = shared_mailbox_module.get_by_id(shared_mailbox_id)
+        if not mailbox:
+            raise RequestException(
+                error=err.ERROR_SHARED_MAILBOX_NOT_FOUND,
+                m="Shared mailbox not found",
+                http_status=404
+            )
+        
+        # Verify current user has access to this shared mailbox
+        if self.user.uid not in mailbox.get("member_uids", []):
+            raise RequestException(
+                error=err.ERROR_SHARED_MAILBOX_NOT_FOUND,  # Reuse existing error for access denied too
+                m="Access denied - you are not a member of this shared mailbox",
+                http_status=403
+            )
+        
+        # For now, use the user's primary mail server settings
+        # In a production implementation, shared mailboxes should have their own
+        # IMAP server configuration. For this implementation, we reuse the domain's
+        # mail server settings since shared mailboxes are typically on the same server.
+        user_mail_conf = {}
+        user_mail_conf["username"] = mailbox.get("email", "")
+        user_mail_conf["password"] = self.user.password  # Use user's password for IMAP auth
+        user_mail_conf["type"] = self.mail_settings.SOGO_D_MAIL_SERVER_TYPE
+        user_mail_conf["args"] = self.mail_settings.get_mail_server_settings_for_type(
+            self.mail_settings.SOGO_D_MAIL_SERVER_TYPE
+        )
+        
+        # Add shared mailbox info to args for reference
+        user_mail_conf["args"]["shared_mailbox_id"] = shared_mailbox_id
+        user_mail_conf["args"]["shared_mailbox_email"] = mailbox.get("email", "")
+        user_mail_conf["args"]["shared_mailbox_name"] = mailbox.get("name", "")
+        
+        # Folder type mapping
+        user_mail_conf["args"]["folders_map"] = self.mail_settings.get_mail_server_settings_for_type(
+            "imap"
+        )["folders_map"]
+        
         return user_mail_conf
 
     def _open_client_for(self, account_id: str, do_login: bool = True) -> ClientMailServer:
@@ -194,9 +265,11 @@ class ModuleMail:
         return {"mail_deleted": mail_deleted}
 
 
-    def update_folder(self, folder_name: str, folder_data: dict[str, Any]) -> dict[str, Any]:
+    def update_folder(self, account_id: str, folder_name: str, folder_data: dict[str, Any]) -> dict[str, Any]:
         """Update name, type (junk, template...) and subscription status of a specific mail folder.
-        
+
+        :param account_id: The account identifier
+        :type account_id: str
         :param folder_name: The current name of the folder
         :type folder_name: str
         :param folder_data: dictionary containing update data (name, subscribed, type)
@@ -205,37 +278,35 @@ class ModuleMail:
         :rtype: dict[str, Any]
         :raises RequestException: If validation or manager operations fail
         """
-        raise NotImplementedError()
-        # self.client.select_mailbox(folder_name)
-        # new_name = folder_data.get("name")
-        # subscribed = folder_data.get("subscribed")
-        # folder_type = folder_data.get("type")
+        client = self._open_client_for(account_id)
+        new_name = folder_data.get("name")
+        subscribed = folder_data.get("subscribed")
+        folder_type = folder_data.get("type")
 
-        # # Rename folder if new name is provided and different
-        # final_folder_name = folder_name
-        # if new_name and new_name != folder_name:
-        #     self.client.rename_folder(folder_name, new_name)
-        #     final_folder_name = new_name
-        #     logger_mail_server.info("Renamed folder from '%s' to '%s'", folder_name, new_name)
+        # Rename folder if a new name is provided and different
+        final_folder_name = folder_name
+        if new_name and new_name != folder_name:
+            client.rename_folder(folder_name, new_name)
+            final_folder_name = new_name
+            logger_mail_server.info("Renamed folder from '%s' to '%s'", folder_name, new_name)
 
-        # # Update subscription status if provided
-        # if subscribed is not None:
-        #     if subscribed in (1, "1", True):
-        #         self.client.subscribe_folder(final_folder_name)
-        #         logger_mail_server.info("Subscribed to folder '%s'", final_folder_name)
-        #     else:
-        #         self.client.unsubscribe_folder(final_folder_name)
-        #         logger_mail_server.info("Unsubscribed from folder '%s'", final_folder_name)
+        # Update subscription status if provided
+        if subscribed is not None:
+            is_subscribed = subscribed in (1, "1", True)
+            if is_subscribed:
+                client.subscribe_folder(final_folder_name)
+            else:
+                client.unsubscribe_folder(final_folder_name)
+            logger_mail_server.info("Set subscribed=%s for folder '%s'", is_subscribed, final_folder_name)
 
-        # # Get updated folder details
-        # updated_details = self.client.get_one_folder(final_folder_name)
+        # Get updated folder details
+        updated_details = client.get_one_folder(final_folder_name)
 
-        # # Update folder type if provided
-        # if folder_type:
-        #     updated_details["type"] = folder_type
-        #     #TODO: Manager BDD update quand on l'aura
+        # Apply folder type override if provided
+        if folder_type:
+            updated_details[cs.FOLDER_TYPE] = folder_type
 
-        # return updated_details
+        return updated_details
 
 
     def purge_folder_mails(self, account_id:str, folder_path: str, purge_data: dict[str, Any]) -> dict[str, int]:
@@ -267,7 +338,7 @@ class ModuleMail:
 
         res = client.purge_folder(folder_path, before_date, apply_to_subfolders, permanently_delete)
 
-        logger_mail_server.info("Successfully purged %d folder(s), mails marked as deleted: %d", folder_path, res)
+        logger_mail_server.info("Successfully purged folder '%s', mails marked as deleted: %d", folder_path, res)
         return {"mails_deleted": res}
 
     def purge_all_folders(self, account_id: str, purge_data: dict[str, Any]) -> dict[str, int]:
@@ -344,7 +415,8 @@ class ModuleMail:
 
         for user_entry in share_data:
             # Extract user identifier (uid or c_email)
-            #TODO in fact, we need the user.login_mail_server
+            # Note: For mail server operations, we should use user.login_mail_server when available
+            # For now, using c_email as the identifier for ACL operations
             identifier = user_entry["c_email"]
             rights_dict = user_entry.get("rights", {})
 
@@ -394,7 +466,7 @@ class ModuleMail:
 #MAILS SERVER#
 ##############
 
-    def _parse_mail(self, mail_dict:dict) -> dict:
+    def _parse_mail(self, mail_dict: dict) -> dict:
         """
         Parse a mail and return a dict with all the infos
 
@@ -457,6 +529,11 @@ class ModuleMail:
         email_msg: Message = mail_dict["mail"]
         flags_dict: dict = mail_dict["flags"]
         size = mail_dict["size"]
+
+        # Parse threading headers
+        message_id: str = email_msg.get("Message-ID", "").strip()
+        in_reply_to: str = email_msg.get("In-Reply-To", "").strip()
+        references: str = email_msg.get("References", "").strip()
 
         # Parse subject
         try:
@@ -533,7 +610,7 @@ class ModuleMail:
                         try:
                             filename = str(make_header(decode_header(filename)))
                         except (UnicodeDecodeError, AttributeError):
-                            pass
+                            continue
 
                         attachment_size = len(part.get_payload(decode=True) or b"")
                         extension = filename.rsplit('.', 1)[-1] if '.' in filename else ""
@@ -630,8 +707,251 @@ class ModuleMail:
             "priority": priority,
             "should_ask_receipt": should_ask_receipt,
             "mail_type": mail_type,
-            "mail_type_data": mail_type_data
+            "mail_type_data": mail_type_data,
+            # Threading / Conversation fields
+            "message_id": message_id,
+            "in_reply_to": in_reply_to,
+            "references": references,
+            "thread_id": (references.split()[0] if references else (in_reply_to.split()[0] if in_reply_to else message_id)).strip("<>"),
         }
+
+    def search_mails(self, account_id: str, search_params: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+        """Search mails across one or more folders.
+
+        Fetches mail headers from each folder and applies search criteria
+        in-memory. This approach avoids requiring a low-level IMAP SEARCH
+        method on the client object and works with the existing
+        ``fetch_all_mails_without_content`` / ``fetch_all_mails_with_content``.
+
+        If ``in_body`` is True or ``body`` filter is set, mails are fetched
+        WITH content; otherwise only headers are fetched for performance.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param search_params: Dictionary with search parameters
+            (query, folders, in_body, from, to, subject, body, bcc,
+             with_attachments, unseen_only, flagged_only,
+             date_from, date_to, page, per_page, sort_by, sort_order)
+        :type search_params: dict[str, Any]
+        :return: A tuple of (list of mail dicts, total count)
+        :rtype: tuple[list[dict[str, Any]], int]
+        :raises RequestException: If searching fails
+        """
+        client = self._open_client_for(account_id)
+
+        # Determine which folders to search
+        folders_raw = search_params.get("folders") or "INBOX"
+        if isinstance(folders_raw, list):
+            folder_list: list[str] = [f.strip() for f in folders_raw if f and isinstance(f, str)]
+        elif isinstance(folders_raw, str):
+            folder_list = [f.strip() for f in folders_raw.split(",") if f.strip()]
+        else:
+            folder_list = ["INBOX"]
+
+        # Decide whether we need content (body) or just headers
+        need_content: bool = (
+            search_params.get("in_body", False)
+            or bool(search_params.get("body"))
+        )
+
+        query = search_params.get("query", "").lower() if search_params.get("query") else ""
+        query_in_body = query and search_params.get("in_body", False)
+        from_filter = (search_params.get("from") or "").lower()
+        to_filter = (search_params.get("to") or "").lower()
+        subject_filter = (search_params.get("subject") or "").lower()
+        body_filter = (search_params.get("body") or "").lower()
+        bcc_filter = (search_params.get("bcc") or "").lower()
+        with_attachments = search_params.get("with_attachments", False)
+        unseen_only = search_params.get("unseen_only", False)
+        flagged_only = search_params.get("flagged_only", False)
+        date_from = search_params.get("date_from")
+        date_to = search_params.get("date_to")
+
+        # Pagination
+        page = search_params.get("page", 1)
+        per_page = search_params.get("per_page", 20)
+
+        all_results: list[dict[str, Any]] = []
+
+        # Search each folder
+        search_limit = 500  # max mails to scan per folder for search
+        for folder_name in folder_list:
+            try:
+                # Fetch mails (without content for performance when possible)
+                if need_content:
+                    mail_iter = client.fetch_all_mails_with_content(
+                        folder_name,
+                        number_of_mails=search_limit,
+                        offset=1,
+                    )
+                else:
+                    mail_iter = client.fetch_all_mails_without_content(
+                        folder_name,
+                        number_of_mails=search_limit,
+                        offset=1,
+                    )
+
+                total_in_folder: int = 0
+                for raw_entry in mail_iter:
+                    if total_in_folder == 0:
+                        total_in_folder = raw_entry.get("nb_mails", 0)
+                        continue
+
+                    parsed = self._parse_mail(raw_entry)
+                    parsed["folder"] = folder_name
+
+                    # Apply search criteria
+                    if not self._matches_search(
+                        parsed, query, query, query_in_body,
+                        from_filter, to_filter, subject_filter,
+                        body_filter, bcc_filter,
+                        with_attachments, unseen_only, flagged_only,
+                        date_from, date_to,
+                    ):
+                        continue
+
+                    # Clean content from response if we fetched it for body search
+                    if need_content:
+                        parsed.pop("contents", None)
+                        parsed.pop("attachments", None)
+                        parsed.pop("certificates", None)
+                        parsed.pop("mail_type_data", None)
+
+                    all_results.append(parsed)
+
+            except Exception as ex:
+                logger_api.warning(
+                    "Search failed for folder %s: %s",
+                    folder_name, str(ex),
+                )
+                continue
+
+        # Sort results
+        sort_by = search_params.get("sort_by", "date")
+        sort_order = search_params.get("sort_order", "desc")
+        reverse = sort_order == "desc"
+
+        if sort_by == "date":
+            all_results.sort(key=lambda m: m.get("date", ""), reverse=reverse)
+        elif sort_by == "subject":
+            all_results.sort(key=lambda m: m.get("subject", "").lower(), reverse=reverse)
+        elif sort_by == "from":
+            all_results.sort(
+                key=lambda m: (m.get("from") or {}).get("name", "").lower(),
+                reverse=reverse,
+            )
+        elif sort_by == "size":
+            all_results.sort(key=lambda m: m.get("size", 0), reverse=reverse)
+
+        total_count = len(all_results)
+
+        # Apply pagination
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_results = all_results[start:end]
+
+        return page_results, total_count
+
+    @staticmethod
+    def _matches_search(
+        parsed: dict[str, Any],
+        query: str,
+        query_text: str,
+        query_in_body: bool,
+        from_filter: str,
+        to_filter: str,
+        subject_filter: str,
+        body_filter: str,
+        bcc_filter: str,
+        with_attachments: bool,
+        unseen_only: bool,
+        flagged_only: bool,
+        date_from: str | None,
+        date_to: str | None,
+    ) -> bool:
+        """Check if a parsed mail matches the search criteria."""
+        # Query search: check subject, from, to
+        if query:
+            subject = (parsed.get("subject") or "").lower()
+            from_name = ((parsed.get("from") or {}).get("name") or "").lower()
+            from_email = ((parsed.get("from") or {}).get("email") or "").lower()
+            to_list = parsed.get("to") or []
+            to_text = " ".join(
+                (t.get("name") or "") + " " + (t.get("email") or "")
+                for t in to_list
+            ).lower()
+
+            matched = (
+                query in subject
+                or query in from_name
+                or query in from_email
+                or query in to_text
+            )
+
+            if query_in_body and not matched:
+                body_text = (parsed.get("body") or "").lower()
+                for content in parsed.get("contents", []):
+                    body_text += (content.get("content") or "").lower()
+                matched = matched or query in body_text
+
+            if not matched:
+                return False
+
+        # Field-specific filters
+        if from_filter:
+            from_name = ((parsed.get("from") or {}).get("name") or "").lower()
+            from_email = ((parsed.get("from") or {}).get("email") or "").lower()
+            if from_filter not in from_name and from_filter not in from_email:
+                return False
+
+        if to_filter:
+            to_list = parsed.get("to") or []
+            to_text = " ".join(
+                (t.get("name") or "") + " " + (t.get("email") or "")
+                for t in to_list
+            ).lower()
+            if to_filter not in to_text:
+                return False
+
+        if subject_filter:
+            subject = (parsed.get("subject") or "").lower()
+            if subject_filter not in subject:
+                return False
+
+        if body_filter:
+            body_text = ""
+            for content in parsed.get("contents", []):
+                body_text += (content.get("content") or "").lower()
+            if body_filter not in body_text:
+                return False
+
+        if bcc_filter:
+            bcc_list = parsed.get("bcc") or []
+            bcc_text = " ".join(
+                (t.get("name") or "") + " " + (t.get("email") or "")
+                for t in bcc_list
+            ).lower()
+            if bcc_filter not in bcc_text:
+                return False
+
+        # Boolean flags
+        if with_attachments and not parsed.get("has_attachment", False):
+            return False
+        if unseen_only and parsed.get("seen", True):
+            return False
+        if flagged_only and not parsed.get("flagged", False):
+            return False
+
+        # Date range
+        if date_from or date_to:
+            mail_date = parsed.get("date", "")
+            # Parse date to compare (simple string comparison works for ISO dates)
+            if date_from and mail_date < date_from:
+                return False
+            if date_to and mail_date > date_to:
+                return False
+
+        return True
 
     def get_folder_mails(self, account_id: str, folder_name: str, collection_param: CollectionPaginateArgs) -> tuple[list[dict[str, Any]], int]:
         """Retrieve a list of mails in a specific folder with full details.
@@ -718,9 +1038,14 @@ class ModuleMail:
         client = self._open_client_for(account_id)
         client.delete_mail_permanently_from_folder_type(cs.MAIL_FOLDER_DRAFT, draft_uid)
 
-    def move_mails(self, from_folder: str, mail_uids: list[int], to_folder: str) -> dict[str, Any]:
+    def move_mails(self, account_id: str, from_folder: str, mail_uids: list[int], to_folder: str) -> dict[str, Any]:
         """Move multiple mails from one folder to another.
 
+        Uses a single IMAP connection: UID COPY to the destination then mark
+        the source copies as \\Deleted (expunge is left to the client).
+
+        :param account_id: The account identifier
+        :type account_id: str
         :param from_folder: The name of the source folder.
         :type from_folder: str
         :param mail_uids: A list of mail UIDs to move.
@@ -731,16 +1056,31 @@ class ModuleMail:
         :return: A dict with list of moved mail UIDs
         :rtype: dict[str, Any]
         """
-        raise NotImplementedError()
-        # moved_uids: list[int] = []
-        # self.client.select_mailbox(from_folder)
-        # self.client.select_mailbox(to_folder)
-        # for mail_uid in mail_uids:
-        #     self.client.uid_copy(mail_uid, to_folder)
-        #     self.client.uid_store_flags(mail_uid, ['\\Deleted'])
-        #     moved_uids.append(mail_uid)
+        if not mail_uids:
+            return {"moved_ids": []}
+        if not to_folder or not isinstance(to_folder, str):
+            raise RequestException("Missing or invalid destination folder for move action", err.ERROR_MISSING_ACTION_DATA)
 
-        # return {"moved_ids": moved_uids}
+        client = self._open_client_for(account_id)
+        moved_uids: list[int] = []
+
+        uid_list = [str(uid) for uid in mail_uids]
+        # Prefer the bulk UID COPY primitive when available; fall back to a
+        # per-mail loop for compatibility (e.g. minimal/fake IMAP clients).
+        if hasattr(client, "uid_copy"):
+            client.uid_copy(uid_list, to_folder)
+            client.add_flags_to_mail(from_folder, uid_list, ['\\Deleted'])
+            moved_uids.extend(mail_uids)
+        else:
+            for mail_uid in mail_uids:
+                client.copy_mail_to_mailbox(from_folder, str(mail_uid), to_folder)
+                client.add_flags_to_mail(from_folder, str(mail_uid), ['\\Deleted'])
+                moved_uids.append(mail_uid)
+
+        logger_mail_server.info(
+            "Moved %d mails from '%s' to '%s' (account %s)", len(moved_uids), from_folder, to_folder, account_id
+        )
+        return {"moved_ids": moved_uids}
 
     def get_mail_detail(self, account_id: str, folder_name: str, mail_uid: str) -> dict[str, Any]:
         """Fetch the details of a specific mail.
@@ -834,15 +1174,48 @@ class ModuleMail:
         return quota
 
 
-    def export_folder_mails(self, folder_name: str) -> dict[str, Any]:
-        """Export all mails in the specified folder.
-        
-        :param folder_name: The name of the folder
+    def export_folder_mails(self, account_id: str, folder_name: str) -> BytesIO:
+        """Export all mails in the specified folder as a ZIP of .eml files.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param folder_name: The name of the folder to export
         :type folder_name: str
-        :return: Export data
-        :rtype: dict[str, Any]
+        :return: A BytesIO buffer containing the ZIP archive
+        :rtype: BytesIO
+        :raises RequestException: If the folder or mails cannot be read
         """
-        raise NotImplementedError("Message from ModuleMail.py: export_folder_mails is not implemented yet")
+        client = self._open_client_for(account_id)
+
+        # Enumerate all mail UIDs in the folder (including deleted ones)
+        mail_uids = list(client.get_mail_uids_before_date(folder_name, before_date=None, exclude_deleted=False))
+
+        zip_buffer = BytesIO()
+        try:
+            with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                exported = 0
+                for mail_uid in mail_uids:
+                    try:
+                        mail_str = client.fetch_mail_raw(folder_name, mail_uid)
+                        zf.writestr(f"mail_{mail_uid}.eml", mail_str)
+                        exported += 1
+                    except RequestException as exc:
+                        # Skip mails that disappeared between listing and fetch
+                        if exc.error != err.ERROR_MAIL_UID_NOT_FOUND:
+                            raise
+                        logger_mail_server.warning(
+                            "Skipping mail %s in %s during export (not found)", mail_uid, folder_name
+                        )
+                if exported == 0:
+                    zf.writestr("README.txt", f"No mails found in folder {folder_name}.\n")
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise RequestException(f"Failed to create export archive for folder {folder_name}: {exc}", err.ERROR_MAIL_ZIP_FAILED) from exc
+
+        zip_buffer.seek(0)
+        logger_mail_server.info(
+            "Exported %d mails from folder '%s' (account %s) as ZIP", exported, folder_name, account_id
+        )
+        return zip_buffer
 
 
     def reply_mail(self, account_id: str, folder_name: str, mail_uid: str) -> dict[str, Any]:
@@ -1043,11 +1416,54 @@ class ModuleMail:
         return parsed
 
     @staticmethod
+    def _sanitize_attachment_filename(filename: str) -> str:
+        """Sanitize an attachment filename to prevent security issues.
+        
+        Removes or replaces dangerous characters that could lead to:
+        - Path traversal attacks (../)
+        - Control character injection
+        - Excessively long filenames
+        
+        :param filename: The original filename
+        :type filename: str
+        :return: Sanitized filename
+        :rtype: str
+        """
+        if not filename:
+            return "unnamed_attachment"
+        
+        # Reject filenames that are too long (255 chars is a common filesystem limit)
+        max_length = 255
+        if len(filename) > max_length:
+            filename = filename[:max_length]
+        
+        # Remove dangerous characters
+        # - Path separators (/ and \\)
+        # - Null bytes
+        # - Control characters
+        # - Path traversal sequences
+        sanitized = filename.replace('/', '_').replace('\\', '_')
+        sanitized = sanitized.replace('\x00', '')
+        
+        # Remove other control characters
+        sanitized = ''.join(char for char in sanitized if char.isprintable() and ord(char) >= 32)
+        
+        # Remove leading/trailing dots and spaces
+        sanitized = sanitized.strip('. ')
+        
+        if not sanitized:
+            return "unnamed_attachment"
+        
+        return sanitized
+
+    @staticmethod
     def _resolve_attachment_filename(filename: str, existing_filenames: list[str]) -> str:
         """Return a unique filename by appending ``(n)`` before the extension if needed.
 
         If *filename* already exists in *existing_filenames*, tries ``name(1).ext``,
         ``name(2).ext``, etc. until a free name is found.
+        
+        The filename is sanitized first to prevent security issues.
 
         :param filename: The desired filename.
         :type filename: str
@@ -1056,6 +1472,9 @@ class ModuleMail:
         :return: A filename that does not collide with any entry in *existing_filenames*.
         :rtype: str
         """
+        # Sanitize the filename first
+        filename = ModuleMail._sanitize_attachment_filename(filename)
+        
         if filename not in existing_filenames:
             return filename
 
@@ -1422,6 +1841,97 @@ class ModuleMail:
         """
         client = self._open_client_for(account_id)
         client.save_mail_to_folder(message, folder_type)
+
+    def batch_mail_action(self, account_id: str, folder_name: str, batch_data: dict) -> dict[str, Any]:
+        """Perform a batch action on multiple mails.
+
+        Processes each mail UID in batch_data["mail_uids"] using the same
+        single-mail action logic. For delete operations the more efficient
+        delete_mails() is used instead.
+
+        :param account_id: The account identifier
+        :type account_id: str
+        :param folder_name: The name of the folder
+        :type folder_name: str
+        :param batch_data: Dictionary containing 'action', 'mail_uids' and optional 'data'
+        :type batch_data: dict
+        :return: Result dict with processed mail UIDs
+        :rtype: dict[str, Any]
+        :raises RequestException: If the action is invalid or processing fails
+        """
+        action: str = batch_data["action"]
+        mail_uids: list[int] = batch_data["mail_uids"]
+        data = batch_data.get("data")
+
+        if not mail_uids:
+            return {"processed_ids": [], "action": action}
+
+        if action == "delete":
+            # Use the efficient bulk delete
+            self.delete_mails(account_id, folder_name, [str(uid) for uid in mail_uids])
+            return {"processed_ids": mail_uids, "action": action}
+
+        if action == "move":
+            # Efficient bulk move when all mails go to the same destination
+            if data and isinstance(data, str):
+                moved = self.move_mails(account_id, folder_name, mail_uids, data)
+                return {
+                    "processed_ids": moved.get("moved_ids", mail_uids),
+                    "failed_ids": [],
+                    "action": action,
+                }
+
+        # For other actions, process each mail individually
+        processed_ids: list[int] = []
+        failed_ids: list[dict] = []
+
+        client = self._open_client_for(account_id)
+
+        for mail_uid in mail_uids:
+            try:
+                if action == "tag":
+                    self._action_tag(client, folder_name, str(mail_uid), data)
+                elif action == "untag":
+                    self._action_untag(client, folder_name, str(mail_uid), data)
+                elif action == "move":
+                    self._action_move(client, folder_name, str(mail_uid), data)
+                elif action == "spam":
+                    self._action_spam(client, folder_name, str(mail_uid))
+                elif action == "ham":
+                    self._action_ham(client, folder_name, str(mail_uid))
+                elif action == "copy":
+                    self._action_copy(client, folder_name, str(mail_uid), data)
+                elif action == "mark_read":
+                    client.add_flags_to_mail(folder_name, str(mail_uid), ['\\Seen'])
+                    processed_ids.append(mail_uid)
+                    continue
+                elif action == "mark_unread":
+                    client.remove_flags_to_mail(folder_name, str(mail_uid), ['\\Seen'])
+                    processed_ids.append(mail_uid)
+                    continue
+                elif action == "mark_flagged":
+                    client.add_flags_to_mail(folder_name, str(mail_uid), ['\\Flagged'])
+                    processed_ids.append(mail_uid)
+                    continue
+                elif action == "mark_unflagged":
+                    client.remove_flags_to_mail(folder_name, str(mail_uid), ['\\Flagged'])
+                    processed_ids.append(mail_uid)
+                    continue
+                else:
+                    raise RequestException(f"Invalid batch action: {action}", err.ERROR_INVALID_ACTION)
+                processed_ids.append(mail_uid)
+            except RequestException as ex:
+                logger_mail_server.error(
+                    "Batch action '%s' failed for mail %s in folder %s: %s",
+                    action, mail_uid, folder_name, str(ex)
+                )
+                failed_ids.append({"uid": mail_uid, "error": str(ex)})
+
+        return {
+            "processed_ids": processed_ids,
+            "failed_ids": failed_ids,
+            "action": action,
+        }
 
     def perform_mail_action(self, account_id:str, folder_name: str, mail_uid: str, action_data: dict) -> dict[str, Any]:
         """Perform an action on a specific mail.

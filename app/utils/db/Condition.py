@@ -1,7 +1,6 @@
 import re
 from datetime import datetime
 from enum import IntEnum
-from app.utils.logger.logger import logger
 from app.utils.exceptions import BugException, AggravatedException
 from app.utils import errors as err
 
@@ -74,7 +73,8 @@ class LogicCondition(Condition):
         self.conditions = list(conditions)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({f" {self._op} ".join(x.__repr__() for x in self.conditions)})"
+        op = self._op
+        return f"{self.__class__.__name__}({op.join(x.__repr__() for x in self.conditions)})"
 
 class TrueCondition(Condition):
     """
@@ -111,6 +111,8 @@ class OrCondition(LogicCondition):
 class LessOrEqualCondition(CompareCondition):
     """Check if a named parameter is less than or equal to a value."""
     _op = "<="
+
+LessThanOrEqualCondition = LessOrEqualCondition  # alias for consistency
 
 class GreaterOrEqualCondition(CompareCondition):
     """Check if a named parameter is greater than or equal to a value."""
@@ -260,12 +262,6 @@ def string_filter_to_conditions(filter_str:str) -> Condition:
         previous_cond: list[Condition]|None = None
         previous_is_subgroup = False
         while i < n:
-            print(f"i={i}/n={n}")
-            print(f"current={current_word}")
-            print(f"current_op={current_op}")
-            print(f"current char={group_str[i]}")
-            print(f"all_cond={all_conds}")
-            print(f"previous_cond={previous_cond}")
             if group_str[i] == '(':
                 #Find another subgroup
                 subgroup = ""
@@ -281,15 +277,7 @@ def string_filter_to_conditions(filter_str:str) -> Condition:
                         if count_opener == 0:
                             break
                 if subgroup.endswith(")"):
-                    print(f"FIND a subgroup: {subgroup[:-1]}")
                     all_conds.append(_parse_group(subgroup[:-1]))
-                    print(f"RESULT a subgroup: {all_conds} and i={i}")
-                    print(f"RESULT i={i}/n={n}")
-                    print(f"RESULT current={current_word}")
-                    print(f"RESULT current_op={current_op}")
-                    print(f"RESULT current char={group_str[i]}")
-                    print(f"RESULT all_cond={all_conds}")
-                    print(f"RESULT previous_cond={previous_cond}")
                     previous_is_subgroup = True
                     i += 1 #add the last ')'
                 else:
@@ -355,7 +343,6 @@ def string_filter_to_conditions(filter_str:str) -> Condition:
             else:
                 current_word += group_str[i]
                 i += 1
-        print(f"last cond = currentword= '{current_word}'")
         cond: Condition
         if previous_is_subgroup and not current_word:
             #The last condition as a subgroup nothing to add
