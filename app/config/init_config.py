@@ -111,7 +111,8 @@ def init_infra() -> tuple[ClientRedis, JobPersistency]:
         init_module.check_sogo_database()
     except Exception as e:
         logger.warning("Database not yet available (run init-sogo6.sh): %s", e)
-        init_module.errors.clear()
+    # Allow degraded startup: DB tables may not exist yet (first init)
+    init_module.errors.clear()
     cache_client = init_module.check_redis()
     if init_module.errors:
         raise AggravatedException(f"Sogo cannot be initiated because: {init_module.errors}")
