@@ -6,7 +6,7 @@ https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/blob/main/SECURITY.md
 ## Reporting a Vulnerability
 
 **Do not open public issues.** Report privately to the maintainers
-(contact in the parent repo's SECURITY.md). The API serves
+(GitHub private vulnerability report in the parent repo). The API serves
 `/.well-known/security.txt` and `/security.txt` (RFC 9116) with the
 machine-readable policy.
 

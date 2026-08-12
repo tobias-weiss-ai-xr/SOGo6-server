@@ -15,7 +15,7 @@ blp = Blueprint("SecurityTxt", __name__)
 SECURITY_TXT = """# CRA Art. 14(2) — Coordinated vulnerability disclosure (RFC 9116)
 # See SECURITY.md in the repository root for the full policy.
 
-Contact: mailto:security@example.org
+Contact: https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/security/advisories/new
 Expires: 2027-12-31T23:59:59Z
 Preferred-Languages: en, de
 Policy: https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/blob/main/SECURITY.md
