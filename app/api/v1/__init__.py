@@ -11,6 +11,7 @@ from .calendar import calendar_apis
 from .jobs import job_apis
 from .contact import contact_apis
 from .health import health_apis
+from .securitytxt import securitytxt_apis
 
 v1_basic_apis: list[Blueprint] = []
 v1_basic_apis += system_apis
@@ -21,6 +22,7 @@ v1_basic_apis += calendar_apis
 v1_basic_apis += job_apis
 v1_basic_apis += contact_apis
 v1_basic_apis += health_apis
+v1_basic_apis += securitytxt_apis
 v1_basic_apis.extend([webauthn_blp, webauthn_blp_admin])
 
 v1_admin_apis: list[Blueprint] = []
