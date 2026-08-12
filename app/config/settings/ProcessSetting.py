@@ -49,11 +49,11 @@ class FlaskConfig(BaseSettings):
                            'click the **Authorize** button and paste your `Bearer <token>`.',
             'contact': {
                 'name': 'SOGo Community Fork',
-                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized',
+                'url': 'https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized',
             },
             'license': {
                 'name': 'MIT',
-                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized/blob/dev/LICENSE',
+                'url': 'https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/blob/dev/LICENSE',
             },
         },
         'components': {
@@ -105,11 +105,11 @@ class FlaskConfig(BaseSettings):
                            'and paste your `Bearer <token>`.',
             'contact': {
                 'name': 'SOGo Community Fork',
-                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized',
+                'url': 'https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized',
             },
             'license': {
                 'name': 'MIT',
-                'url': 'https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized/blob/dev/LICENSE',
+                'url': 'https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/blob/dev/LICENSE',
             },
         },
         'components': {

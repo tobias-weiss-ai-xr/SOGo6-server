@@ -1495,7 +1495,7 @@ FILTER_FEATURES = {
 ### Existing Code
 - [ClientSieve.py](../app/manager/mail/ClientSieve.py) - Sieve client implementation
 - [filter.py](../app/api/v1/mail/schemas/filter.py) - Filter schemas
-- [Filters Feature](https://github.com/tobias-weiss-ai-xr/sogo6-stalwart-openldap-dockerized/tree/main/sogo6-ui/src/features/user-settings/mail/filters) - Frontend implementation
+- [Filters Feature](https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/tree/main/sogo6-ui/src/features/user-settings/mail/filters) - Frontend implementation
 
 ### RFCs
 - [RFC 5228 - Sieve](https://tools.ietf.org/html/rfc5228) - Sieve base specification
