@@ -13,21 +13,55 @@ except Exception:
 
 
 def _make_fake_cache():
-    """Return a fake cache that stores in memory."""
+    """Return a fake cache that stores in memory.
+
+    Implements the same interface as ``ClientRedis`` (get/set with
+    expected_type, delete, flushdb, json serialization) so that tests
+    behave identically with or without a real Redis server.
+    """
+    import json as _json
+
     class FakeCache:
         def __init__(self):
             self._store = {}
-        def get(self, key):
-            return self._store.get(key)
-        def set(self, key, val, *a, **kw):
+
+        def get(self, key, expected_type=str):
+            raw = self._store.get(key)
+            if raw is None:
+                return None
+            if expected_type == str:
+                return raw
+            try:
+                return _json.loads(raw)
+            except (TypeError, _json.JSONDecodeError):
+                return raw
+
+        def set(self, key, val, ttl=None, nx=False):
+            if nx and key in self._store:
+                return False
+            if not isinstance(val, str):
+                val = _json.dumps(val)
             self._store[key] = val
-        def delete(self, key):
-            self._store.pop(key, None)
+            return True
+
+        def delete(self, *keys):
+            removed = 0
+            for key in keys:
+                if key in self._store:
+                    del self._store[key]
+                    removed += 1
+            return removed
+
         def flushdb(self):
             self._store.clear()
+
+        def ping(self):
+            return True
+
         @property
         def redis(self):
             return self
+
     return FakeCache()
 
 

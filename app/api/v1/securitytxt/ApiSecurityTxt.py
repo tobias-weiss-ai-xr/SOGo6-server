@@ -11,6 +11,7 @@ from flask.views import MethodView
 from flask_smorest import Blueprint
 
 blp = Blueprint("SecurityTxt", __name__)
+blp.public_access = True  # type: ignore[attr-defined]
 
 SECURITY_TXT = """# CRA Art. 14(2) — Coordinated vulnerability disclosure (RFC 9116)
 # See SECURITY.md in the repository root for the full policy.
@@ -24,6 +25,9 @@ Policy: https://github.com/tobias-weiss-ai-xr/SOGo6-dockerized/blob/main/SECURIT
 
 class SecurityTxtResource(MethodView):
     """Serve the security.txt content."""
+
+    public_access = True  # type: ignore[attr-defined]
+
 
     def get(self) -> Response:
         return Response(
