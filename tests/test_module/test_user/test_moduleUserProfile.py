@@ -536,6 +536,7 @@ def test_get_account_detail_not_found(monkeypatch):
 
 def test_create_external_account_success(monkeypatch):
     """Test creating an external account."""
+    monkeypatch.setenv("SOGO_AES_ENC_KEY", "0123456789abcdef0123456789abcdef")
     fake_client = FakeClientSQL()
     fake_client.select_result = [({},)]
     fake_client.update_result = 1

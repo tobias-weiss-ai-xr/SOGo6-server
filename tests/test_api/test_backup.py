@@ -106,7 +106,11 @@ def test_trigger_records_failure_not_success_when_redis_downed(admin_client, bac
     assert "redis is down" in entry["sources"]["redis"]["error"]
 
 
-def test_config_snapshot_redacts_secrets(admin_client, backup_dir):
+def test_config_snapshot_redacts_secrets(admin_client, backup_dir, monkeypatch):
+    # The snapshot captures SOGO_* env vars; make the secret + a non-secret
+    # explicit so the test is deterministic regardless of host environment.
+    monkeypatch.setenv("SOGO_AES_ENC_KEY", "0123456789abcdef")
+    monkeypatch.setenv("SOGO_P_REDIS_URL", "redis://localhost:6379/0")
     resp = admin_client.post(f"{ADMIN}/trigger", headers=_AUTH, json={})
     entry = resp.get_json()["data"]
     cfg = (backup_dir / f"backup-{entry['id']}" / "config.json").read_text("utf-8")

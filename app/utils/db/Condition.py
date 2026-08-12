@@ -74,7 +74,7 @@ class LogicCondition(Condition):
 
     def __repr__(self) -> str:
         op = self._op
-        return f"{self.__class__.__name__}({op.join(x.__repr__() for x in self.conditions)})"
+        return f"{self.__class__.__name__}({f' {op} '.join(x.__repr__() for x in self.conditions)})"
 
 class TrueCondition(Condition):
     """

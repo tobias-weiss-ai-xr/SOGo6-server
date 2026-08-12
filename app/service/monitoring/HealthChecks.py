@@ -24,6 +24,18 @@ def _proc_setting(key: str, default: str) -> str:
     if val:
         return val
     try:
+        # Module-level singleton (pydantic-settings reads process.conf at
+        # import time) — works even without a Flask app context, which is
+        # what the unit tests rely on.
+        from app.config.settings.ProcessSetting import process_config as _pc
+
+        if hasattr(_pc, key):
+            v = getattr(_pc, key)
+            if v:
+                return str(v)
+    except Exception:  # pragma: no cover - import failure
+        pass
+    try:
         from flask import current_app
 
         proc = current_app.config.get("process_config") or {}

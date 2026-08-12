@@ -31,8 +31,22 @@ from app.api.v1.admin.ApiHealthDashboard import sanitize_health_error
 
 
 def _cache_client():
+    import os
+
     from app.manager.cache.ClientRedis import ClientRedis
-    return ClientRedis(url_str="redis://localhost:6379/0", resp3=True)
+
+    # Use the configured Redis URL so tests pass both locally and in CI
+    # (where the compose network resolves sogo6-redis, not localhost).
+    url = os.getenv("SOGO_P_REDIS_URL", "redis://localhost:6379/0")
+    return ClientRedis(url_str=url, resp3=True)
+
+
+def _redis_available() -> bool:
+    try:
+        _cache_client().ping()
+        return True
+    except Exception:
+        return False
 
 
 def _hist_count(name: str, labels: dict) -> float:
@@ -62,6 +76,7 @@ def test_db_op_observes_histogram():
     assert _hist_count("sogo_db_query_duration_seconds", {"operation": "probe_op"}) == before + 1
 
 
+@pytest.mark.skipif(not _redis_available(), reason="real Redis required")
 def test_cache_op_observes_histogram_on_real_redis():
     client = _cache_client()
     before = _hist_count("sogo_cache_operation_duration_seconds", {"operation": "set"})

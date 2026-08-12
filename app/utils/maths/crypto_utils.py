@@ -12,21 +12,27 @@ from app.utils.errors import ERROR_INVALID_ENCRYPTED_DATA
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger
 
+# Module-level cache of the key; tests patch this attribute directly.
+# The function re-reads the environment lazily when this is unset so
+# monkeypatch.setenv in tests/config changes also take effect.
 SOGO_AES_ENC_KEY = os.environ.get('SOGO_AES_ENC_KEY', None)
 
 def get_encryption_key() -> bytes:
     """
     Get the AES encryption key from environment or generate a default one
-    
+
     :return: 32 bytes key for AES-256
     :rtype: bytes
     """
-    if SOGO_AES_ENC_KEY:
+    key = SOGO_AES_ENC_KEY
+    if not key:
+        key = os.environ.get('SOGO_AES_ENC_KEY', None)
+    if key:
         try:
-            return base64.b64decode(SOGO_AES_ENC_KEY)
+            return base64.b64decode(key)
         except Exception:
             # If it's a raw string, convert it
-            return SOGO_AES_ENC_KEY.encode('utf-8').ljust(32)[:32]
+            return key.encode('utf-8').ljust(32)[:32]
     else:
         raise ValueError("Encryption key not set in environment variable 'SOGO_AES_ENC_KEY'")
 
