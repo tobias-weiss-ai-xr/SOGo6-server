@@ -139,6 +139,27 @@ class InterfaceUserProfile:
             admin_module = ModuleAdminUser(process_settings=self.process_settings)
             admin_module.update_user(self.user.uid, {"password": new_password})
             logger_api.info("Password changed successfully for uid=%s", self.user.uid)
+
+            # 3.5. Revoke all existing sessions — a password change must
+            # invalidate every previously issued session token (including the
+            # one used for this request), otherwise a stolen token stays valid
+            # until its 24h TTL expires.
+            try:
+                from app.service import sogo_cache
+                cache = sogo_cache()
+                cache.revoke_user_sessions_by_uid([self.user.uid])
+                cache.close()
+                logger_api.info(
+                    "Revoked all sessions for uid=%s after password change",
+                    self.user.uid,
+                )
+            except Exception as cache_ex:
+                logger_api.error(
+                    "Failed to revoke sessions after password change for uid=%s: %s",
+                    self.user.uid,
+                    cache_ex,
+                )
+
             return create_api_base_response({"changed": True})
         except RequestException as ex:
             logger_api.error("Password change failed for uid=%s: %s", self.user.uid, ex)

@@ -85,6 +85,25 @@ class InterfaceApiAdminUser:
         """
         try:
             result = self.module.update_user(uid, data)
+
+            # If the password changed, revoke the user's sessions so the old
+            # credential can no longer be used with previously issued tokens.
+            if "password" in data:
+                try:
+                    from app.service import sogo_cache
+                    cache = sogo_cache()
+                    cache.revoke_user_sessions_by_uid([uid])
+                    cache.close()
+                    logger_api.info(
+                        "Revoked all sessions for uid=%s after admin password update",
+                        uid,
+                    )
+                except Exception as cache_ex:
+                    logger_api.error(
+                        "Failed to revoke sessions after admin password update for uid=%s: %s",
+                        uid,
+                        cache_ex,
+                    )
         except RequestException as ex:
             logger_api.error("Request exception in update_user: %s", str(ex))
             return create_api_base_response(None, ex.error)
