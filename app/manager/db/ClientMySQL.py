@@ -21,6 +21,42 @@ from app.utils.api.prometheus import db_op
 from .ClientSQL import ClientSQL
 
 
+# Cache mapping JSON column names (data_type dict/list/json) -> True.
+# On PostgreSQL these columns are JSONB and the driver returns parsed objects,
+# but on MySQL they are stored as LONGTEXT and returned as raw strings. We must
+# decode them on read to mirror the ``json.dumps`` applied to dict/list values
+# on insert, otherwise consumers that expect parsed objects (e.g. domain
+# settings) break on MySQL while working on PostgreSQL.
+_JSON_COLUMN_TYPES: dict | None = None
+
+
+def _json_column_types() -> dict:
+    """Return a mapping of JSON column names (dict/list/json data_type) -> True."""
+    global _JSON_COLUMN_TYPES
+    if _JSON_COLUMN_TYPES is None:
+        _JSON_COLUMN_TYPES = {}
+        try:
+            from app.config.db import tables as _tbl
+            for _attr in vars(_tbl).values():
+                if isinstance(_attr, Table):
+                    for _col in _attr.columns:
+                        if _col.data_type in ("dict", "list", "json"):
+                            _JSON_COLUMN_TYPES[_col.name] = True
+        except Exception:  # pragma: no cover - schema import safety net
+            logger_sql.warning("Unable to build JSON column type map; JSON columns will not be decoded on read")
+    return _JSON_COLUMN_TYPES
+
+
+def _maybe_json_decode(value: Any, col_name: str, json_cols: dict) -> Any:
+    """Decode a JSON string cell back into a Python object (MySQL TEXT storage)."""
+    if isinstance(value, str) and json_cols.get(col_name):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return value
+    return value
+
+
 def str_to_varchar(max_len: int = 0) -> str:
     """
     Convert a string type to a VARCHAR()
@@ -548,6 +584,8 @@ class ClientMySQL(ClientSQL):
             try:
                 cursor.execute(sql_query, tuple(params))
                 rows_fetched = cursor.rowcount
+                col_names = [d[0] for d in cursor.description] if cursor.description else []
+                json_cols = _json_column_types()
                 if rows_fetched == 0:
                     logger_sql.info("QUERY RESULT: empty")
                 else:
@@ -556,7 +594,7 @@ class ClientMySQL(ClientSQL):
                     record = cursor.fetchone()
                     if record is None:
                         break
-                    yield record
+                    yield tuple(_maybe_json_decode(v, n, json_cols) for n, v in zip(col_names, record))
             except Error as e:
                 logger_sql.error("Error when selecting table %s: %s", table_name, e)
             finally:
@@ -599,6 +637,8 @@ class ClientMySQL(ClientSQL):
             cursor = self.db_conn.cursor()
             try:
                 cursor.execute(sql_query, tuple(params))
+                col_names = [d[0].split(".")[-1] for d in cursor.description] if cursor.description else []
+                json_cols = _json_column_types()
                 if cursor.rowcount == 0:
                     logger_sql.info("QUERY JOIN RESULT: empty")
                 else:
@@ -607,7 +647,7 @@ class ClientMySQL(ClientSQL):
                     record = cursor.fetchone()
                     if record is None:
                         break
-                    yield record
+                    yield tuple(_maybe_json_decode(v, n, json_cols) for n, v in zip(col_names, record))
             except Error as e:
                 logger_sql.error("Error in select_from_several_table: %s", e)
             finally:
