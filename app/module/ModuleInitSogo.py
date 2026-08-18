@@ -121,6 +121,13 @@ class ModuleInitSogo:
         except Exception as exc:
             logger.warning("Could not ensure resource favorites table: %s", exc)
 
+        # Ensure app passwords table exists
+        try:
+            from app.module.auth.ModuleAppPassword import ModuleAppPassword
+            ModuleAppPassword.ensure_table(sogo_db_manager)
+        except Exception as exc:
+            logger.warning("Could not ensure app passwords table: %s", exc)
+
         sogo_db_manager.close()
 
     

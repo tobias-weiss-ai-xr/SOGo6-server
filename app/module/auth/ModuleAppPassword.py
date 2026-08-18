@@ -222,3 +222,34 @@ class ModuleAppPassword:
             )
             return True
         return False
+
+    # ------------------------------------------------------------------
+    # Table creation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def ensure_table(db: ClientSQL) -> None:
+        """Create the app-passwords table if it doesn't exist."""
+        try:
+            from app.utils.db.Table import Column, Table
+
+            cols = [
+                Column(name="id", data_type="serial"),
+                Column(name="hash", data_type="str", is_unique=True, extra_args={"max_len": 128}),
+                Column(name="user_uid", data_type="str", extra_args={"max_len": 256}),
+                Column(name="label", data_type="str", extra_args={"max_len": 128}),
+                Column(name="created_at", data_type="datetime"),
+                Column(name="last_used", data_type="datetime"),
+                Column(name="expires_at", data_type="datetime", is_nullable=True),
+            ]
+            table = Table(
+                name=ModuleAppPassword.TABLE_NAME,
+                columns=cols,
+                primary_keys=("id",),
+            )
+            existing = db.get_table_info(table.name)
+            if not existing:
+                db.create_table(table)
+        except Exception as exc:
+            from app.utils.logger.logger import logger as _l
+            _l.warning("Could not ensure app passwords table: %s", exc)
