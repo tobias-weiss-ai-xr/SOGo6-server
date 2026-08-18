@@ -83,6 +83,7 @@ def check_database() -> dict:
             )
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
+            cursor.fetchall()
             cursor.close()
             conn.close()
 
