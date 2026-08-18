@@ -16,7 +16,7 @@ from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 
-from app.service.monitoring.HealthChecks import check_postgres, check_ldap, check_redis, check_stalwart, check_agent
+from app.service.monitoring.HealthChecks import check_database, check_ldap, check_redis, check_stalwart, check_agent
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.api.prometheus import record_dependency_health
 from app.utils.logger.logger import logger_api
@@ -94,7 +94,7 @@ class ApiHealthDashboard(MethodView):
         """Return health status for all services (real probes)."""
         services = [
             _service("Redis", check_redis),
-            _service("PostgreSQL", check_postgres),
+            _service("Database", check_database),
             _service("LDAP", check_ldap),
             _service("Stalwart Mail", check_stalwart),
             _service("Celery Agent", check_agent),

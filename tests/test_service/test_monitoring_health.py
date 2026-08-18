@@ -20,7 +20,7 @@ from app.utils.api.prometheus import (
     DEPENDENCY_LATENCY,
 )
 from app.service.monitoring.HealthChecks import (
-    check_postgres,
+    check_database,
     check_ldap,
     check_redis,
     check_stalwart,
@@ -128,10 +128,12 @@ def test_check_ldap_error_when_unreachable(monkeypatch):
     assert res["status"] == "error"
 
 
-def test_check_postgres_error_without_server(monkeypatch):
+@pytest.mark.parametrize("db_type,expected_port", [("MySQL", "3306"), ("PostgreSQL", "5432")])
+def test_check_database_error_without_server(monkeypatch, db_type, expected_port):
+    monkeypatch.setenv("SOGO_P_DB_TYPE", db_type)
     monkeypatch.setenv("SOGO_P_DB_HOST", "127.0.0.1")
     monkeypatch.setenv("SOGO_P_DB_PORT", "9")
-    res = check_postgres()
+    res = check_database()
     assert res["status"] == "error"
     assert res["latency_ms"] >= 0
 
@@ -145,7 +147,7 @@ def test_check_agent_error_without_worker(monkeypatch):
 
 def test_registry_covers_all_dashboards():
     """Every check used by dashboards is registered once."""
-    assert list(ALL_CHECKS) == ["postgresql", "ldap", "redis", "stalwart_mail", "agent"]
+    assert list(ALL_CHECKS) == ["database", "ldap", "redis", "stalwart_mail", "agent"]
 
 
 # ---------------------------------------------------------------- #

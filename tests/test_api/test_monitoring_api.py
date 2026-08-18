@@ -33,7 +33,7 @@ def _fake_probes(monkeypatch, overrides: dict):
     """Patch the dashboard probes so each returns a fixed status/latency."""
     defaults = {
         "check_redis": {"status": "ok", "latency_ms": 1.2, "detail": "PONG"},
-        "check_postgres": {"status": "ok", "latency_ms": 3.4, "detail": "Connected"},
+        "check_database": {"status": "ok", "latency_ms": 3.4, "detail": "Connected"},
         "check_ldap": {"status": "ok", "latency_ms": 2.3, "detail": "Connected"},
         "check_stalwart": {"status": "ok", "latency_ms": 4.5, "detail": "Connected via IMAP:143"},
         "check_agent": {"status": "ok", "latency_ms": 5.6, "detail": "2 worker(s) responded"},
@@ -50,15 +50,15 @@ def _fake_probes(monkeypatch, overrides: dict):
 
 
 def test_dashboard_reports_real_probe_statuses(admin_client, monkeypatch):
-    _fake_probes(monkeypatch, {"check_postgres": {"status": "error", "latency_ms": 999.0, "error": "down"}})
+    _fake_probes(monkeypatch, {"check_database": {"status": "error", "latency_ms": 999.0, "error": "down"}})
     resp = admin_client.get(ADMIN, headers={"Authorization": "Bearer test-token"})
     assert resp.status_code == 200
     data = resp.get_json()["data"]
     services = {s["name"]: s for s in data["services"]}
     assert len(services) == 5
-    assert services["PostgreSQL"]["status"] == "error"
-    assert services["PostgreSQL"]["latency_ms"] == 999.0
-    assert services["PostgreSQL"]["detail"] == "down"
+    assert services["Database"]["status"] == "error"
+    assert services["Database"]["latency_ms"] == 999.0
+    assert services["Database"]["detail"] == "down"
     assert services["Redis"]["status"] == "ok"
     assert services["Celery Agent"]["detail"] == "2 worker(s) responded"
     assert data["healthy_count"] == 4
@@ -67,7 +67,7 @@ def test_dashboard_reports_real_probe_statuses(admin_client, monkeypatch):
 
 def test_dashboard_all_down(admin_client, monkeypatch):
     _fake_probes(monkeypatch, {name: {"status": "error", "latency_ms": 1.0, "error": f"{name} down"} for name in
-                               ["check_redis", "check_postgres", "check_ldap", "check_stalwart", "check_agent"]})
+                               ["check_redis", "check_database", "check_ldap", "check_stalwart", "check_agent"]})
     resp = admin_client.get(ADMIN, headers={"Authorization": "Bearer test-token"})
     data = resp.get_json()["data"]
     assert data["healthy_count"] == 0
@@ -91,7 +91,7 @@ def test_health_run_checks_delegates_to_probes():
     from app.api.v1.health.ApiHealth import _run_checks
 
     checks = _run_checks()
-    assert set(checks) == {"postgresql", "ldap", "redis", "stalwart_mail"}
+    assert set(checks) == {"database", "ldap", "redis", "stalwart_mail"}
     assert checks["redis"]["status"] == "ok"
     assert "latency_ms" in checks["redis"]
     from prometheus_client import REGISTRY

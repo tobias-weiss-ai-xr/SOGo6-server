@@ -46,26 +46,46 @@ def _proc_setting(key: str, default: str) -> str:
     return default
 
 
-def check_postgres() -> dict:
-    """Return PostgreSQL connectivity status (real connection + SELECT 1)."""
+def check_database() -> dict:
+    """Return database connectivity status (real connection + SELECT 1).
+
+    Supports **MySQL/MariaDB** and **PostgreSQL** based on the
+    ``SOGO_P_DB_TYPE`` process setting (default ``MySQL``).
+    """
     start = time()
     result: dict[str, Any] = {"status": "ok", "latency_ms": 0.0}
+
+    db_type = _proc_setting("SOGO_P_DB_TYPE", "MySQL")
+    host = _proc_setting("SOGO_P_DB_HOST", "localhost")
+    port = int(_proc_setting("SOGO_P_DB_PORT", "3306" if db_type == "MySQL" else "5432"))
+    user = _proc_setting("SOGO_P_DB_USER", "sogo")
+    password = _proc_setting("SOGO_P_DB_PASS", "sogo")
+    dbname = _proc_setting("SOGO_P_DB_NAME", "sogo")
+
     try:
-        import psycopg  # type: ignore[import-untyped]
+        if db_type == "PostgreSQL":
+            import psycopg  # type: ignore[import-untyped]
 
-        host = _proc_setting("SOGO_P_DB_HOST", "localhost")
-        port = int(_proc_setting("SOGO_P_DB_PORT", "5432"))
-        user = _proc_setting("SOGO_P_DB_USER", "sogo")
-        password = _proc_setting("SOGO_P_DB_PASS", "sogo")
-        dbname = _proc_setting("SOGO_P_DB_NAME", "sogo")
+            conn = psycopg.connect(
+                host=host, port=port, user=user,
+                password=password, dbname=dbname,
+                connect_timeout=5,
+            )
+            conn.execute("SELECT 1")
+            conn.close()
+        else:
+            import mysql.connector  # type: ignore[import-untyped]
 
-        conn = psycopg.connect(
-            host=host, port=port, user=user,
-            password=password, dbname=dbname,
-            connect_timeout=5,
-        )
-        conn.execute("SELECT 1")
-        conn.close()
+            conn = mysql.connector.connect(
+                host=host, port=port, user=user,
+                password=password, database=dbname,
+                connection_timeout=5,
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            conn.close()
+
         result["latency_ms"] = round((time() - start) * 1000, 1)
     except Exception as exc:  # pylint: disable=broad-except
         result["status"] = "error"
@@ -182,7 +202,7 @@ def check_agent() -> dict:
 
 # Registry used by the dashboards and the Prometheus snapshot
 ALL_CHECKS: dict[str, Any] = {
-    "postgresql": check_postgres,
+    "database": check_database,
     "ldap": check_ldap,
     "redis": check_redis,
     "stalwart_mail": check_stalwart,

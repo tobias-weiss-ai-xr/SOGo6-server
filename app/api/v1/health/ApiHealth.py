@@ -19,7 +19,7 @@ from flask import Response, current_app
 from flask.views import MethodView
 from flask_smorest import Blueprint
 
-from app.service.monitoring.HealthChecks import check_postgres, check_ldap, check_redis, check_stalwart
+from app.service.monitoring.HealthChecks import check_database, check_ldap, check_redis, check_stalwart
 from app.utils.api.prometheus import record_dependency_health
 
 blp = Blueprint("Health", __name__, url_prefix="/health")
@@ -29,7 +29,7 @@ blp.public_access = True  # type: ignore[attr-defined]
 def _run_checks() -> dict[str, dict]:
     """Run the real probes and publish them to Prometheus gauges."""
     checks = {
-        "postgresql": check_postgres(),
+        "database": check_database(),
         "ldap": check_ldap(),
         "redis": check_redis(),
         "stalwart_mail": check_stalwart(),
