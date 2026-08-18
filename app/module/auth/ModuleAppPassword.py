@@ -97,6 +97,11 @@ class ModuleAppPassword:
     # CRUD
     # ------------------------------------------------------------------
 
+    def _ensure_conn(self) -> None:
+        """Ensure the DB connection is alive."""
+        if self._db.db_conn is None or not self._db.db_conn.is_connected():
+            self._db.connect()
+
     def create(self, user_uid: str, label: str) -> tuple[str, dict[str, Any]]:
         """Create a new app password for the given user.
 
@@ -118,6 +123,9 @@ class ModuleAppPassword:
             [token_hash, user_uid, label.strip(), now_dt, now_dt, None],
         ]
         columns = ("hash", "user_uid", "label", "created_at", "last_used", "expires_at")
+
+        # Ensure DB connection is alive (insert_in_table silently skips if disconnected)
+        self._ensure_conn()
 
         self._db.insert_in_table(
             self.TABLE_NAME,
@@ -151,6 +159,7 @@ class ModuleAppPassword:
 
         The output *never* contains the raw token (only the label + metadata).
         """
+        self._ensure_conn()
         condition = EqualCondition("user_uid", user_uid)
         rows = list(self._db.select_from_table(
             self.TABLE_NAME,
@@ -174,6 +183,7 @@ class ModuleAppPassword:
         :param user_uid: Used as an ownership guard — only the owner can
             delete their app passwords.
         """
+        self._ensure_conn()
         condition = EqualCondition("id", record_id)
         deleted = self._db.delete_row_in_table(self.TABLE_NAME, condition=condition)
         if deleted == 0:
@@ -199,6 +209,7 @@ class ModuleAppPassword:
         if not token.startswith(APP_PASSWORD_PREFIX):
             return False
 
+        self._ensure_conn()
         condition = EqualCondition("user_uid", user_uid)
         rows = list(self._db.select_from_table(
             self.TABLE_NAME,
