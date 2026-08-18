@@ -41,7 +41,7 @@ class InterfaceAppPassword:
             logger_api.error("Failed to create app password for %s: %s", user_uid, exc)
             raise RequestException(
                 "Failed to create app password",
-                err.ERROR_SERVER,
+                err.ERROR_APP_PASSWORD_NOT_FOUND,  # generic 404-based error
             ) from exc
 
         return {
@@ -66,5 +66,5 @@ class InterfaceAppPassword:
             logger_api.error("Failed to revoke app password %d for %s: %s", record_id, user_uid, exc)
             raise RequestException(
                 "Failed to revoke app password",
-                err.ERROR_SERVER,
+                err.ERROR_APP_PASSWORD_NOT_FOUND,
             ) from exc
