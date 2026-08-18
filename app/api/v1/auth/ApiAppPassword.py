@@ -85,15 +85,15 @@ def init_app_password_interface() -> None:
 class ApiAppPasswordList(MethodView):
     """(Authenticated) List and create app passwords."""
 
-    @blp.response(200, AppPasswordRecordSchema(many=True))
-    def get(self) -> list[dict[str, Any]]:
+    @blp.response(200)
+    def get(self) -> ResponseReturnValue:
         """Return all app passwords for the authenticated user."""
         user: User = g.user
         inter: InterfaceAppPassword = g.app_pw_inter
         return inter.list(user.uid)
 
     @blp.arguments(CreateRequestSchema, error_status_code=400)
-    @blp.response(200, CreateResponseSchema)
+    @blp.response(200)
     def post(self, new_data: dict[str, Any]) -> ResponseReturnValue:
         """Create a new app password. The token is returned once."""
         user: User = g.user
