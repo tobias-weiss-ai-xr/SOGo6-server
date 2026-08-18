@@ -90,7 +90,7 @@ class ApiAppPasswordList(MethodView):
         """Return all app passwords for the authenticated user."""
         user: User = g.user
         inter: InterfaceAppPassword = g.app_pw_inter
-        return inter.list(user.uid)
+        return create_api_base_response(inter.list(user.uid))
 
     @blp.arguments(CreateRequestSchema, error_status_code=400)
     @blp.response(200)
