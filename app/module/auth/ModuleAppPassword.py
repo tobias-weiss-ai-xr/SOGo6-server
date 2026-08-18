@@ -25,7 +25,9 @@ from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
 
 # Cost factor for bcrypt (must match what the container's libs support)
-import bcrypt
+# bcrypt is imported lazily to avoid hard dependency at module-load time.
+# The container must have ``pip install bcrypt`` available for actual token operations.
+bcrypt = None
 
 APP_PASSWORD_PREFIX = "sogo-ap-"  # helps users visually identify app passwords
 
@@ -69,14 +71,24 @@ class ModuleAppPassword:
         return f"{APP_PASSWORD_PREFIX}{raw}"
 
     @staticmethod
+    def _ensure_bcrypt():
+        """Lazily import bcrypt on first use."""
+        global bcrypt  # noqa: PLW0603
+        if bcrypt is None:
+            import bcrypt as _bcrypt
+            bcrypt = _bcrypt
+
+    @staticmethod
     def _hash_token(token: str) -> str:
         """Return a bcrypt hash of the given token."""
+        ModuleAppPassword._ensure_bcrypt()
         return bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     @staticmethod
     def _verify_token(token: str, stored_hash: str) -> bool:
         """Verify a raw token against its stored hash using constant-time comparison."""
         try:
+            ModuleAppPassword._ensure_bcrypt()
             return bcrypt.checkpw(token.encode("utf-8"), stored_hash.encode("utf-8"))
         except Exception:  # pylint: disable=broad-except
             return False
