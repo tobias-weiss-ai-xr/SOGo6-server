@@ -66,15 +66,14 @@ class DeleteRequestSchema(Schema):
 def init_app_password_interface() -> None:
     """Initialise the app-password interface on every request."""
     if "app_pw_inter" not in g:
-        from app.manager.db.ClientSQL import ClientSQL
         from app.config.settings.ProcessSetting import process_config
+        from app.utils.module.importManager import import_and_instantiate_manager
 
-        db = ClientSQL(
-            process_config.SOGO_P_DB_HOST,
-            process_config.SOGO_P_DB_PORT,
-            process_config.SOGO_P_DB_USER,
-            process_config.SOGO_P_DB_PWD,
-            process_config.SOGO_P_DB_NAME,
+        db_type = f"Client{process_config.SOGO_P_DB_TYPE}"
+        db = import_and_instantiate_manager(
+            module_path="app.manager.db",
+            module_and_class_name=db_type,
+            module_args=process_config.get_db_settings(),
         )
         g.app_pw_inter = InterfaceAppPassword(db)
 
