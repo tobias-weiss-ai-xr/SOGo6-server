@@ -13,8 +13,8 @@ Features:
 
 Dependencies:
 - python-webauthn (pip install webauthn)
-- Postgres for persistent storage
-- Redis for challenge caching (optional, falls back to Postgres)
+- MySQL/MariaDB or PostgreSQL for persistent storage
+- Redis for challenge caching (optional, falls back to DB)
 
 Author: SOGo6 Team
 Created: 2025-08-21
@@ -205,50 +205,62 @@ COL_WP_UPDATED_AT = "updated_at"
 # Database Schema Setup
 # ---------------------------------------------------------------------------
 
+def _db_type() -> str:
+    """Return 'MySQL' or 'PostgreSQL' based on process config."""
+    from app.config.settings.ProcessSetting import process_config
+    return process_config.SOGO_P_DB_TYPE
+
+
 def create_tables_if_not_exist():
-    """Create WebAuthn tables if they don't exist."""
-    
+    """Create WebAuthn tables if they don't exist.
+
+    Uses BLOB instead of BYTEA, JSON instead of JSONB, VARCHAR(45)
+    instead of INET, and INSERT IGNORE instead of ON CONFLICT for
+    MySQL/MariaDB compatibility.
+    """
+    is_pg = _db_type() == "PostgreSQL"
+    blob_type = "BYTEA" if is_pg else "LONGBLOB"
+    json_type = "JSONB" if is_pg else "JSON"
+    inet_type = "INET" if is_pg else "VARCHAR(45)"
+    boolean_type = "BOOLEAN" if is_pg else "TINYINT(1)"
+
     # Credentials table
     sql_credentials = f"""
     CREATE TABLE IF NOT EXISTS {TABLE_WEBAUTHN_CREDENTIALS} (
         {COL_WC_ID} VARCHAR(36) PRIMARY KEY,
         {COL_WC_USER_ID} VARCHAR(255) NOT NULL,
-        {COL_WC_CREDENTIAL_ID} BYTEA NOT NULL UNIQUE,
-        {COL_WC_PUBLIC_KEY_COSE} BYTEA NOT NULL,
+        {COL_WC_CREDENTIAL_ID} {blob_type} NOT NULL UNIQUE,
+        {COL_WC_PUBLIC_KEY_COSE} {blob_type} NOT NULL,
         {COL_WC_ATTESTATION_TYPE} VARCHAR(50),
         {COL_WC_NAME} VARCHAR(255),
-        {COL_WC_IS_DEFAULT} BOOLEAN DEFAULT FALSE,
+        {COL_WC_IS_DEFAULT} {boolean_type} DEFAULT FALSE,
         {COL_WC_SIGN_COUNT} INTEGER DEFAULT 0,
-        {COL_WC_LAST_USED_AT} TIMESTAMP,
-        {COL_WC_CREATED_AT} TIMESTAMP DEFAULT NOW(),
-        CONSTRAINT fk_webauthn_credentials_user 
-            FOREIGN KEY ({COL_WC_USER_ID}) 
-            REFERENCES sogo6_users(uid) ON DELETE CASCADE
+        {COL_WC_LAST_USED_AT} TIMESTAMP NULL DEFAULT NULL,
+        {COL_WC_CREATED_AT} TIMESTAMP DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user 
-        ON {TABLE_WEBAUTHN_CREDENTIALS}({COL_WC_USER_ID});
-    CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_created 
-        ON {TABLE_WEBAUTHN_CREDENTIALS}({COL_WC_CREATED_AT});
     """
-    
+    # Note: foreign key to sogo6_users(uid) removed — sogo6_users may not
+    # exist (LDAP-only setups), and cascade deletes can be handled at app level.
+
+    sql_idx_cred_user = f"CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON {TABLE_WEBAUTHN_CREDENTIALS}({COL_WC_USER_ID});"
+    sql_idx_cred_created = f"CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_created ON {TABLE_WEBAUTHN_CREDENTIALS}({COL_WC_CREATED_AT});"
+
     # Challenges table
     sql_challenges = f"""
     CREATE TABLE IF NOT EXISTS {TABLE_WEBAUTHN_CHALLENGES} (
         {COL_WCH_ID} VARCHAR(36) PRIMARY KEY,
         {COL_WCH_USER_ID} VARCHAR(255),
         {COL_WCH_CHALLENGE_TYPE} VARCHAR(20) NOT NULL,
-        {COL_WCH_CHALLENGE} BYTEA NOT NULL,
+        {COL_WCH_CHALLENGE} {blob_type} NOT NULL,
         {COL_WCH_RP_ID} VARCHAR(255) NOT NULL,
-        {COL_WCH_USED} BOOLEAN DEFAULT FALSE,
+        {COL_WCH_USED} {boolean_type} DEFAULT FALSE,
         {COL_WCH_EXPIRES_AT} TIMESTAMP NOT NULL,
         {COL_WCH_CREATED_AT} TIMESTAMP DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_expires 
-        ON {TABLE_WEBAUTHN_CHALLENGES}({COL_WCH_EXPIRES_AT});
-    CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_user 
-        ON {TABLE_WEBAUTHN_CHALLENGES}({COL_WCH_USER_ID});
     """
-    
+    sql_idx_ch_expires = f"CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_expires ON {TABLE_WEBAUTHN_CHALLENGES}({COL_WCH_EXPIRES_AT});"
+    sql_idx_ch_user = f"CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_user ON {TABLE_WEBAUTHN_CHALLENGES}({COL_WCH_USER_ID});"
+
     # Audit log table
     sql_audit = f"""
     CREATE TABLE IF NOT EXISTS {TABLE_WEBAUTHN_AUDIT_LOG} (
@@ -256,26 +268,23 @@ def create_tables_if_not_exist():
         {COL_WA_USER_ID} VARCHAR(255),
         {COL_WA_ACTION} VARCHAR(50) NOT NULL,
         {COL_WA_CREDENTIAL_ID} VARCHAR(36),
-        {COL_WA_SUCCESS} BOOLEAN NOT NULL,
-        {COL_WA_IP_ADDRESS} INET,
+        {COL_WA_SUCCESS} {boolean_type} NOT NULL,
+        {COL_WA_IP_ADDRESS} {inet_type},
         {COL_WA_ERROR_CODE} VARCHAR(50),
-        {COL_WA_METADATA} JSONB,
+        {COL_WA_METADATA} {json_type},
         {COL_WA_CREATED_AT} TIMESTAMP DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_webauthn_audit_user 
-        ON {TABLE_WEBAUTHN_AUDIT_LOG}({COL_WA_USER_ID});
-    CREATE INDEX IF NOT EXISTS idx_webauthn_audit_action 
-        ON {TABLE_WEBAUTHN_AUDIT_LOG}({COL_WA_ACTION});
-    CREATE INDEX IF NOT EXISTS idx_webauthn_audit_created 
-        ON {TABLE_WEBAUTHN_AUDIT_LOG}({COL_WA_CREATED_AT});
     """
-    
+    sql_idx_aud_user = f"CREATE INDEX IF NOT EXISTS idx_webauthn_audit_user ON {TABLE_WEBAUTHN_AUDIT_LOG}({COL_WA_USER_ID});"
+    sql_idx_aud_action = f"CREATE INDEX IF NOT EXISTS idx_webauthn_audit_action ON {TABLE_WEBAUTHN_AUDIT_LOG}({COL_WA_ACTION});"
+    sql_idx_aud_created = f"CREATE INDEX IF NOT EXISTS idx_webauthn_audit_created ON {TABLE_WEBAUTHN_AUDIT_LOG}({COL_WA_CREATED_AT});"
+
     # Policies table
     sql_policies = f"""
     CREATE TABLE IF NOT EXISTS {TABLE_WEBAUTHN_POLICIES} (
         {COL_WP_ID} VARCHAR(36) PRIMARY KEY,
-        {COL_WP_REQUIRE_WEBAUTHN} BOOLEAN DEFAULT FALSE,
-        {COL_WP_ALLOW_PASSWORD_FALLBACK} BOOLEAN DEFAULT TRUE,
+        {COL_WP_REQUIRE_WEBAUTHN} {boolean_type} DEFAULT FALSE,
+        {COL_WP_ALLOW_PASSWORD_FALLBACK} {boolean_type} DEFAULT TRUE,
         {COL_WP_USER_VERIFICATION} VARCHAR(20) DEFAULT 'preferred',
         {COL_WP_ATTESTATION_REQUIREMENT} VARCHAR(20) DEFAULT 'none',
         {COL_WP_TIMEOUT_SECONDS} INTEGER DEFAULT 300,
@@ -283,22 +292,38 @@ def create_tables_if_not_exist():
         {COL_WP_UPDATED_AT} TIMESTAMP DEFAULT NOW()
     );
     """
-    
+
     # Execute all
-    Db().execute_write(sql_credentials)
-    Db().execute_write(sql_challenges)
-    Db().execute_write(sql_audit)
-    Db().execute_write(sql_policies)
-    
-    # Insert default policy
-    default_policy = f"""
-    INSERT INTO {TABLE_WEBAUTHN_POLICIES} ({COL_WP_ID}, {COL_WP_REQUIRE_WEBAUTHN}, 
-        {COL_WP_ALLOW_PASSWORD_FALLBACK}, {COL_WP_USER_VERIFICATION}, 
-        {COL_WP_ATTESTATION_REQUIREMENT}, {COL_WP_TIMEOUT_SECONDS})
-    VALUES ('default', FALSE, TRUE, 'preferred', 'none', 300)
-    ON CONFLICT ({COL_WP_ID}) DO NOTHING;
-    """
-    Db().execute_write(default_policy)
+    db = Db()
+    db.execute_write(sql_credentials)
+    db.execute_write(sql_idx_cred_user)
+    db.execute_write(sql_idx_cred_created)
+    db.execute_write(sql_challenges)
+    db.execute_write(sql_idx_ch_expires)
+    db.execute_write(sql_idx_ch_user)
+    db.execute_write(sql_audit)
+    db.execute_write(sql_idx_aud_user)
+    db.execute_write(sql_idx_aud_action)
+    db.execute_write(sql_idx_aud_created)
+    db.execute_write(sql_policies)
+
+    # Insert default policy — MySQL uses INSERT IGNORE, PostgreSQL ON CONFLICT
+    if is_pg:
+        default_policy = f"""
+        INSERT INTO {TABLE_WEBAUTHN_POLICIES} ({COL_WP_ID}, {COL_WP_REQUIRE_WEBAUTHN},
+            {COL_WP_ALLOW_PASSWORD_FALLBACK}, {COL_WP_USER_VERIFICATION},
+            {COL_WP_ATTESTATION_REQUIREMENT}, {COL_WP_TIMEOUT_SECONDS})
+        VALUES ('default', FALSE, TRUE, 'preferred', 'none', 300)
+        ON CONFLICT ({COL_WP_ID}) DO NOTHING;
+        """
+    else:
+        default_policy = f"""
+        INSERT IGNORE INTO {TABLE_WEBAUTHN_POLICIES} ({COL_WP_ID}, {COL_WP_REQUIRE_WEBAUTHN},
+            {COL_WP_ALLOW_PASSWORD_FALLBACK}, {COL_WP_USER_VERIFICATION},
+            {COL_WP_ATTESTATION_REQUIREMENT}, {COL_WP_TIMEOUT_SECONDS})
+        VALUES ('default', FALSE, TRUE, 'preferred', 'none', 300);
+        """
+    db.execute_write(default_policy)
 
 
 # ---------------------------------------------------------------------------
@@ -634,21 +659,22 @@ class ModuleWebAuthn:
         UPDATE {TABLE_WEBAUTHN_CHALLENGES}
         SET {COL_WCH_USED} = TRUE
         WHERE {COL_WCH_ID} = %s
-        RETURNING {COL_WCH_ID}
         """
-        row = Db().execute_read_one(sql, (challenge_id,))
+        Db().execute_write(sql, (challenge_id,))
+        row = Db().execute_read_one(
+            f"SELECT {COL_WCH_ID} FROM {TABLE_WEBAUTHN_CHALLENGES} WHERE {COL_WCH_ID} = %s AND {COL_WCH_USED} = TRUE",
+            (challenge_id,),
+        )
         return row is not None
-    
+
     @staticmethod
     def cleanup_expired_challenges() -> int:
         """Remove expired challenges. Returns number deleted."""
         sql = f"""
         DELETE FROM {TABLE_WEBAUTHN_CHALLENGES}
         WHERE {COL_WCH_EXPIRES_AT} < NOW()
-        RETURNING {COL_WCH_ID}
         """
-        rows = Db().execute_read_all(sql)
-        return len(rows) if rows else 0
+        return Db().execute_write(sql)
     
     @staticmethod
     def register_credential(
@@ -917,11 +943,10 @@ class ModuleWebAuthn:
         sql = f"""
         DELETE FROM {TABLE_WEBAUTHN_CREDENTIALS}
         WHERE {COL_WC_ID} = %s AND {COL_WC_USER_ID} = %s
-        RETURNING {COL_WC_ID}
         """
-        row = Db().execute_read_one(sql, (credential_id, user_id))
+        affected = Db().execute_write(sql, (credential_id, user_id))
         
-        if row:
+        if affected > 0:
             # Log the removal
             ModuleWebAuthn._log_action(
                 user_id=user_id,
@@ -942,11 +967,8 @@ class ModuleWebAuthn:
         sql = f"""
         DELETE FROM {TABLE_WEBAUTHN_CREDENTIALS}
         WHERE {COL_WC_USER_ID} = %s
-        RETURNING {COL_WC_ID}
         """
-        rows = Db().execute_read_all(sql, (user_id,))
-        
-        count = len(rows) if rows else 0
+        count = Db().execute_write(sql, (user_id,))
         
         # Log removals
         for cred in credentials:
@@ -995,7 +1017,6 @@ class ModuleWebAuthn:
             {COL_WP_TIMEOUT_SECONDS} = %s,
             {COL_WP_UPDATED_AT} = %s
         WHERE {COL_WP_ID} = 'default'
-        RETURNING *
         """
         params = (
             policy.require_webauthn,
@@ -1005,7 +1026,7 @@ class ModuleWebAuthn:
             policy.timeout_seconds,
             policy.updated_at,
         )
-        _ = Db().execute_read_one(sql, params)
+        Db().execute_write(sql, params)
         
         # Log the policy change
         ModuleWebAuthn._log_action(
@@ -1110,15 +1131,15 @@ class ModuleWebAuthn:
         Returns (credential, user_id) or (None, None)
         """
         sql = f"""
-        SELECT c.*, u.uid as user_id FROM {TABLE_WEBAUTHN_CREDENTIALS} c
-        JOIN sogo6_users u ON c.{COL_WC_USER_ID} = u.uid
-        WHERE encode(c.{COL_WC_CREDENTIAL_ID}, 'base64') = %s
+        SELECT c.* FROM {TABLE_WEBAUTHN_CREDENTIALS} c
+        WHERE TO_BASE64(c.{COL_WC_CREDENTIAL_ID}) = %s
         LIMIT 1
         """
         row = Db().execute_read_one(sql, (credential_id_base64,))
         if row:
             credential = WebAuthnCredential.from_row(row)
-            return credential, row["user_id"]
+            # user_id is stored directly in the credentials table (no JOIN needed)
+            return credential, credential.user_id if credential else None
         return None, None
 
 
