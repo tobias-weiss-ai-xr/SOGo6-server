@@ -341,7 +341,7 @@ class ClientMySQL(ClientSQL):
         """
         Create a table in MySQL. Table should already be sql-exploit free (names validated).
         """
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         sql_query = table_to_query(table)
@@ -370,7 +370,7 @@ class ClientMySQL(ClientSQL):
         """Create all indexes defined on the table. Existing indexes are silently skipped."""
         if not table.index:
             return
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
         for idx in table.index:
             cols = ", ".join(f"`{c}`" for c in idx.columns)
@@ -399,7 +399,7 @@ class ClientMySQL(ClientSQL):
         """
         Create several tables and their indexes
         """
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         for table in table_list:
@@ -412,7 +412,7 @@ class ClientMySQL(ClientSQL):
         Insert one or more rows into a table
         """
         ret = 0
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         insert_len = len(column_tuple)
@@ -461,7 +461,7 @@ class ClientMySQL(ClientSQL):
         Update rows in a table
         """
         ret = 0
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         # Check column len and values len
@@ -535,7 +535,7 @@ class ClientMySQL(ClientSQL):
         :yield: A generator, each item is a tuple with the values corresponding to the column_tuple param
         :rtype: Generator[tuple[Any, ...], None, None]
         """
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
         if len(column_tuple) == 0:
             columns_sql = "*"
@@ -615,7 +615,7 @@ class ClientMySQL(ClientSQL):
 
         Column names and condition param_names may be qualified (table.column).
         """
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         join_parts: list[str] = []
@@ -667,7 +667,7 @@ class ClientMySQL(ClientSQL):
         :return: A number indicates the number of rows of the result
         :rtype: int
         """
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         if column_name == "*":
@@ -724,7 +724,7 @@ class ClientMySQL(ClientSQL):
         if isinstance(condition, TrueCondition):
             raise BugException("Condition for delete query is always True", err.ERROR_QUERY_DELETION_CONDITION)
 
-        if self.db_conn and not self.db_conn.is_connected():
+        if self.db_conn is None or not self.db_conn.is_connected():
             self.connect()
 
         if expected_row > 0:

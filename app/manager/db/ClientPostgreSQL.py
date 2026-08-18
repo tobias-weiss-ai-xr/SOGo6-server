@@ -306,7 +306,7 @@ class ClientPostgreSQL(ClientSQL):
         Create a table
         Table should already be sql-exploit free
         """
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
 
         sql_query = table_to_query(table)
@@ -329,7 +329,7 @@ class ClientPostgreSQL(ClientSQL):
         """Create all indexes defined on the table. Existing indexes are silently skipped."""
         if not table.index:
             return
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
         for idx in table.index:
             if idx.fulltext:
@@ -361,7 +361,7 @@ class ClientPostgreSQL(ClientSQL):
         """
         Create several tables and their indexes
         """
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
 
         for table in table_list:
@@ -376,7 +376,7 @@ class ClientPostgreSQL(ClientSQL):
         raise BugException is a unique value contraint is trigger
         """
         ret = 0
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
 
         #Check column len and values len
@@ -431,7 +431,7 @@ class ClientPostgreSQL(ClientSQL):
         Update data in a table
         """
         ret = 0
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
 
         #Check column len and values len
@@ -505,7 +505,7 @@ class ClientPostgreSQL(ClientSQL):
         :yield: A generator, each item is a tuple with the values corresponding to the column_tuple param
         :rtype: Generator[tuple[Any, ...]]
         """
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
         if len(column_tuple) == 0:
             column_tuple = ("*",)
@@ -589,7 +589,7 @@ class ClientPostgreSQL(ClientSQL):
         :param order: Sort direction.
         :param limit: Maximum rows (0 = no limit).
         """
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
 
         join_sql = Composed([
@@ -644,7 +644,7 @@ class ClientPostgreSQL(ClientSQL):
         :return: A number indicates the number of row of the result
         :rtype: int
         """
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
         if column_name == "*":
             count_query = Composed([SQL("COUNT(*)")])
@@ -699,7 +699,7 @@ class ClientPostgreSQL(ClientSQL):
         if isinstance(condition, TrueCondition):
             raise BugException("Condition for delete query is always True", err.ERROR_QUERY_DELETION_CONDITION)
 
-        if self.db_conn and self.db_conn.closed:
+        if self.db_conn is None or self.db_conn.closed:
             self.connect()
 
         if expected_row > 0:
