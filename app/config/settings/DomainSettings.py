@@ -443,7 +443,7 @@ class UserSourceSettingsObj(SettingsObj):
 
 
             return {
-                "db_user": parsed_url["usernname"],
+                "db_user": parsed_url["username"],
                 "db_pwd":  parsed_url["password"],
                 "db_host": parsed_url["hostname"],
                 "db_port": parsed_url["port"],
