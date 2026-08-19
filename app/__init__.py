@@ -28,7 +28,7 @@ from app.utils import constants as cs
 from app.utils.logger.logger import logger, logger_api
 from app.utils.logger.json_logger import enable_json_logging
 from app.utils.api.prometheus import init_prometheus
-from app.utils.exceptions import AggravatedException
+from app.utils.exceptions import AggravatedException, RequestException
 
 from pathlib import Path
 
@@ -309,9 +309,15 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
         if auth_header:
             if auth_header.type == 'bearer':
                 if kind == cs.API_BASIC:
-                    user = VoucherUserService(process_config).generate_user_from_voucher(auth_header.token)
+                    try:
+                        user = VoucherUserService(process_config).generate_user_from_voucher(auth_header.token)
+                    except RequestException:
+                        user = UserAnonymous()
                 elif kind == cs.API_ADMIN:
-                    admin = VoucherAdminService(process_config).generate_admin_from_voucher(auth_header.token)
+                    try:
+                        admin = VoucherAdminService(process_config).generate_admin_from_voucher(auth_header.token)
+                    except RequestException:
+                        admin = AdminAnonymous()
             elif auth_header.type == 'basic' and current_app.config[cs.ALLOW_AUTH_BASIC]:
                 pass
             else:
