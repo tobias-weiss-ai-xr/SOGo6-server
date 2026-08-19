@@ -12,6 +12,7 @@ from flask import Flask, request, g, Response, current_app
 from flask.typing import ResponseReturnValue
 from flask_smorest import Api, Blueprint
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from marshmallow.exceptions import ValidationError
 
@@ -117,6 +118,12 @@ def create_app(sogo_state: int) -> Flask:
     Create and configure the Flask application
     """
     app = Flask(__name__)
+
+    # Trust X-Forwarded-* headers from the reverse proxy (Traefik).
+    # Without this, Flask generates redirect URLs (e.g. trailing-slash 308)
+    # with ``http://`` instead of ``https://``.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
     app.config.from_object(process_config)
     # Hard cap on HTTP request body size, applied at the WSGI layer (Werkzeug). Protects
     # the server from oversized uploads before any application code reads the body into
