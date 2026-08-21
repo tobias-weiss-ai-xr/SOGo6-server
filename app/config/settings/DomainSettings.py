@@ -10,6 +10,7 @@ from app.utils.config.generateObjFromSchema import SettingsObj
 from app.utils.db.Condition import string_filter_to_conditions
 from app.utils.exceptions import AggravatedException
 from app.utils.strings import parse_url_str
+from app.config.settings.ProcessSetting import process_config
 
 if TYPE_CHECKING:
     from app.utils.db.Condition import Condition
@@ -432,7 +433,25 @@ class UserSourceSettingsObj(SettingsObj):
                     # self.US_LDAP_GROUP_CLASS
             }
         elif type_us in {"mysql", "postgresql"}:
-            #Transform url to parameters
+            #Transform url to parameters.
+            # If no SQL user-source URL is configured, fall back to the process
+            # (application) database connection. This is the common single-DB
+            # deployment where the user source lives in the same database as the
+            # SOGo data. Without this fallback a mysql/postgresql user source
+            # with an empty US_SQL_USER_URL would try to connect to host "" port
+            # 80 and every login would fail with "MySQL database connection
+            # error".
+            if not self.US_SQL_USER_URL:
+                db_dict = process_config.get_db_settings()
+                return {
+                    "db_user": db_dict["db_user"],
+                    "db_pwd":  db_dict["db_pwd"],
+                    "db_host": db_dict["db_host"],
+                    "db_port": db_dict["db_port"],
+                    "db_ssl":  db_dict["db_ssl"],
+                    "db_enc":  db_dict["db_enc"],
+                }
+
             parsed_url = parse_url_str(self.US_SQL_USER_URL)
             encodage = "utf8"
             
