@@ -235,7 +235,7 @@ def _get_module() -> ModuleResourceBooking:
         process = g.process_settings
         db = import_and_instantiate_manager(
             module_path="app.manager.db",
-            module_and_class_name="ClientPostgreSQL",
+            module_and_class_name=f"Client{process.SOGO_P_DB_TYPE}",
             module_args=process.get_db_settings(),
         )
         g._resource_booking_module = ModuleResourceBooking(db)

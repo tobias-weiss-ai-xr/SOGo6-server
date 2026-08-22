@@ -70,7 +70,7 @@ def _get_module() -> ModuleSharedMailbox:
         process = g.process_settings
         db = import_and_instantiate_manager(
             module_path="app.manager.db",
-            module_and_class_name="ClientPostgreSQL",
+            module_and_class_name=f"Client{process.SOGO_P_DB_TYPE}",
             module_args=process.get_db_settings(),
         )
         g._shared_mailbox_module = ModuleSharedMailbox(db)
@@ -83,7 +83,7 @@ def _get_notes_module() -> ModuleSharedMailboxNotes:
         process = g.process_settings
         db = import_and_instantiate_manager(
             module_path="app.manager.db",
-            module_and_class_name="ClientPostgreSQL",
+            module_and_class_name=f"Client{process.SOGO_P_DB_TYPE}",
             module_args=process.get_db_settings(),
         )
         g._shared_mailbox_notes_module = ModuleSharedMailboxNotes(db)
@@ -96,7 +96,7 @@ def _get_assignment_module() -> ModuleSharedMailboxAssignment:
         process = g.process_settings
         db = import_and_instantiate_manager(
             module_path="app.manager.db",
-            module_and_class_name="ClientPostgreSQL",
+            module_and_class_name=f"Client{process.SOGO_P_DB_TYPE}",
             module_args=process.get_db_settings(),
         )
         g._shared_mailbox_assignment_module = ModuleSharedMailboxAssignment(db)
