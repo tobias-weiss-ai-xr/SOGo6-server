@@ -196,11 +196,11 @@ class ContactSourceDirectory(ContactSource):  # pylint: disable=unused-argument
         emails: list[CardEmail] = []
         for mail_field in self._user_source.US_MAIL:
             for mail_val in entry.get(mail_field, []):
-                emails.append(CardEmail(email=mail_val))
+                emails.append(CardEmail(value=mail_val))
 
         # Phone
         phones_raw: list[str] = entry.get("telephoneNumber", [])
-        phones: list = [CardPhone(phone=p) for p in phones_raw]
+        phones: list = [CardPhone(number=p) for p in phones_raw]
 
         # Organization
         organization: str = self._get_first(entry, "o") or ""
