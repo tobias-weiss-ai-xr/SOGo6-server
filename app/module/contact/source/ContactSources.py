@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.config.db import tables as tbl
+from app.module.contact.model.CardAddressBook import CardAddressBook
 from app.module.contact.model.enums.CardSourceType import CardSourceType
 from app.module.contact.repository.RepositoryAddressBook import RepositoryAddressBook
 from app.module.contact.repository.RepositoryContact import RepositoryContact
@@ -20,7 +21,6 @@ if TYPE_CHECKING:
     from app.config.settings.DomainSettings import UserSourceSettingsObj
     from app.manager.db.ClientSQL import ClientSQL
     from app.manager.storage.ClientStorage import ClientStorage
-    from app.module.contact.model.CardAddressBook import CardAddressBook
     from app.module.contact.model.CardContact import CardContact
     from app.module.contact.model.CardList import CardList
     from app.module.contact.source.ContactSource import ContactSource
