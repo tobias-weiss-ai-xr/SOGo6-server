@@ -206,7 +206,7 @@ class ApiWebAuthnStatus(MethodView):
     def get(self):
         """Check if WebAuthn is supported and get user status."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         # Get policy
         policy = ModuleWebAuthn.get_policy()
@@ -236,7 +236,7 @@ class ApiWebAuthnRegistrationChallenge(MethodView):
     def get(self, args):
         """Generate and return registration challenge."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         user_name = user.get("name", user_id)
         user_display_name = user.get("display_name", user_name)
         
@@ -289,7 +289,7 @@ class ApiWebAuthnRegister(MethodView):
     def post(self, args):
         """Register a new passkey."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         challenge_id = args.get("challenge_id")
         credential_data = args.get("credential", {})
@@ -474,7 +474,7 @@ class ApiWebAuthnCredentials(MethodView):
     def get(self):
         """List all credentials for the current user."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         credentials = ModuleWebAuthn.get_credentials_by_user(user_id)
         
@@ -489,7 +489,7 @@ class ApiWebAuthnCredentials(MethodView):
     def post(self, args):
         """Alternative endpoint to register a new passkey."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         credential_data = args.get("credential", {})
         name = args.get("name")
@@ -531,7 +531,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
     def get(self, credential_id):
         """Get credential details."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         credential = ModuleWebAuthn.get_credential_by_id(credential_id)
         
@@ -549,7 +549,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
     def put(self, args, credential_id):
         """Update credential properties."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         credential = ModuleWebAuthn.get_credential_by_id(credential_id)
         
@@ -591,7 +591,7 @@ class ApiWebAuthnCredentialDetail(MethodView):
     def delete(self, credential_id):
         """Remove a credential."""
         user = get_current_user()
-        user_id = user["uid"]
+        user_id = user.uid
         
         credential = ModuleWebAuthn.get_credential_by_id(credential_id)
         

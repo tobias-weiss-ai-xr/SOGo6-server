@@ -59,15 +59,29 @@ class UtlDatabase:
             except Exception:  # noqa: BLE001 - rowcount can be unavailable on some drivers
                 return 0
 
-    def execute_read_one(self, sql: str, params: tuple | list | None = None) -> tuple | None:
-        """Execute a SELECT and return the first row (or None).
+    def _row_to_dict(self, cur, row):
+        """Normalize a DBAPI row into a dict keyed by column name.
+
+        Different drivers (sqlite3, mysql-connector, psycopg) return tuples by
+        default; the WebAuthn module (the only consumer of this facade) expects
+        dict rows. Drivers that already return dicts are passed through.
+        """
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            return row
+        cols = [d[0] for d in (cur.description or [])]
+        return dict(zip(cols, row))
+
+    def execute_read_one(self, sql: str, params: tuple | list | None = None) -> dict | None:
+        """Execute a SELECT and return the first row as a dict (or None).
 
         :param sql: Raw SELECT statement.
         :type sql: str
         :param params: Bound parameters, if any.
         :type params: tuple | list | None
-        :return: First row as tuple, or None.
-        :rtype: tuple | None
+        :return: First row as a dict keyed by column name, or None.
+        :rtype: dict | None
         """
         conn = self._connection()
         with conn.cursor() as cur:
@@ -75,17 +89,17 @@ class UtlDatabase:
                 cur.execute(sql, params)
             else:
                 cur.execute(sql)
-            return cur.fetchone()
+            return self._row_to_dict(cur, cur.fetchone())
 
-    def execute_read_all(self, sql: str, params: tuple | list | None = None) -> list[tuple]:
-        """Execute a SELECT and return all rows.
+    def execute_read_all(self, sql: str, params: tuple | list | None = None) -> list[dict]:
+        """Execute a SELECT and return all rows as dicts.
 
         :param sql: Raw SELECT statement.
         :type sql: str
         :param params: Bound parameters, if any.
         :type params: tuple | list | None
-        :return: All rows as a list of tuples.
-        :rtype: list[tuple]
+        :return: All rows as dicts keyed by column name.
+        :rtype: list[dict]
         """
         conn = self._connection()
         with conn.cursor() as cur:
@@ -94,4 +108,4 @@ class UtlDatabase:
             else:
                 cur.execute(sql)
             rows = cur.fetchall()
-            return list(rows) if rows else []
+            return [self._row_to_dict(cur, r) for r in rows] if rows else []

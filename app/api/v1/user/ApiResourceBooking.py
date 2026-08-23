@@ -244,21 +244,27 @@ def _get_module() -> ModuleResourceBooking:
 
 def _get_user_id() -> str:
     """Get the current authenticated user's ID."""
-    user_id = getattr(g, "user_get_id", lambda: None)()
-    if not user_id:
+    user = getattr(g, "user", None)
+    uid = getattr(user, "uid", "") if user else ""
+    if not uid or getattr(user, "anonymous", False):
         abort(401, message="Authentication required")
-    return user_id
+    return uid
 
 
 def _get_user_groups() -> list[str]:
-    """Get the current user's groups."""
-    groups = getattr(g, "user_get_groups", lambda: [])()
-    return groups or []
+    """Get the current user's groups (ACLs granted to the user)."""
+    user = getattr(g, "user", None)
+    if user is None:
+        return []
+    return getattr(user, "acl_given", None) or []
 
 
 def _get_user_email() -> Optional[str]:
     """Get the current user's primary email."""
-    return getattr(g, "user_get_email", lambda: None)()
+    user = getattr(g, "user", None)
+    if user is None:
+        return None
+    return getattr(user, "mail", None) or None
 
 
 def _can_access_resource(resource: dict, user_groups: list[str]) -> bool:
