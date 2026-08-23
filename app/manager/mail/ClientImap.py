@@ -1282,10 +1282,26 @@ class ClientImap(ClientMailServer):
                     raise BugException(f"Try to fetch mail with an unvalid messageset: {range_arg}")
                 raise RequestException(f"Fail to fetch mails: {datas}", err.ERROR_IMAP_FAILED)
 
-            for part in reversed(datas):
-                if not isinstance(part, tuple):
-                    continue
-                yield self._parse_mail_with_content_fetching(part)
+            # imaplib returns FETCH results as alternating (tuple, bytes) pairs:
+            #   [(b'1 (BODY[] {1126}', b'<mail>'), b' FLAGS () UID 1)', ...]
+            # The tuple's first element has the sequence number + BODY literal
+            # marker; the trailing bytes item contains FLAGS, UID, etc.
+            # Combine them so the parser can extract the UID.
+            mails_raw: list[tuple[bytes, bytes]] = []
+            i = 0
+            while i < len(datas):
+                if isinstance(datas[i], tuple):
+                    meta_bytes, mail_bytes = datas[i]
+                    extra_meta = datas[i + 1] if i + 1 < len(datas) and isinstance(datas[i + 1], bytes) else b''
+                    full_meta = meta_bytes + extra_meta
+                    mails_raw.append((full_meta, mail_bytes))
+                    i += 2
+                else:
+                    i += 1
+
+            # Yield in reverse order (most recent first)
+            for meta, body in reversed(mails_raw):
+                yield self._parse_mail_with_content_fetching((meta, body))
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
@@ -1437,13 +1453,27 @@ class ClientImap(ClientMailServer):
                     raise BugException(f"Try to fetch mail with an unvalid messageset: {range_arg}")
                 raise RequestException(f"Fail to fetch mails: {datas}", err.ERROR_IMAP_FAILED)
 
-            # Iterate from the end, two items at a time
-            for i in range(len(datas) - 1, -1, -2):
-                pair = datas[i-1:i+1]  # Get the current and previous item
-                bodystruct = pair[1]
-                message_parts = cast(tuple[bytes, bytes], pair[0])
+                        # imaplib returns FETCH results as alternating (tuple, bytes) pairs:
+            #   [(b'1 (BODY[HEADER] {1093}', b'<headers>'), b' BODYSTRUCTURE (...) FLAGS () UID 1 RFC822.SIZE 1126)', ...]
+            # The tuple's first element has the sequence number + BODY[HEADER] literal;
+            # the trailing bytes item has BODYSTRUCTURE, FLAGS, UID, RFC822.SIZE.
+            # Combine them so the parser can extract the UID and FLAGS.
+            mails_raw: list[tuple[tuple[bytes, bytes], bytes]] = []
+            i = 0
+            while i < len(datas):
+                if isinstance(datas[i], tuple):
+                    message_parts = datas[i]
+                    bodystruct = datas[i + 1] if i + 1 < len(datas) and isinstance(datas[i + 1], bytes) else b''
+                    # Combine metadata: tuple meta + bodystruct bytes
+                    full_meta = message_parts[0] + (bodystruct if isinstance(bodystruct, bytes) else b'')
+                    mails_raw.append(((full_meta, message_parts[1]), bodystruct if isinstance(bodystruct, bytes) else b''))
+                    i += 2
+                else:
+                    i += 1
+
+            # Yield in reverse order (most recent first)
+            for message_parts, bodystruct in reversed(mails_raw):
                 has_attachment = self._parse_body_structure_for_attachment(bodystruct)
-                #b'1 (FLAGS (\\Draft) UID 47 RFC822.SIZE 74732 BODY[HEADER] {1080}
                 yield self._parse_mail_without_content_fetching(message_parts, has_attachment)
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
@@ -1479,11 +1509,20 @@ class ClientImap(ClientMailServer):
                 raise RequestException(f"Fail to fetch mails: {datas}", err.ERROR_IMAP_FAILED)
 
             len_mail_fetch = int(len(datas)/2)
-            mail_list: list = [None] * len_mail_fetch
-            for part in datas:
-                if not isinstance(part, tuple):
-                    continue
-                mail_list.append(self._parse_mail_with_content_fetching(part))
+            mail_list: list = []
+            # imaplib returns FETCH results as alternating (tuple, bytes) pairs.
+            # The tuple's first element has the sequence number + BODY literal;
+            # the trailing bytes item contains FLAGS, UID, etc.
+            i = 0
+            while i < len(datas):
+                if isinstance(datas[i], tuple):
+                    meta_bytes, mail_bytes = datas[i]
+                    extra_meta = datas[i + 1] if i + 1 < len(datas) and isinstance(datas[i + 1], bytes) else b''
+                    full_meta = meta_bytes + extra_meta
+                    mail_list.append(self._parse_mail_with_content_fetching((full_meta, mail_bytes)))
+                    i += 2
+                else:
+                    i += 1
             return mail_list
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
@@ -1606,7 +1645,13 @@ class ClientImap(ClientMailServer):
             if not datas or not isinstance(datas[0], tuple):
                 raise RequestException(f"Mail UID {validated_uid} not found in {folder_path}.", err.ERROR_MAIL_UID_NOT_FOUND)
 
-            return self._parse_mail_with_content_fetching(datas[0])
+            # imaplib returns FETCH results as alternating (tuple, bytes) pairs.
+            # The tuple's first element has the sequence number + BODY literal;
+            # the trailing bytes item contains FLAGS, UID, etc.
+            meta_bytes, mail_bytes = datas[0]
+            extra_meta = datas[1] if len(datas) > 1 and isinstance(datas[1], bytes) else b''
+            full_meta = meta_bytes + extra_meta
+            return self._parse_mail_with_content_fetching((full_meta, mail_bytes))
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
