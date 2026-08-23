@@ -421,9 +421,26 @@ class ClientImap(ClientMailServer):
                 raise RequestException("Cannot login to IMAP server - connection failed", err.ERROR_IMAP_FAILED)
             self.authenticated = True
 
-            #Get capabilities
-            capabilities: bytes = self.connection.response('CAPABILITY')[1][0]
-            self.capabilities = set(capabilities.decode().split())
+            #Get capabilities — use capability() command instead of response('CAPABILITY')
+            #because response() may return None if the server didn't send a CAPABILITY
+            #response during login (e.g. Stalwart sends capabilities in the OK response
+            #but imaplib doesn't always store them in the response dict).
+            try:
+                typ, data = self.connection.capability()
+                if typ == 'OK' and data and data[0]:
+                    capabilities: bytes = data[0]
+                    self.capabilities = set(capabilities.decode().split())
+                else:
+                    # Fallback: try response('CAPABILITY')
+                    cap_resp = self.connection.response('CAPABILITY')
+                    if cap_resp and cap_resp[1] and cap_resp[1][0]:
+                        self.capabilities = set(cap_resp[1][0].decode().split())
+                    else:
+                        logger_imap.warning("Could not retrieve IMAP capabilities after login")
+                        self.capabilities = set()
+            except Exception as cap_err:
+                logger_imap.warning("Error retrieving IMAP capabilities: %s", cap_err)
+                self.capabilities = set()
 
             #Get namespace
             self.namespace()
