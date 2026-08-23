@@ -543,7 +543,7 @@ class ModuleResourceBooking:
         Returns:
             List of booking dictionaries
         """
-        from app.module.calendar.model.CalUserType import CalUserType
+        from app.module.calendar.model.enums.CalUserType import CalUserType
         from app.module.calendar.model.enums.EventStatus import EventStatus
         from app.module.calendar.repository.RepositoryEvent import RepositoryEvent
         from app.module.calendar.repository.RepositoryCalendar import RepositoryCalendar
@@ -698,7 +698,7 @@ class ModuleResourceBooking:
         Returns:
             Booking dictionary or None if not found
         """
-        from app.module.calendar.model.CalUserType import CalUserType
+        from app.module.calendar.model.enums.CalUserType import CalUserType
         from app.module.calendar.repository.RepositoryEvent import RepositoryEvent
         
         try:

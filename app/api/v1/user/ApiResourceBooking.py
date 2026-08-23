@@ -620,9 +620,9 @@ class ApiResourceBook(MethodView):
             }, code=201)
             
         except RequestException as ex:
-            return create_api_base_response(None, ex.error, message=str(ex))
+            return create_api_base_response(None, ex.error, error_msg=str(ex))
         except Exception as ex:
-            return create_api_base_response(None, err.ERROR_SERVER_ERROR, message=str(ex))
+            return create_api_base_response(None, err.ERROR_UNKOWN, error_msg=str(ex))
 
 
 @blp.route("/my-bookings")
@@ -642,7 +642,7 @@ class ApiMyBookings(MethodView):
                 "total_count": len(bookings),
             })
         except Exception as ex:
-            return create_api_base_response(None, err.ERROR_SERVER_ERROR, message=str(ex))
+            return create_api_base_response(None, err.ERROR_UNKOWN, error_msg=str(ex))
 
 
 @blp.route("/my-bookings/<string:booking_id>")
@@ -686,6 +686,6 @@ class ApiMyBookingDetail(MethodView):
                 "booking_id": booking_id,
             })
         except RequestException as ex:
-            return create_api_base_response(None, ex.error, message=str(ex))
+            return create_api_base_response(None, ex.error, error_msg=str(ex))
         except Exception as ex:
-            return create_api_base_response(None, err.ERROR_SERVER_ERROR, message=str(ex))
+            return create_api_base_response(None, err.ERROR_UNKOWN, error_msg=str(ex))
