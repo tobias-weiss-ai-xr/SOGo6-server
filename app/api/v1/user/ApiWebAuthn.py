@@ -22,11 +22,14 @@ from flask import request, g
 from flask.views import MethodView
 from flask_smorest import Blueprint
 
+import base64
+
 from app.utils import errors
 
 from app.module.auth.ModuleWebAuthn import (
     ModuleWebAuthn,
     RP_ID,
+    MAX_CREDENTIALS_PER_USER,
     WebAuthnError,
     WebAuthnChallengeExpiredError,
     WebAuthnChallengeAlreadyUsedError,
@@ -178,6 +181,19 @@ def get_client_ip():
     return request.remote_addr
 
 
+def _decode_base64url_padded(value: str | bytes) -> bytes:
+    """Decode an (unpadded) base64url challenge into raw bytes.
+
+    The ``webauthn`` helpers emit standard unpadded base64url; ``urlsafe_b64decode``
+    rejects unpadded input whenever padding is not a multiple of 4, so restore it.
+    """
+    if isinstance(value, bytes):
+        return value
+    s = value.replace("-", "+").replace("_", "/")
+    s += "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s)
+
+
 # ---------------------------------------------------------------------------
 # Blueprint Setup
 # ---------------------------------------------------------------------------
@@ -237,12 +253,13 @@ class ApiWebAuthnRegistrationChallenge(MethodView):
         """Generate and return registration challenge."""
         user = get_current_user()
         user_id = user.uid
-        user_name = user.get("name", user_id)
-        user_display_name = user.get("display_name", user_name)
+        # User is the auth object (attributes, not a dict)
+        user_name = user.cn or user.mail or user_id
+        user_display_name = user_name
         
         # Check if user already has too many credentials
         count = ModuleWebAuthn.count_credentials(user_id)
-        if count >= ModuleWebAuthn.MAX_CREDENTIALS_PER_USER:
+        if count >= MAX_CREDENTIALS_PER_USER:
             raise WebAuthnMaxCredentialsError()
         
         # Get policy
@@ -259,10 +276,7 @@ class ApiWebAuthnRegistrationChallenge(MethodView):
         )
         
         # Create and store challenge
-        import base64
-        challenge_bytes = base64.urlsafe_b64decode(
-            options["challenge"].replace("-", "+").replace("_", "/")
-        )
+        challenge_bytes = _decode_base64url_padded(options["challenge"])
         challenge = ModuleWebAuthn.create_challenge(
             user_id=user_id,
             challenge_type="register",
@@ -372,10 +386,7 @@ class ApiWebAuthnLoginChallenge(MethodView):
         )
         
         # Create and store challenge
-        import base64
-        challenge_bytes = base64.urlsafe_b64decode(
-            options["challenge"].replace("-", "+").replace("_", "/")
-        )
+        challenge_bytes = _decode_base64url_padded(options["challenge"])
         challenge = ModuleWebAuthn.create_challenge(
             user_id=None,  # Unknown user
             challenge_type="login",

@@ -174,6 +174,20 @@ def create_app(sogo_state: int) -> Flask:
     register_route(flask_api, cs.API_BASIC, sogo_state)
     register_route(admin_api, cs.API_ADMIN, sogo_state)
 
+    # --- Global error handlers (SOGo contract: never leak a raw 500) ---
+    # Many views return error responses, but a few (e.g. the admin email-auth
+    # and shared-mailbox blueprints) raise RequestException / AggravatedException
+    # for missing resources. Without a handler those become bare HTTP 500s.
+    # Translate them into the standard SOGo error payload with the right status.
+    from app.utils.exceptions import AggravatedException, RequestException
+    from app.utils.api.ApiBaseResponse import create_api_base_response
+
+    def _request_exception_response(_e: RequestException) -> tuple[dict, int]:
+        return create_api_base_response(None, error=_e.error)
+
+    app.errorhandler(RequestException)(_request_exception_response)
+    app.errorhandler(AggravatedException)(_request_exception_response)
+
     # --- CalDAV protocol server (RFC 4791 / RFC 4918 / RFC 6578) ---
     # Registered directly on the app (outside the smorest /api tree) so the
     # WebDAV methods and XML/iCalendar media types are not constrained by the

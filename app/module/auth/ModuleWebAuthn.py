@@ -40,7 +40,10 @@ from webauthn.helpers import (
 from webauthn.helpers.structs import (
     AuthenticationCredential,
     AuthenticatorAssertionResponse,
+    AuthenticatorSelectionCriteria,
     PublicKeyCredentialUserEntity,
+    ResidentKeyRequirement,
+    UserVerificationRequirement,
 )
 
 from app.orm import PydanticBaseModel
@@ -501,12 +504,12 @@ class ModuleWebAuthn:
             user_id=user_id.encode('utf-8'),
             user_display_name=user_display_name,
             attestation=attestation,
-            user_verification=user_verification,
-            authenticator_selection=authenticator_selection or {
-                "resident_key": "preferred",
-                "user_verification": user_verification,
-                "require_resident_key": True,  # Prefer passkeys over roaming keys
-            },
+            # the webauthn lib requires an AuthenticatorSelectionCriteria struct
+            authenticator_selection=authenticator_selection or AuthenticatorSelectionCriteria(
+                resident_key=ResidentKeyRequirement.PREFERRED,
+                user_verification=UserVerificationRequirement(user_verification),
+                require_resident_key=True,  # Prefer passkeys over roaming keys
+            ),
             supported_pub_key_algs=SUPPORTED_ALGORITHMS,
             timeout=timeout,
         )
@@ -527,8 +530,11 @@ class ModuleWebAuthn:
                 {"type": "public-key", "alg": alg} for alg in options.pub_key_cred_params
             ],
             "timeout": options.timeout,
-            "attestation": options.attestation.value,
-            "userVerification": options.user_verification.value,
+            "attestation": getattr(options, "attestation", "none").value
+            if hasattr(getattr(options, "attestation", "none"), "value") else getattr(options, "attestation", "none"),
+            "userVerification": getattr(options, "user_verification", user_verification).value
+            if hasattr(getattr(options, "user_verification", user_verification), "value")
+            else getattr(options, "user_verification", user_verification),
             "authenticatorSelection": {
                 "residentKey": "preferred",
                 "userVerification": user_verification,

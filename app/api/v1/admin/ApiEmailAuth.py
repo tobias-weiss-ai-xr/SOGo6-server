@@ -50,7 +50,7 @@ class _BaseResource(MethodView):
             "spf": err.ERROR_EMAIL_AUTH_SPF_NOT_FOUND,
         }
         e = mapping.get(kind, err.ERROR_EMAIL_AUTH_DOMAIN_NOT_FOUND)
-        return RequestException(error=e.error_code, error_msg=e.message, http_status=e.http_status)
+        return RequestException(error=e)
 
 
 # ── Domains ───────────────────────────────────────────────────────────────────
