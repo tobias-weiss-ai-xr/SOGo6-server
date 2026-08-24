@@ -283,6 +283,10 @@ class ModuleMail:
         subscribed = folder_data.get("subscribed")
         folder_type = folder_data.get("type")
 
+        # Reject an empty/whitespace-only folder name instead of silently ignoring it.
+        if "name" in folder_data and (new_name is None or str(new_name).strip() == ""):
+            raise RequestException("Folder name cannot be empty", err.ERROR_FOLDER_CANNOT_RENAME)
+
         # Rename folder if a new name is provided and different
         final_folder_name = folder_name
         if new_name and new_name != folder_name:

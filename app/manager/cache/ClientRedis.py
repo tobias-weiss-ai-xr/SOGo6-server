@@ -16,6 +16,48 @@ from functools import wraps
 from time import perf_counter
 
 
+class _ReconnectOnError:
+    """
+    Decorator that transparently reconnects the Redis client when an operation
+    fails because of a stale/closed pooled connection.
+
+    redis-py only retries ``redis.exceptions.ConnectionError`` and
+    ``TimeoutError``, but a dead socket can surface as raw ``ValueError``
+    ("I/O operation on closed file") or ``OSError`` ("Bad file descriptor",
+    ConnectionResetError). When that happens we close the client, re-establish
+    the connection and retry the operation exactly once.
+    """
+
+    _RETRYABLE = (rexc.ConnectionError, rexc.TimeoutError, rexc.ConnectionError, OSError, ValueError)
+
+    def __init__(self, fn):
+        self.fn = fn
+        wraps(fn)(self)
+
+    def __call__(self, *args, **kwargs):
+        try:
+            return self.fn(*args, **kwargs)
+        except self._RETRYABLE as exc:
+            self_redis = args[0]
+            logger_cache.warning(
+                "Redis error in %s: %r — reconnecting and retrying once",
+                self.fn.__name__, exc,
+            )
+            try:
+                self_redis.close()
+            except Exception:
+                pass
+            self_redis._connect()
+            try:
+                return self.fn(*args, **kwargs)
+            except self._RETRYABLE as exc2:
+                logger_cache.error(
+                    "Redis still failing after reconnect in %s: %r",
+                    self.fn.__name__, exc2,
+                )
+                raise exc2
+
+
 def _timed_cache(operation: str):
     """Observe the cache-op duration histogram for *operation* (real measurement)."""
 
@@ -125,7 +167,11 @@ class ClientRedis():
             self.redis = Redis.from_url(
                 redis_connstring,
                 retry=retry,
-                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
+                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError],
+                # Drop pooled connections idle for more than 30s instead of
+                # handing out a stale socket (avoids intermittent
+                # "I/O operation on closed file" / "Bad file descriptor").
+                health_check_interval=30,
             )
         else:
             redis_connstring = str(redis_url)
@@ -133,10 +179,12 @@ class ClientRedis():
             self.redis = Redis.from_url(
                 redis_connstring,
                 retry=retry,
-                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError]
+                retry_on_error=[rexc.ConnectionError, rexc.TimeoutError],
+                health_check_interval=30,
             )
 
     @_timed_cache("ping")
+    @_ReconnectOnError
     def ping(self) -> None:
         """
         Ping to check the availability of the redis server
@@ -153,6 +201,7 @@ class ClientRedis():
 
 
     @_timed_cache("set")
+    @_ReconnectOnError
     def set(self, key: str, value: str|list|dict, ttl: int, nx: bool = False) -> bool:
         """
         Set a key/value in the redis server.
@@ -196,6 +245,7 @@ class ClientRedis():
         return True
 
     @_timed_cache("get")
+    @_ReconnectOnError
     def get(self, key: str, expected_type: Type[str]|Type[list]|Type[dict]) -> str|list|dict|None:
         """
         Get the value stored in redis. The type of value expected must be given to be sure
@@ -228,6 +278,7 @@ class ClientRedis():
         return None
 
     @_timed_cache("hashset")
+    @_ReconnectOnError
     def hashset(self, key:str, data: dict, ttl: int) -> bool:
         """
         Create or update a hash in redis.
@@ -256,6 +307,7 @@ class ClientRedis():
         return True
 
     @_timed_cache("hashget")
+    @_ReconnectOnError
     def hashget(self, key:str) -> dict|None:
         """
         Return the whole dict of a hash
@@ -278,6 +330,7 @@ class ClientRedis():
     # -- Sorted-set helpers --------------------------------------------------
 
     @_timed_cache("zset_add")
+    @_ReconnectOnError
     def zset_add(self, zset_key: str, member: str, score: float) -> None:
         """
         Add (or update) a member in a sorted set with the given score.
@@ -290,6 +343,7 @@ class ClientRedis():
         logger_cache.debug("zadd %s -> member=%s score=%s", zset_key, member, score)
 
     @_timed_cache("zset_remove")
+    @_ReconnectOnError
     def zset_remove(self, zset_key: str, *members: str) -> int:
         """
         Remove one or more members from a sorted set.
@@ -301,6 +355,7 @@ class ClientRedis():
         return removed
 
     @_timed_cache("zset_count")
+    @_ReconnectOnError
     def zset_count(self, zset_key: str) -> int:
         """
         Return the total number of members in a sorted set
@@ -308,6 +363,7 @@ class ClientRedis():
         return cast(int, self.redis.zcard(zset_key))
 
     @_timed_cache("zset_revrange")
+    @_ReconnectOnError
     def zset_revrange(self, zset_key: str, start: int, stop: int) -> list[str]:
         """
         Return members of a sorted set by descending score, between ranks start and stop.
@@ -461,6 +517,7 @@ class ClientRedis():
         return items
 
     @_timed_cache("delete")
+    @_ReconnectOnError
     def delete(self, *keys: str) -> int:
         """
         Delete all the key given
@@ -629,6 +686,7 @@ class ClientRedis():
         return revoked_count
 
     @_timed_cache("incr")
+    @_ReconnectOnError
     def incr(self, key: str) -> int:
         """
         Atomically increment the integer stored at *key* (creating it as 0 first).

@@ -763,6 +763,27 @@ class ClientImap(ClientMailServer):
             if not success:
                 raise RequestException(f"Failed to delete folder '{folder_path}' or one of its children", err.ERROR_IMAP_FAILED)
 
+    def _mailbox_exists(self, folder_path: str) -> bool:
+        """
+        Return True if a mailbox with exactly this path exists on the server.
+
+        Listing an exact mailbox path returns nothing if the mailbox does not
+        exist (or is absent), and the mailbox itself if it does.
+
+        :param folder_path: The exact (unquoted) mailbox path to check.
+        :type folder_path: str
+        :return: True if the mailbox exists, False otherwise.
+        :rtype: bool
+        """
+        if self.connection is None or not self.authenticated:
+            return False
+        try:
+            for _ in self._imap_list_folders(folder_path):
+                return True
+        except RequestException:
+            return False
+        return False
+
     def _imap_move_folder_to_trash(self, folder_path:str, delimiter:str, do_children:bool = True) -> None:
         """
         Move a folder (meaning rename in imap) to the trash folders
@@ -786,6 +807,15 @@ class ClientImap(ClientMailServer):
                     new_folder_path = imap_join_folders(delimiter, folder_trash_path, folder.path)
                     self._exec_imap4_method(self.connection.rename, folder.path, new_folder_path)
             new_folder_path = imap_join_folders(delimiter, folder_trash_path, folder_path)
+            # If the trash destination already exists it means children of this
+            # folder were moved to trash in an earlier delete (the server
+            # auto-created the intermediate Trash/<folder> mailbox). The folder
+            # itself is now empty — its children are already preserved under
+            # Trash/<folder>/..., so deleting the folder directly is correct.
+            if self._mailbox_exists(new_folder_path):
+                logger_imap.info("Trash destination '%s' already exists; children already in trash, deleting folder directly", new_folder_path)
+                self._imap_delete(folder_path, delimiter, do_children=True)
+                return
             quoted_folder_path = quote(folder_path)
             success, _ = self._exec_imap4_method(self.connection.rename, quoted_folder_path, new_folder_path)
             if not success:
