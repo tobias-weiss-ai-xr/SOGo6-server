@@ -45,7 +45,9 @@ class ApprovalActionSchema(Schema):
 class ApiApprovalListCreate(MethodView):
     def get(self) -> ResponseReturnValue:
         """List approvals involving the current user."""
-        user: User = g.user
+        user: User = getattr(g, "user", None)
+        if user is None:
+            return create_api_base_response({"approvals": []})
         cache = sogo_cache()
         index = list(cache.get(f"{_PREFIX}index:{user.uid}", list) or [])
         approvals = []
@@ -66,7 +68,9 @@ class ApiApprovalListCreate(MethodView):
     @blp.arguments(ApprovalCreateSchema)
     def post(self, body: dict) -> ResponseReturnValue:
         """Create a new approval workflow."""
-        user: User = g.user
+        user: User = getattr(g, "user", None)
+        if user is None:
+            return create_api_base_response(None, "User context not available")
         cache = sogo_cache()
         approval_id = secrets.token_hex(12)
         steps = body["steps"]
