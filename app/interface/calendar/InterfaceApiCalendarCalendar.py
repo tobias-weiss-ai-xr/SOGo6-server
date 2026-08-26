@@ -166,6 +166,60 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
             logger_api.error("get_calendar failed for user %s key %s: %s", self.user.uid, key, ex)
             return create_api_base_response(None, ex.error)
 
+    # ─── CalDAV & Sync (client settings) ────────────────────────────────
+    # GET /calendars/caldav/connection + /calendars/caldav/overview expose a
+    # read-only JSON projection of the CalDAV service so the settings UI can
+    # show the server principal and per-calendar sync status (spec: caldav).
+
+    def get_caldav_connection(self, server_url: str) -> tuple[dict[str, Any], int]:
+        """Principal/discovery info for the authenticated user (CalDAV connection settings)."""
+        try:
+            email: str = self.user.mail or self.user.uid
+            data: dict[str, Any] = {
+                "email": email,
+                "server_url": server_url,
+                "calendar_home_path": f"/caldav/calendars/{email}/",
+                "dav_capabilities": "1, 2, 3, calendar-access, calendar-schedule, extended-mkcol",
+                "supported_components": ["VEVENT", "VTODO"],
+            }
+            return create_api_base_response(data)
+        except RequestException as ex:
+            return create_api_base_response(None, ex.error)
+
+    def get_caldav_overview(self, server_url: str) -> tuple[dict[str, Any], int]:
+        """Per-calendar CalDAV sync overview (calendars + event counts + total)."""
+        try:
+            email: str = self.user.mail or self.user.uid
+            principal: dict[str, Any] = {
+                "email": email,
+                "server_url": server_url,
+                "calendar_home_path": f"/caldav/calendars/{email}/",
+                "dav_capabilities": "1, 2, 3, calendar-access, calendar-schedule, extended-mkcol",
+                "supported_components": ["VEVENT", "VTODO"],
+            }
+            calendars: list[dict[str, Any]] = []
+            total_events: int = 0
+            for cal in self.module.get_all_calendars(self.user):
+                # External subscriptions (ics/caldav) mirror remote data and are
+                # not locally discoverable over our CalDAV service.
+                discoverable: bool = cal.source_type.value in ("local", "team")
+                event_count = self.module.count_events(cal.user_uid, cal.key or "") if cal.key else 0
+                total_events += event_count
+                calendars.append({
+                    "calendar_key": cal.key,
+                    "calendar_name": cal.name,
+                    "discoverable": discoverable,
+                    "event_count": event_count,
+                })
+            data: dict[str, Any] = {
+                "principal": principal,
+                "calendars": calendars,
+                "total_events": total_events,
+            }
+            return create_api_base_response(data)
+        except RequestException as ex:
+            return create_api_base_response(None, ex.error)
+
     def create_calendar(self, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
         """Create a new calendar.
 

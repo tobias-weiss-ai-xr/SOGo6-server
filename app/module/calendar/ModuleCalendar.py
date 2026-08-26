@@ -141,6 +141,16 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             calendars.append(cal)
         return calendars
 
+    def count_events(self, user_uid: str, calendar_key: str) -> int:
+        """
+        Return the number of non-deleted events in a calendar.
+
+        Used by the CalDAV & Sync settings overview to report a real per-calendar
+        ``event_count`` without materialising every event.
+        """
+        repo: RepositoryEvent = RepositoryEvent(self._db)
+        return len(repo.find_keys(calendar_key))
+
     def get_calendar(self, user: User, key: str) -> CalendarSource:
         """Return the source for a calendar, or raise NOT_FOUND. Populates permissions."""
         calendar_user: CalendarUser = CalendarUser(user=user, owner=user)

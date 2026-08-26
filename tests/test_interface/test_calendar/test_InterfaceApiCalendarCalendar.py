@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from app.interface.calendar.InterfaceApiCalendarCalendar import InterfaceApiCalendarCalendar
 from app.module.calendar.model.CalCalendar import CalCalendar
+from app.module.calendar.model.enums.CalendarSourceType import CalendarSourceType
 from app.module.calendar.model.enums.EventVisibility import EventVisibility
 from app.module.calendar.serializer.CalCalendarDeserializerDict import CalCalendarDeserializerDict
 from app.module.calendar.serializer.CalCalendarSerializerDict import CalCalendarSerializerDict
@@ -180,3 +181,70 @@ def test_public_url_prefers_configured_base_url(_url_for):
     inter.module.get_calendar.return_value = source
     response, _ = inter.get_calendar("cal-key")
     assert response["data"]["public_url"] == "https://cal.example.com/api/user/v1/public/calendars/tok123"
+
+
+# ===========================================================================
+# CalDAV & Sync settings (connection / overview)
+# ===========================================================================
+
+def _caldav_interface():
+    inter = _build_interface()
+    return inter
+
+
+def test_get_caldav_connection_returns_principal():
+    inter = _caldav_interface()
+    response, status = inter.get_caldav_connection("https://sogo6.example.org/")
+    assert status == 200
+    data = response["data"]
+    assert data["email"] == "alice@example.com"
+    assert data["server_url"] == "https://sogo6.example.org/"
+    assert data["calendar_home_path"] == "/caldav/calendars/alice@example.com/"
+    assert "calendar-access" in data["dav_capabilities"]
+    assert data["supported_components"] == ["VEVENT", "VTODO"]
+
+
+def test_get_caldav_connection_falls_back_to_uid_when_no_mail():
+    inter = _caldav_interface()
+    inter.user.mail = ""
+    response, status = inter.get_caldav_connection("https://sogo6.example.org/")
+    assert status == 200
+    assert response["data"]["email"] == "alice@example.com"
+
+
+def test_get_caldav_overview_aggregates_calendars_and_events():
+    inter = _caldav_interface()
+    cal_a = CalCalendar(user_uid="alice@example.com", name="Personal",
+                        source_type=CalendarSourceType.LOCAL)
+    cal_b = CalCalendar(user_uid="alice@example.com", name="Work",
+                        source_type=CalendarSourceType.LOCAL)
+    cal_a.key = "cal-a"
+    cal_b.key = "cal-b"
+    inter.module.get_all_calendars.return_value = [cal_a, cal_b]
+    inter.module.count_events.side_effect = [3, 5]
+
+    response, status = inter.get_caldav_overview("https://sogo6.example.org/")
+    assert status == 200
+    data = response["data"]
+    assert data["principal"]["email"] == "alice@example.com"
+    assert data["total_events"] == 8
+    assert len(data["calendars"]) == 2
+    by_key = {c["calendar_key"]: c for c in data["calendars"]}
+    assert by_key["cal-a"]["calendar_name"] == "Personal"
+    assert by_key["cal-a"]["discoverable"] is True
+    assert by_key["cal-a"]["event_count"] == 3
+    assert by_key["cal-b"]["event_count"] == 5
+
+
+def test_get_caldav_overview_flags_external_not_discoverable():
+    inter = _caldav_interface()
+    external = CalCalendar(user_uid="alice@example.com", name="Remote",
+                           source_type=CalendarSourceType.CALDAV)
+    external.key = "ext"
+    inter.module.get_all_calendars.return_value = [external]
+    inter.module.count_events.return_value = 2
+
+    response, _ = inter.get_caldav_overview("https://sogo6.example.org/")
+    cal = response["data"]["calendars"][0]
+    assert cal["discoverable"] is False
+    assert cal["event_count"] == 2

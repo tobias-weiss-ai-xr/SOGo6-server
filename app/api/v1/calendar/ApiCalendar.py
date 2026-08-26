@@ -2,7 +2,7 @@ from __future__ import annotations  # pylint: disable=duplicate-code
 
 from typing import TYPE_CHECKING
 
-from flask import g
+from flask import g, request
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
@@ -465,3 +465,35 @@ class ApiExternalCalendarSync(MethodView):
         logger_api.debug("POST /external-calendars/%s/sync user=%s", key, g.user.uid)
         interface: InterfaceApiCalendarCalendar = g.inter
         return interface.sync_external_calendar(key)
+
+
+def _caldav_server_url() -> str:
+    """Public server base URL for the CalDAV principal info.
+
+    Prefers the configured ``SOGO_P_PUBLIC_BASE_URL`` (reverse-proxy safe); falls
+    back to the scheme + host as seen by the app.
+    """
+    public: str = getattr(g.process_settings, "SOGO_P_PUBLIC_BASE_URL", "") or ""
+    if public:
+        return public.rstrip("/") + "/"
+    return f"{request.scheme}://{request.host}/"
+
+
+@blp.route("/calendars/caldav/connection")
+class ApiCalDAVConnection(MethodView):
+    """CalDAV connection settings: principal + discovery info (read-only)."""
+
+    def get(self) -> ResponseReturnValue:
+        logger_api.debug("GET /calendars/caldav/connection user=%s", g.user.uid)
+        interface: InterfaceApiCalendarCalendar = g.inter
+        return interface.get_caldav_connection(_caldav_server_url())
+
+
+@blp.route("/calendars/caldav/overview")
+class ApiCalDAVOverview(MethodView):
+    """CalDAV & Sync settings overview: per-calendar sync status (read-only)."""
+
+    def get(self) -> ResponseReturnValue:
+        logger_api.debug("GET /calendars/caldav/overview user=%s", g.user.uid)
+        interface: InterfaceApiCalendarCalendar = g.inter
+        return interface.get_caldav_overview(_caldav_server_url())
