@@ -3,6 +3,7 @@ from typing import Any, Generator, Tuple, List, cast
 
 import re
 import json
+from datetime import datetime, timezone
 
 import mysql.connector
 from mysql.connector import Error, ProgrammingError  # pylint: disable=no-name-in-module
@@ -28,6 +29,31 @@ from .ClientSQL import ClientSQL
 # on insert, otherwise consumers that expect parsed objects (e.g. domain
 # settings) break on MySQL while working on PostgreSQL.
 _JSON_COLUMN_TYPES: dict | None = None
+
+
+# MySQL DATETIME/TIMESTAMP columns accept ``YYYY-MM-DD HH:MM:SS``. Callers pass
+# ISO-8601 strings (e.g. ``datetime.now(timezone.utc).isoformat()`` →
+# ``...T...:..:..123456+00:00``) which MariaDB/MySQL reject under
+# ``STRICT_TRANS_TABLES`` with DataError 1292 "Incorrect datetime value".
+# Normalise such values (and tz-aware datetime objects) to the MySQL-safe format
+# before binding, so writes to datetime columns succeed. This mirrors the JSON
+# normalisation above and covers all current and future call sites.
+_RE_ISO_DATETIME = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$"
+)
+
+
+def _mysql_datetime(value: Any) -> Any:
+    """Convert a datetime object or ISO-8601 datetime string to MySQL's format.
+
+    Plain strings (non-datetime) are returned unchanged.
+    """
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, str) and _RE_ISO_DATETIME.match(value):
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return value
 
 
 def _json_column_types() -> dict:
@@ -429,6 +455,8 @@ class ClientMySQL(ClientSQL):
                     values[idx] = value.text
                 elif isinstance(value, dict) or isinstance(value, list):
                     values[idx] = json.dumps(value)
+                else:
+                    values[idx] = _mysql_datetime(value)
             sql_all_placeholder.append(placeholders_per_row)
             sql_all_values.extend(values)
 
@@ -479,6 +507,8 @@ class ClientMySQL(ClientSQL):
                 val = val.text
             elif isinstance(val, dict) or isinstance(val, list):
                 val = json.dumps(val)
+            else:
+                val = _mysql_datetime(val)
             set_parts.append(f"`{col}` = %s")
             params.append(val)
 

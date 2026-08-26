@@ -12,6 +12,7 @@ from app.manager.db.ClientMySQL import (
     list_to_json,
     table_to_query,
     condition_to_query,
+    _mysql_datetime,
 )
 from app.utils.exceptions import RequestException, BugException
 from app.utils.db.Condition import EqualCondition, NotEqualCondition, AndCondition, OrCondition, TrueCondition, FullTextCondition, JoinClause
@@ -152,6 +153,7 @@ class FakeMySQLCursor:
         self._rows = []
         self.rowcount = 0
         self._last_execute = None
+        self.description = None
 
     def execute(self, sql, params=None):
         self._last_execute = (sql, params)
@@ -220,9 +222,17 @@ class FakeMySQLCursor:
             if "INNER JOIN" in s and "`test_join`" in s:
                 self._rows = [("evt-1", "popup", 15, "Meeting", "user@test")]
                 self.rowcount = 1
+                self.description = [
+                    ("test_join.event_key",),
+                    ("test_join.method",),
+                    ("test_join.minutes_before",),
+                    ("test_events.title",),
+                    ("test_calendars.user_uid",),
+                ]
             elif "`test_select`" in s or '"test_select"' in s or "FROM `test_select`" in s:
                 self._rows = [(1, "Alice", '{"k":"v"}', 30), (2, "Bob", '{"x":[1,2]}', 25)]
                 self.rowcount = len(self._rows)
+                self.description = [("id",), ("name",), ("data",), ("age",)]
             elif "COUNT(*)" in s.upper() or "COUNT(`" in s.upper():
                 # Count queries
                 if "`test_count`" in s or "FROM `test_count`" in s:
@@ -524,3 +534,71 @@ def test_client_close(mock_db: MockerFixture):
     assert client.db_conn is not None
     client.close()
     # Connection should be closed
+
+
+def test_mysql_datetime_normalisation():
+    """
+    ISO-8601 datetime strings (as written by ``datetime.now(timezone.utc).isoformat()``)
+    must be converted to MySQL ``YYYY-MM-DD HH:MM:SS`` before binding, otherwise
+    MariaDB rejects them under STRICT_TRANS_TABLES with DataError 1292.
+    """
+    from datetime import datetime, timezone
+
+    # ISO strings with UTC offset / Z marker -> converted
+    assert _mysql_datetime("2026-08-26T03:43:17.537970+00:00") == "2026-08-26 03:43:17"
+    assert _mysql_datetime("2026-08-26T03:43:17Z") == "2026-08-26 03:43:17"
+    # Tz-aware +00:00 -> UTC wall clock does not shift
+    assert _mysql_datetime("2026-08-26T03:43:17+00:00") == "2026-08-26 03:43:17"
+    # Non-UTC offset -> shifted back to UTC
+    assert _mysql_datetime("2026-12-01T10:00:00-05:00") == "2026-12-01 15:00:00"
+
+    # Plain strings (names, subjects, notes, descriptions) are preserved untouched
+    assert _mysql_datetime("Test User") == "Test User"
+    assert _mysql_datetime("quick brown fox") == "quick brown fox"
+    assert _mysql_datetime("") == ""
+    assert _mysql_datetime("2026-08-26 03:00:00") == "2026-08-26 03:00:00"
+
+    # datetime objects -> MySQL format
+    now = datetime(2026, 8, 26, 3, 0, 0, tzinfo=timezone.utc)
+    assert _mysql_datetime(now) == "2026-08-26 03:00:00"
+
+    # int/bool/None pass through
+    assert _mysql_datetime(30) == 30
+    assert _mysql_datetime(True) is True
+    assert _mysql_datetime(None) is None
+
+
+def test_insert_converts_iso_datetime_before_bind(mock_db: MockerFixture):
+    """
+    The insert path must bind MySQL-formatted datetimes rather than the raw
+    ISO-8601 string the call-site modules pass in.
+    """
+    from datetime import datetime, timezone
+
+    client = ClientMySQL(db_user="", db_pwd="", db_host="", db_port=3307, db_ssl=False, db_enc="")
+    client.connect()
+
+    captured: dict = {}
+    original_execute = FakeMySQLCursor.execute
+
+    def recording_execute(self, sql, params=None):
+        captured["sql"] = sql
+        captured["params"] = params
+        return original_execute(self, sql, params)
+
+    mock_db.patch.object(FakeMySQLCursor, "execute", autospec=True, side_effect=recording_execute)
+
+    iso = datetime.now(timezone.utc).isoformat()
+    rows = [["mailbox-1", "shared@example.org", "Shared", iso, iso]]
+    inserted = client.insert_in_table(
+        "test_insert",
+        ("id", "email", "name", "created_at", "updated_at"),
+        rows,
+    )
+    assert inserted == 1
+    params = list(captured["params"])
+    # The two ISO datetimes must have been normalised to MySQL format
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", str(params[3]))
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", str(params[4]))
+    # Plain string values stay untouched
+    assert params[2] == "Shared"
