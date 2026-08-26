@@ -13,6 +13,7 @@ from app.module.calendar.model.enums.CalendarSourceType import CalendarSourceTyp
 from app.module.calendar.model.enums.ReminderMethod import ReminderMethod
 from app.module.calendar.rrule.RecurrenceScopeProcessor import EventAction, ScopeResult
 from app.module.calendar.source.CalendarSources import CalendarSources
+from app.module.calendar.source.CalendarSourceDb import CalendarSourceDb
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
 
@@ -47,6 +48,26 @@ def test_get_by_share_token_returns_none_when_absent():
     sources = _build_sources()
     sources._repo_calendar.find_by_share_token.return_value = None
     assert sources.get_by_share_token("tok") is None
+
+
+def test_get_team_calendar_routes_to_db_source():
+    """Team calendars must be routed to the DB-backed source (regression for
+    the T0-TC-04 405 / ERROR_CALENDAR_NOT_SUPPORTED gap: CalendarSources.get()
+    previously only handled LOCAL/ICS/CALDAV and fell through to "unknown
+    source_type" for calendars with source_type=team)."""
+    sources = _build_sources()
+    cal = CalCalendar(
+        key="team-1", user_uid="u", name="Team",
+        source_type=CalendarSourceType.TEAM,
+    )
+    source = sources.get(cal)
+    assert isinstance(source, CalendarSourceDb)
+    assert source.calendar.source_type == CalendarSourceType.TEAM
+
+    # Local calendars still route to the DB source as before.
+    local = CalCalendar(key="local-1", user_uid="u", name="Local",
+                        source_type=CalendarSourceType.LOCAL)
+    assert isinstance(sources.get(local), CalendarSourceDb)
 
 
 # ========== _apply_action - INSERT reminder handling ==========

@@ -44,11 +44,16 @@ class CalendarSources:
     def get(self, calendar: CalCalendar) -> CalendarSource:
         """Return the appropriate CalendarSource for the given calendar.
 
-        Both local and ICS calendars are backed by the database. ICS calendars
+        Both local, team and ICS calendars are backed by the database. Team
+        calendars are regular DB-backed calendars whose membership is modelled
+        through the share repository (see ``ModuleTeamCalendar``); ICS calendars
         are read-only mirrors - their events are populated by the sync engine,
         not by direct CRUD operations.
         """
         if calendar.source_type == CalendarSourceType.LOCAL:
+            return CalendarSourceDb(self._db, calendar)
+
+        if calendar.source_type == CalendarSourceType.TEAM:
             return CalendarSourceDb(self._db, calendar)
 
         if calendar.source_type == CalendarSourceType.ICS:
