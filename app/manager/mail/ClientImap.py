@@ -1140,7 +1140,8 @@ class ClientImap(ClientMailServer):
             mailbox = quote(self._fix_folder_path(mailbox))
             success, datas = self._exec_imap4_method(self.connection.select, mailbox)
             if not success:
-                if datas[0].decode().startswith("Mailbox doesn't exist"):
+                decoded = datas[0].decode() if datas else ""
+                if decoded.startswith("Mailbox doesn't exist") or "NONEXISTENT" in decoded:
                     raise RequestException(f"Folder '{mailbox}' does not exist", err.ERROR_FOLDER_NAME_NOT_FOUND)
                 logger_imap.error("Cannot select folder %s: %s", mailbox, datas)
                 raise RequestException(f"Failed to select folder {mailbox}", err.ERROR_IMAP_FAILED)
