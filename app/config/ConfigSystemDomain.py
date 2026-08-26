@@ -14,6 +14,7 @@ class ConfigSystemDomain():
             "db_pwd":  process_config["SOGO_P_DB_PASS"],
             "db_host": process_config["SOGO_P_DB_HOST"],
             "db_port": process_config["SOGO_P_DB_PORT"],
+            "db_name": process_config["SOGO_P_DB_NAME"],
             "db_ssl":  process_config["SOGO_P_DB_SSL"],
             "db_enc":  process_config["SOGO_P_DB_ENC"]
         }

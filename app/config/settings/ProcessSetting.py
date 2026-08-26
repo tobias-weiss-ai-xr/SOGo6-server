@@ -146,6 +146,7 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_DB_PASS: str = ""  # Database password - MUST be configured
     SOGO_P_DB_HOST: str = os.environ.get("SOGO_P_DB_HOST", "sogo6-mariadb")
     SOGO_P_DB_PORT: int = int(os.environ.get("SOGO_P_DB_PORT", "3306"))
+    SOGO_P_DB_NAME: str = os.environ.get("SOGO_P_DB_NAME", "sogo")  # Database name
     SOGO_P_DB_SSL: bool = False
     SOGO_P_DB_ENC: str  = "utf8" #encoding, needed or autodetected ?
 
@@ -241,6 +242,7 @@ class ProcessSetting(FlaskConfig):
             "db_pwd":  self.SOGO_P_DB_PASS,
             "db_host": self.SOGO_P_DB_HOST,
             "db_port": self.SOGO_P_DB_PORT,
+            "db_name": self.SOGO_P_DB_NAME,
             "db_ssl":  self.SOGO_P_DB_SSL,
             "db_enc":  self.SOGO_P_DB_ENC
         }

@@ -280,11 +280,12 @@ class ClientMySQL(ClientSQL):
     MySQL implementation of ClientSQL
     """
 
-    def __init__(self, db_user: str, db_pwd: str, db_host: str, db_port: int, db_ssl: bool, db_enc: str):
+    def __init__(self, db_user: str, db_pwd: str, db_host: str, db_port: int, db_ssl: bool, db_enc: str, db_name: str = "sogo"):
         """
         Init the MySQL client.
         
         :param db_ssl: If True, SSL connection will be used
+        :param db_name: Database name (defaults to "sogo" for backward compatibility)
         """
         self.db_user = db_user
         self.db_pwd = db_pwd
@@ -292,7 +293,8 @@ class ClientMySQL(ClientSQL):
         self.db_port = db_port
         self.db_ssl = db_ssl
         self.db_enc = db_enc
-        self.safe_conn_string: str = f"mysql://SOGO_M_DB_USER:SOGO_M_DB_PWD@{db_host}:{db_port}/sogo?charset={db_enc}"
+        self.db_name = db_name
+        self.safe_conn_string: str = f"mysql://{db_user}:{db_pwd}@{db_host}:{db_port}/{db_name}"
         self.db_conn: Any = None
 
     def _get_conn_config(self) -> dict:
@@ -302,10 +304,11 @@ class ClientMySQL(ClientSQL):
             "password": self.db_pwd,
             "host": self.db_host,
             "port": self.db_port,
-            "database": "sogo",
+            "database": self.db_name,
             "connection_timeout": 5,
             "use_pure": True,
-            "charset": self.db_enc,
+            "charset": "utf8",
+            "collation": "utf8_general_ci",
         }
         # Enable SSL if configured - set ssl_disabled to False to enable SSL
         # MySQL Connector/Python enables SSL by default when server supports it,

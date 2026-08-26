@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         gunicorn celery \
         prometheus-client authlib pyotp qrcode[pil] webauthn \
         marshmallow icalendar \
-        psycopg[binary] mysql-connector-python python-ldap redis \
+        psycopg[binary] mysql-connector-python==8.0.24 python-ldap redis \
         cryptography pyjwt pydantic pydantic-settings \
         sievelib yarl debugpy pysaml2 \
     && rm -rf /root/.cache/pip
@@ -47,7 +47,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libpq5 \
-    libldap-2.5-0 \
+    libldap2 \
     libsasl2-2 \
     xmlsec1 \
     libxml2 \
@@ -81,4 +81,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Run with gunicorn in production
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", \
      "--access-logfile", "-", "--error-logfile", "-", \
-     "app:create_app()"]
+     "app.run:app"]
