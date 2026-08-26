@@ -155,6 +155,34 @@ def create_app(sogo_state: int) -> Flask:
     # --- App-level middleware (runs before/after ALL requests, incl. non-API) ---
 
     @app.before_request
+    def _global_rate_limit() -> None | Response:
+        """CRA Art. 15(2)(e) — global API rate limiting (defense-in-depth).
+
+        Limits every API request to a per-IP sliding window, separate from the
+        login-specific limiter. Health/well-known paths are excluded.
+        Excluded paths:
+          - /health, /system, /metrics (monitoring)
+          - /.well-known/* and /security.txt (disclosure)
+          - /docs and /openapi*.json (documentation)
+        """
+        path = request.path
+        if any(
+            path.startswith(p) for p in (
+                '/health', '/system', '/metrics',
+                '/.well-known', '/security.txt',
+                '/docs', '/openapi',
+                '/swagger',
+            )
+        ):
+            return None
+        if path.startswith('/api/'):
+            from app.utils.api.ratelimit import check_global_rate_limit
+            result = check_global_rate_limit()
+            if result is not None:
+                return result
+        return None
+
+    @app.before_request
     def _start_request() -> None:
         _inject_request_id()
         g._request_start = time.time()

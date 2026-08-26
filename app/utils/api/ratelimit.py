@@ -24,6 +24,44 @@ DEFAULT_WINDOW_SECONDS = 60
 
 F = TypeVar('F', bound=Callable)
 
+# Global API rate limit: 300 requests per 60s per IP (broad protection against
+# flooding, while allowing normal multi-tab UI usage).
+GLOBAL_API_LIMIT = 300
+GLOBAL_API_WINDOW = 60
+
+# Paths excluded from global limiting (monitoring, disclosure, docs)
+GLOBAL_EXCLUDED_PREFIXES = (
+    '/health', '/system', '/metrics',
+    '/.well-known', '/security.txt',
+    '/docs', '/openapi', '/swagger',
+)
+
+
+def check_global_rate_limit() -> None | Response:
+    """Apply global per-IP rate limit to API requests.
+
+    Returns a 429 Response if the limit is exceeded, else None (proceed).
+    """
+    if not process_config.SOGO_P_REDIS_URL:
+        return None
+    count_key = f"ratelimit:global:{request.remote_addr}:count"
+    try:
+        redis_client = _get_redis()
+        initialized = redis_client.set(count_key, 1, GLOBAL_API_WINDOW, nx=True)
+        current = 1 if initialized else redis_client.incr(count_key)
+        if current > GLOBAL_API_LIMIT:
+            from flask import make_response
+            response = make_response(
+                {'error': 'Rate limit exceeded', 'error_code': 'S000429'},
+                429,
+            )
+            response.headers['Retry-After'] = str(GLOBAL_API_WINDOW)
+            return response
+    except Exception:  # pylint: disable=broad-except
+        from app.utils.logger.logger import logger_api
+        logger_api.exception("Global rate limiter failed (continuing without it)")
+    return None
+
 
 def _get_redis():
     """Return the shared Redis cache client (avoids per-call connection leaks)."""
