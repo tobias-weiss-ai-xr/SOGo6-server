@@ -26,9 +26,9 @@ F = TypeVar('F', bound=Callable)
 
 
 def _get_redis():
-    """Lazy import to avoid circular dependencies."""
-    from app.manager.cache.ClientRedis import ClientRedis
-    return ClientRedis()
+    """Return the shared Redis cache client (avoids per-call connection leaks)."""
+    from app.service import sogo_cache
+    return sogo_cache()
 
 
 def _make_rl_key(endpoint_name: str) -> str:
@@ -36,33 +36,15 @@ def _make_rl_key(endpoint_name: str) -> str:
     return f"ratelimit:{request.remote_addr}:{endpoint_name}"
 
 
-def _trim_window(zset_key: str, window_seconds: int) -> None:
-    """Remove old entries from the sliding window."""
-    redis_client = _get_redis()
-    redis_client.zset_trim(zset_key, 0, window_seconds)
-
-
-def _count_current(zset_key: str, window_seconds: int) -> int:
-    """Count entries in the current window."""
-    redis_client = _get_redis()
-    now = int(time.time())
-    window_start = now - window_seconds
-    # Use ZCOUNT to count scores in [window_start, +inf)
-    return redis_client.zset_count(zset_key, window_start, float('inf'))
-
-
-def _add_request(zset_key: str, now: int) -> None:
-    """Add current request timestamp to the window."""
-    redis_client = _get_redis()
-    # Use a monotonic counter per key to avoid memory bloat from unique members
-    request_id = redis_client.incr(f"{zset_key}:counter")
-    redis_client.zset_add(zset_key, request_id, now)
-
-
 def rate_limit(limit: int = WEBAUTHN_AUTHENTICATION_LIMIT, window_seconds: int = DEFAULT_WINDOW_SECONDS, endpoint_name: str = None):
     """
-    Decorator for sliding-window rate limiting.
-    
+    Decorator for fixed-window rate limiting.
+
+    Uses a Redis counter keyed by ``ip:endpoint``. The counter is initialised
+    to 1 with a TTL of ``window_seconds`` on the first request (NX), then
+    INCR-mented on subsequent requests (Redis preserves the TTL on INCR). When
+    the counter exceeds ``limit`` the request is rejected with HTTP 429.
+
     Args:
         limit: Maximum requests per window
         window_seconds: Window duration in seconds
@@ -73,26 +55,26 @@ def rate_limit(limit: int = WEBAUTHN_AUTHENTICATION_LIMIT, window_seconds: int =
         def wrapper(*args, **kwargs):
             if not process_config.SOGO_P_REDIS_URL:
                 return func(*args, **kwargs)
-            
+
             name = endpoint_name or request.path
-            zset_key = _make_rl_key(name)
-            now = int(time.time())
-            
-            _trim_window(zset_key, window_seconds)
-            count = _count_current(zset_key, window_seconds)
-            
-            if count >= limit:
-                # Compute when the oldest entry expires
+            count_key = f"{_make_rl_key(name)}:count"
+            try:
                 redis_client = _get_redis()
-                oldest = redis_client.zset_range(zset_key, 0, 0, with_scores=True)
-                oldest_ts = int(oldest[0][1]) if oldest else now
-                retry_after = max(1, oldest_ts + window_seconds - now)
-                from flask import make_response
-                response = make_response({'error': 'Too many requests'}, 429)
-                response.headers['Retry-After'] = str(retry_after)
-                return response
-            
-            _add_request(zset_key, now)
+                # Initialise the window counter with a TTL on first request
+                initialized = redis_client.set(count_key, 1, window_seconds, nx=True)
+                current = 1 if initialized else redis_client.incr(count_key)
+
+                if current > limit:
+                    from flask import make_response
+                    response = make_response({'error': 'Too many requests'}, 429)
+                    response.headers['Retry-After'] = str(window_seconds)
+                    return response
+            except Exception:  # pylint: disable=broad-except
+                # Rate limiting is defensive only; never break the request if
+                # Redis is temporarily unavailable.
+                from app.utils.logger.logger import logger_api
+                logger_api.exception("Rate limiter failed (continuing without it)")
+
             return func(*args, **kwargs)
         return wrapper  # type: ignore
     return decorator

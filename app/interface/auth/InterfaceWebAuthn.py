@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +19,13 @@ _CHALLENGE_TTL = 120
 
 
 class InterfaceWebAuthn:
-    """High-level WebAuthn operations used by the API layer."""
+    """High-level WebAuthn operations used by the API layer.
+
+    Adapter over :class:`ModuleWebAuthn`. Generation + credential storage are
+    delegated to the module; short-lived challenges are tracked in-memory per
+    process (acceptable for dev, matching the module's own DB-backed store when
+    the complete handshakes are used).
+    """
 
     def __init__(self, process: ProcessSetting) -> None:
         self._process = process
@@ -38,11 +45,11 @@ class InterfaceWebAuthn:
     ) -> dict[str, Any]:
         origin = origin or f"https://{rp_id}"
         options = self._module.generate_registration_options(
-            user_uid=user.uid,
+            user_id=user.uid,
+            user_name=user.cn or user.uid,
             user_display_name=user.cn or user.uid,
             rp_id=rp_id,
             rp_name=rp_name,
-            origin=origin,
         )
         challenge = options.get("challenge", "")
         self._challenges[user.uid] = {
@@ -74,11 +81,10 @@ class InterfaceWebAuthn:
             )
 
         try:
-            result = self._module.verify_registration(
+            result = self._module.register_credential(
+                user_id=user.uid,
                 credential=credential,
-                expected_challenge=challenge_data["challenge"],
-                expected_origin=challenge_data["origin"],
-                expected_rp_id=challenge_data["rp_id"],
+                name=device_name,
             )
         except Exception as exc:
             logger_api.warning("WebAuthn registration failed for %s: %s", user.uid, exc)
@@ -87,17 +93,10 @@ class InterfaceWebAuthn:
                 err.ERROR_WEBAUTHN_REGISTRATION_FAILED,
             ) from exc
 
-        self._module.store_credential(
-            user_uid=user.uid,
-            credential_id=result["credential_id"],
-            public_key=result["public_key"],
-            sign_count=result["sign_count"],
-            device_name=device_name,
-        )
-
+        data = result.to_dict()
         logger_api.info("WebAuthn registration complete for user=%s", user.uid)
         return {
-            "credential_id": result["credential_id"],
+            "credential_id": data.get("id"),
             "device_name": device_name,
         }
 
@@ -111,8 +110,8 @@ class InterfaceWebAuthn:
     ) -> dict[str, Any]:
         origin = origin or f"https://{rp_id}"
         options = self._module.generate_authentication_options(
+            user_id=user_uid or "",
             rp_id=rp_id,
-            user_uid=user_uid,
         )
         challenge = options.get("challenge", "")
         challenge_key = user_uid or "__anonymous__"
@@ -130,7 +129,6 @@ class InterfaceWebAuthn:
         self,
         credential: dict[str, Any],
     ) -> dict[str, Any]:
-        _ = credential.get("id", "")
         # Find the challenge by iterating — the credential may have been
         # preceded by a user-specific or anonymous begin call
         challenge_data: dict[str, Any] | None = None
@@ -152,15 +150,22 @@ class InterfaceWebAuthn:
                 "Authentication challenge expired",
                 err.ERROR_WEBAUTHN_CHALLENGE_EXPIRED,
             )
-
         self._challenges.pop(challenge_key, None)
 
         try:
-            result = self._module.verify_authentication(
-                credential=credential,
-                expected_challenge=challenge_data["challenge"],
-                expected_origin=challenge_data["origin"],
-                expected_rp_id=challenge_data["rp_id"],
+            # Migrate the in-memory challenge into the module's DB-backed store
+            # so the module verifier can resolve it by id.
+            padded = challenge_data["challenge"]
+            padded = padded + "=" * ((4 - len(padded) % 4) % 4)
+            challenge = ModuleWebAuthn.create_challenge(
+                user_id=challenge_key if challenge_key not in (None, "__anonymous__") else None,
+                challenge_type="authentication",
+                challenge_bytes=base64.urlsafe_b64decode(padded),
+                rp_id=challenge_data["rp_id"],
+            )
+            stored, user_id = ModuleWebAuthn.authenticate(
+                challenge.id,
+                credential,
             )
         except Exception as exc:
             logger_api.warning("WebAuthn authentication failed: %s", exc)
@@ -169,16 +174,19 @@ class InterfaceWebAuthn:
                 err.ERROR_WEBAUTHN_AUTHENTICATION_FAILED,
             ) from exc
 
-        logger_api.info("WebAuthn authentication succeeded for user=%s", result["user_uid"])
-        return result
+        logger_api.info("WebAuthn authentication succeeded for user=%s", user_id)
+        return {
+            "user_uid": user_id,
+            "credential_id": stored.id,
+        }
 
     # ── Credential management ─────────────────────────────────────────────
 
     def get_credentials(self, user_uid: str) -> list[dict[str, Any]]:
-        return self._module.get_credentials(user_uid)
+        return [c.to_dict() for c in self._module.get_credentials_by_user(user_uid)]
 
     def delete_credential(self, credential_id: str, user_uid: str) -> None:
-        self._module.delete_credential(credential_id, user_uid)
+        self._module.remove_credential(credential_id, user_uid)
 
     def has_enabled_credentials(self, user_uid: str) -> bool:
-        return self._module.has_enabled_credentials(user_uid)
+        return self._module.get_user_has_passkeys(user_uid)

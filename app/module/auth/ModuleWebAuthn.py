@@ -469,6 +469,8 @@ class ModuleWebAuthn:
         user_id: str,
         user_name: str,
         user_display_name: str,
+        rp_id: Optional[str] = None,
+        rp_name: Optional[str] = None,
         attestation: str = "none",
         user_verification: str = "preferred",
         authenticator_selection: Optional[Dict] = None,
@@ -481,6 +483,8 @@ class ModuleWebAuthn:
             user_id: Unique user identifier
             user_name: User's username
             user_display_name: User's display name
+            rp_id: Override the hardcoded Relying Party ID (defaults to RP_ID constant)
+            rp_name: Override the Relying Party display name (defaults to RP_NAME constant)
             attestation: Attestation requirement (none, self, attested)
             user_verification: User verification requirement (preferred, required, discouraged)
             authenticator_selection: Authenticator selection criteria
@@ -489,6 +493,8 @@ class ModuleWebAuthn:
         Returns:
             Registration options as dict (ready for JSON serialization)
         """
+        rp_id = rp_id or RP_ID
+        rp_name = rp_name or RP_NAME
         # Create user model for webauthn
         _ = PublicKeyCredentialUserEntity(
             id=user_id.encode('utf-8'),
@@ -498,8 +504,8 @@ class ModuleWebAuthn:
         
         # Generate options
         options = generate_registration_options(
-            rp_id=RP_ID,
-            rp_name=RP_NAME,
+            rp_id=rp_id,
+            rp_name=rp_name,
             user_name=user_name,
             user_id=user_id.encode('utf-8'),
             user_display_name=user_display_name,
@@ -547,6 +553,7 @@ class ModuleWebAuthn:
         user_id: str,
         user_verification: str = "preferred",
         timeout: int = 300000,
+        rp_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate authentication options for passkey login.
@@ -555,10 +562,12 @@ class ModuleWebAuthn:
             user_id: User's unique identifier
             user_verification: User verification requirement
             timeout: Challenge timeout in milliseconds
+            rp_id: Override the hardcoded Relying Party ID (defaults to RP_ID constant)
         
         Returns:
             Authentication options as dict
         """
+        rp_id = rp_id or RP_ID
         # Get existing credentials for this user
         credentials = ModuleWebAuthn.get_credentials_by_user(user_id)
         
@@ -578,7 +587,7 @@ class ModuleWebAuthn:
         ]
         
         options = generate_authentication_options(
-            rp_id=RP_ID,
+            rp_id=rp_id,
             allow_credentials=allow_credentials,
             user_verification=user_verification,
             timeout=timeout,
@@ -1125,6 +1134,10 @@ class ModuleWebAuthn:
         """Check if a user has any passkeys registered."""
         count = ModuleWebAuthn.count_credentials(user_id)
         return count > 0
+
+    # Alias matching the legacy interface/login-flow usage
+    has_enabled_credentials = get_user_has_passkeys
+
     
     @staticmethod
     def get_credential_for_authentication(

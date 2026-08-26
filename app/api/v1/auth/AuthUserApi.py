@@ -216,15 +216,26 @@ class ApiAuthUserCallback(MethodView):
         sso = InterfaceAuthSSO(process_config)
         body, status = sso.handle_callback(domain, domain_auth, params)
 
-        if isinstance(body, dict) and body.get("data", {}).get("jwt_token"):
-            token = body["data"]["jwt_token"]
-            frontend_url = process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000"
-            redirect_url = f"{frontend_url.rstrip('/')}/auth/callback#token={token}"
-            from flask import redirect as flask_redirect
-            return flask_redirect(redirect_url)
+        from flask import make_response
+        from flask import redirect as flask_redirect
 
-        from app.utils.api.ApiBaseResponse import create_api_base_response
-        return create_api_base_response(body.get("data", body), error_code=body.get("error_code", ""))
+        if isinstance(body, dict):
+            data = body.get("data")
+            if isinstance(data, dict) and data.get("jwt_token"):
+                token = data["jwt_token"]
+                frontend_url = process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000"
+                redirect_url = f"{frontend_url.rstrip('/')}/auth/callback#token={token}"
+                return flask_redirect(redirect_url)
+
+            from app.utils.api.ApiBaseResponse import create_api_base_response
+            return create_api_base_response(body.get("data", body), error_code=body.get("error_code", ""))
+
+        # ``body`` may be a plain string (e.g. an SSO error message / redirect
+        # payload). Do not attempt dict access on it.
+        return make_response(
+            {"error": body if body is not None else "callback failed"},
+            status if isinstance(status, int) else 400,
+        )
 
 
 @blp.route("/saml2/metadata")

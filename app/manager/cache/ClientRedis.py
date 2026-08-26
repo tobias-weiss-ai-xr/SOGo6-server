@@ -26,9 +26,15 @@ class _ReconnectOnError:
     ("I/O operation on closed file") or ``OSError`` ("Bad file descriptor",
     ConnectionResetError). When that happens we close the client, re-establish
     the connection and retry the operation exactly once.
+
+    Additionally, when the RESP3 parser's internal buffer is ``None`` (which
+    happens when the underlying socket has been closed but the connection
+    object is still in the pool), redis-py raises
+    ``AttributeError: 'NoneType' object has no attribute 'readline'``.
+    This is functionally identical to a stale connection and must be retried.
     """
 
-    _RETRYABLE = (rexc.ConnectionError, rexc.TimeoutError, rexc.ConnectionError, OSError, ValueError)
+    _RETRYABLE = (rexc.ConnectionError, rexc.TimeoutError, rexc.ConnectionError, OSError, ValueError, AttributeError)
 
     def __init__(self, fn):
         self.fn = fn

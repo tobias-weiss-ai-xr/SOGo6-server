@@ -43,8 +43,8 @@ class PollCreateSchema(Schema):
 
 
 class PollResponseSchema(Schema):
-    participant = fields.String()
-    available_slots = fields.List(fields.String(), metadata={"description": "List of time slot indices that work"})
+    participant = fields.String(required=True, metadata={"description": "Email address of the responding participant"})
+    available_slots = fields.List(fields.String(), load_default=list, metadata={"description": "List of time slot indices that work"})
 
 
 @blp.route("")
@@ -116,7 +116,7 @@ class ApiPollRespond(MethodView):
         poll["responses"] = [r for r in poll["responses"] if r.get("participant") != body["participant"]]
         poll["responses"].append({
             "participant": body["participant"],
-            "available_slots": body["available_slots"],
+            "available_slots": body.get("available_slots", []),
             "responded_at": int(time.time()),
         })
         cache.set(f"{_POLL_PREFIX}{poll_id}", json.dumps(poll), ttl=86400 * 30)
