@@ -224,8 +224,22 @@ class ModuleUserProfile:
         )
 
         if row_updated == 0:
-            logger_user_profile.error("No user found for uid: %s when updating field: %s", uid, field_name)
-            raise RequestException(err.ERROR_USER_PROFILE_NOT_FOUND.m, err.ERROR_USER_PROFILE_NOT_FOUND)
+            # A 0-row UPDATE is ambiguous: it can be a genuine no-op (the stored
+            # value already equals the new value — MySQL counts only rows whose
+            # value actually changed) OR the user truly does not exist. Verify
+            # existence before deciding, so a no-op never surfaces a misleading
+            # "User Profile Not Found".
+            self.sogo_db_manager.connect()
+            exists = list(self.sogo_db_manager.select_from_table(
+                table_name=tbl.TABLE_USER.name,
+                column_tuple=(tbl.COL_HASH.name,),
+                condition=condition,
+            ))
+            if not exists:
+                logger_user_profile.error("No user found for uid: %s when updating field: %s", uid, field_name)
+                raise RequestException(err.ERROR_USER_PROFILE_NOT_FOUND.m, err.ERROR_USER_PROFILE_NOT_FOUND)
+            logger_user_profile.info("Update for uid %s field %s was a no-op (value unchanged)", uid, field_name)
+            return
 
         if row_updated > 1:
             logger_user_profile.error("Multiple users found for uid: %s when updating field: %s", uid, field_name)

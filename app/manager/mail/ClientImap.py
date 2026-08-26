@@ -276,7 +276,7 @@ def parse_uids_from_bytes(byte_data: bytes) -> Iterator[str]:
     """
     current_uid: list[bytes] = []
     for byte in byte_data:
-        if byte == b' ':
+        if byte == 32:  # b' ' — in Python 3 iterating ``bytes`` yields ints
             if current_uid:  # Avoid yielding empty strings
                 yield b''.join(current_uid).decode('utf-8')
                 current_uid = []
