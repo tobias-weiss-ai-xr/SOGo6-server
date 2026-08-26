@@ -59,7 +59,7 @@ class ApiSlotListCreate(MethodView):
                     slots.append(json.loads(raw_slot))
                 except Exception:
                     continue
-        return create_api_base_response({"slots"})
+        return create_api_base_response({"slots": slots})
 
     @blp.arguments(SlotCreateSchema)
     def post(self, body: dict) -> ResponseReturnValue:

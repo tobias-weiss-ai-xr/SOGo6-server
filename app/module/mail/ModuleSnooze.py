@@ -12,6 +12,14 @@ if TYPE_CHECKING:
     from app.manager.db.ClientSQL import ClientSQL
 
 
+def _to_utc(value) -> datetime:
+    """Normalize a stored datetime (naive = UTC) to an aware UTC datetime."""
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 class ModuleSnooze:
     """Manages email snooze — temporarily removes emails from inbox and
     restores them at a specified time.
@@ -202,7 +210,7 @@ class ModuleSnooze:
 
         if not include_expired:
             now = datetime.now(timezone.utc)
-            results = [r for r in results if r["snooze_until"] and datetime.fromisoformat(r["snooze_until"]) > now]
+            results = [r for r in results if r["snooze_until"] and _to_utc(r["snooze_until"]) > now]
 
         return results
 
