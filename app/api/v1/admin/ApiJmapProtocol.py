@@ -440,8 +440,10 @@ def _jmap_dispatch(method_calls: list[list], account: str, gateway: JmapMailGate
             args = {}
         call_id = call[2] if len(call) > 2 else "0"
 
-        if method == "Echo":
-            responses.append(["Echo", args, call_id])
+        if method in ("Echo", "Core/echo"):
+            # RFC 8620 §2.2: Core/echo echoes the arguments verbatim (used for
+            # capability probe / connectivity checks by JMAP clients).
+            responses.append([method, args, call_id])
             continue
         if method not in ("Mailbox/get", "Mailbox/set", "Email/get", "Email/query", "Email/set"):
             responses.append(["error", {"type": "unknownMethod", "description": f"{method} is not implemented"}, call_id])
