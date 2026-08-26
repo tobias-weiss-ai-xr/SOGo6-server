@@ -539,6 +539,49 @@ class TestPipelineHgetall:
         assert items == []
 
 
+class TestReconnectOnStalePipeline:
+    """Pipeline-owning methods must reconnect + retry when a stale pooled
+    socket surfaces as raw ``ValueError`` ("I/O operation on closed file")
+    or ``OSError`` — the same failure that ``_ReconnectOnError`` already
+    handles for single-command methods."""
+
+    def test_pipeline_hgetall_retries_on_io_on_closed_file(self):
+        client = make_client()
+        good_data = {cs.USER_UID: "user1", cs.SESSION_SENSITIVE: "s"}
+
+        def flaky_pipeline(*a, **k):
+            fp = FakePipeline(results=[good_data])
+            real_execute = fp.execute
+
+            def flaky_execute():
+                raise ValueError("I/O operation on closed file")
+
+            fp.execute = flaky_execute
+            return fp
+
+        client.redis.pipeline = MagicMock(side_effect=flaky_pipeline)
+
+        reconnects = {"n": 0}
+
+        def fake_reconnect():
+            reconnects["n"] += 1
+            fresh = FakeRedis()
+            fresh.pipeline = MagicMock(
+                side_effect=lambda *a, **k: FakePipeline(results=[good_data])
+            )
+            client.redis = fresh
+
+        client._connect = fake_reconnect
+
+        items = client._pipeline_hgetall(["session:abc"])
+        assert len(items) == 1
+        assert items[0][cs.SESSION_KEY] == "session:abc"
+        assert reconnects["n"] == 1, \
+            "stale-socket ValueError must trigger exactly one reconnect+retry"
+
+
+
+
 # ===========================================================================
 # Tests: zset_paginate_hashes
 # ===========================================================================

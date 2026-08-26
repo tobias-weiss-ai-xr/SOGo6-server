@@ -12,7 +12,7 @@ from app.utils import errors as err
 from app.utils import constants as cs
 from app.utils.logger.logger import logger_cache
 
-from functools import wraps
+from functools import wraps, partial
 from time import perf_counter
 
 
@@ -39,6 +39,20 @@ class _ReconnectOnError:
     def __init__(self, fn):
         self.fn = fn
         wraps(fn)(self)
+
+    def __get__(self, obj, owner=None):
+        """Make this a proper descriptor so method ``self`` is bound when the
+        decorator is applied on its own (without ``@_timed_cache`` on top).
+
+        A bare ``_ReconnectOnError`` instance stored as a class attribute is not
+        a descriptor, so ``client.method(...)`` would call ``__call__`` without
+        ``client`` in ``args`` (breaking ``args[0]`` self-lookup). Only methods
+        that also carried ``@_timed_cache`` (whose ``_wrapper`` function is a
+        descriptor) worked. Providing ``__get__`` fixes every use.
+        """
+        if obj is None:
+            return self
+        return partial(self.__call__, obj)
 
     def __call__(self, *args, **kwargs):
         try:
@@ -384,6 +398,7 @@ class ClientRedis():
         raw = cast(list, self.redis.zrevrange(zset_key, start, stop))
         return [m.decode("utf-8") if isinstance(m, bytes) else str(m) for m in raw]
 
+    @_ReconnectOnError
     def zset_paginate_hashes(
         self,
         first: int = 0,
@@ -479,6 +494,7 @@ class ClientRedis():
         )
         return total_count, items
 
+    @_ReconnectOnError
     def _pipeline_hgetall(self, keys: list[str]) -> list[dict]:
         """
         Fetch multiple hashes in a single Redis round-trip.
@@ -538,6 +554,7 @@ class ClientRedis():
         return ret
 
 
+    @_ReconnectOnError
     def revoke_user_sessions_by_uid(self, uids: list[str]) -> int:
         """
         Revoke all cache sessions that belong to the given UIDs.
@@ -597,6 +614,7 @@ class ClientRedis():
         )
         return len(keys_to_revoke)
 
+    @_ReconnectOnError
     def revoke_user_sessions_by_key(self, redis_keys: list[str]) -> int:
         """
         Revoke cache sessions identified by their Redis keys directly.
@@ -635,6 +653,7 @@ class ClientRedis():
         )
         return revoked_count
 
+    @_ReconnectOnError
     def revoke_user_sessions_by_activity(self, timestamp: int) -> int:
         """
         Revoke all cache sessions whose last activity score is older than
