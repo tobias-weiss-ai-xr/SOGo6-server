@@ -96,11 +96,23 @@ class InterfaceAuthUser:
                 return False, None, None  # Caller will map to ERROR_LOGIN_FAILED
 
         # Prepare the user object for authentication and get domain user sources
-        user, domain_user_sources = self.module_auth.get_user_and_domain_user_sources(uid, password)
+        try:
+            user, domain_user_sources = self.module_auth.get_user_and_domain_user_sources(uid, password)
+        except (UnicodeError, ValueError, RequestException) as e:
+            # Reject non-ASCII / malformed identifiers (e.g. Unicode homoglyphs)
+            # or any domain-resolution failure — these are failed logins, not 500s.
+            logger_api.warning("Login rejected — invalid identifier for uid=%r: %s", uid, e)
+            return False, None, None
 
         # Check login using the user source module
         module_us = ModuleUserSource(domain_user_sources)
-        success = module_us.check_login(user)
+        try:
+            success = module_us.check_login(user)
+        except Exception as e:  # pylint: disable=broad-except
+            # Any backend error (LDAP, DB, encoding) during login check must be
+            # treated as a failed login, never a 500.
+            logger_api.warning("Login check error for uid=%r: %s", uid, e)
+            return False, None, None
 
         # Record failure or reset counter on success
         if max_attempt > 0:

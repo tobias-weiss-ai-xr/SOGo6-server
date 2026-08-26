@@ -70,7 +70,13 @@ class ModuleUserSource:
             module_args=us_config,
         )
         client_us.connect()
-        return client_us.check_login(user.uid, user.password, user.domain)
+        try:
+            return client_us.check_login(user.uid, user.password, user.domain)
+        except exc.RequestException as e:
+            # LDAP or other backend errors (e.g. malformed DN, server unreachable)
+            # must NOT propagate as a 500 — they are simply a failed login attempt.
+            logger_api.warning("User source %s login check failed: %s", source_settings.US_TYPE, e)
+            return False, {}, {}
 
     def check_login(self, user:User) -> bool:
         """
