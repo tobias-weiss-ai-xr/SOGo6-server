@@ -123,12 +123,25 @@ def init_infra() -> tuple[ClientRedis, JobPersistency]:
     return cache_client, persistency
 
 
+def _check_admin_password_hardening() -> None:
+    """CRA Art. 15 — refuse startup if admin password is default or empty."""
+    pwd = process_config.SOGO_P_ADMIN_PWD
+    if not pwd or pwd == "admin":
+        raise AggravatedException(
+            "SOGO_P_ADMIN_PWD is empty or set to the default 'admin'. "
+            "This is forbidden under CRA Art. 15 (secure by default). "
+            "Set SOGO_P_ADMIN_PWD to a strong password via .env or vault "
+            "(e.g. openssl rand -base64 32)."
+        )
+
+
 def init_sogo() -> tuple[int, ClientRedis, ClientAgent]:
     """
     Init sogo application
     return True if sogo is ok and already configured, False instead
     raise error if the initializaton has problems
     """
+    _check_admin_password_hardening()
     cache_client, persistency = init_infra()
     agent_client = ClientAgent(
         agent, persistency, JobCanceller(agent, persistency), cache_client,
