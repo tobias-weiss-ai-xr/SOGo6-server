@@ -75,7 +75,14 @@ def _json_column_types() -> dict:
 
 def _maybe_json_decode(value: Any, col_name: str, json_cols: dict) -> Any:
     """Decode a JSON string cell back into a Python object (MySQL TEXT storage)."""
-    if isinstance(value, str) and json_cols.get(col_name):
+    if not json_cols.get(col_name):
+        return value
+    # MySQL returns text columns as bytes when they carry a binary collation
+    # (e.g. utf8mb4_bin for the JSON settings columns). Normalise before
+    # parsing so callers always get a dict/list, never raw bytes.
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
         try:
             return json.loads(value)
         except (json.JSONDecodeError, ValueError):

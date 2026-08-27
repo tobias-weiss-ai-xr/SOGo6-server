@@ -839,7 +839,7 @@ Each row represents one IdP (identity provider) that SOGo trusts for SAML2 SSO.
 The admin can either configure an IdP manually (entity_id + sso_url + certificate)
 or provide a metadata_url and let SOGo auto-fetch and refresh the configuration.
 """
-COL_SAML2_ID              = Column(name="id",              data_type="str", extra_args={"max_len": 255}, is_unique=True)
+COL_SAML2_ID              = Column(name="saml2_id",         data_type="str", extra_args={"max_len": 255}, is_unique=True)
 COL_SAML2_NAME            = Column(name="name",            data_type="str", extra_args={"max_len": 255})
 COL_SAML2_ENTITY_ID       = Column(name="entity_id",       data_type="str", extra_args={"max_len": 500})
 COL_SAML2_SSO_URL         = Column(name="sso_url",         data_type="str", extra_args={"max_len": 500})
