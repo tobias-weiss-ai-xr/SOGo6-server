@@ -315,6 +315,7 @@ class ClientMySQL(ClientSQL):
             "connection_timeout": 5,
             "use_pure": True,
             "charset": "utf8mb4",
+            "collation": "utf8mb4_unicode_ci",
         }
         # Enable SSL if configured - set ssl_disabled to False to enable SSL
         # MySQL Connector/Python enables SSL by default when server supports it,
