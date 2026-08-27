@@ -80,6 +80,8 @@ def check_database() -> dict:
                 host=host, port=port, user=user,
                 password=password, database=dbname,
                 connection_timeout=5,
+                charset="utf8mb4",
+                collation="utf8mb4_unicode_ci",
             )
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
