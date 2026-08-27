@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import importlib
 import json
 import os
+import re
 
 import app.module
 from app.agent.Agent import agent
@@ -38,6 +39,34 @@ def _load_json_file(path: str) -> dict | None:
     except OSError as e:
         logger.error("Cannot read init config file (%s): %s", path, e)
     return None
+
+
+_ENV_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _expand_env_value(value: str) -> str:
+    """
+    Expand ``${VAR}``/``$VAR`` placeholders in a single string using the process
+    environment (compose-style). Unset variables expand to the empty string.
+    """
+    def _sub(match: re.Match) -> str:
+        name = match.group(1) or match.group(2)
+        return os.getenv(name, "")
+    return _ENV_PLACEHOLDER.sub(_sub, value)
+
+
+def _expand_env_in_settings(data):
+    """
+    Recursively expand ``${VAR}`` placeholders in every string of a parsed JSON
+    structure. Keeps secrets such as LDAP bind passwords out of the repository.
+    """
+    if isinstance(data, dict):
+        return {k: _expand_env_in_settings(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_expand_env_in_settings(v) for v in data]
+    if isinstance(data, str):
+        return _expand_env_value(data)
+    return data
 
 
 def check_basic_config() -> bool:
@@ -78,16 +107,21 @@ def check_basic_config() -> bool:
         logger.error("Auto-initialization aborted: JSON config files must have a top-level 'settings' key.")
         return False
 
+    # Expand ${VAR} placeholders (e.g. LDAP bind password) from the environment
+    # so secrets are never committed to the init JSON files.
+    system_settings = _expand_env_in_settings(system_data["settings"])
+    domain_settings = _expand_env_in_settings(domain_data["settings"])
+
     errors: list[str] = []
 
     try:
-        config_module.update_system_settings(system_data["settings"])
+        config_module.update_system_settings(system_settings)
         logger.info("System settings written from %s", system_path)
     except (ValidationError, AggravatedException, BugException) as e:
         errors.append(f"System settings invalid or could not be written: {e}")
 
     try:
-        config_module.update_domain_default_settings(domain_data["settings"])
+        config_module.update_domain_default_settings(domain_settings)
         logger.info("Default domain settings written from %s", domain_path)
     except (ValidationError, AggravatedException, BugException) as e:
         errors.append(f"Default domain settings invalid or could not be written: {e}")

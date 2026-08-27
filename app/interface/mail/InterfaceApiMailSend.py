@@ -12,7 +12,7 @@ from app.config.settings.UserSettings import UserGeneralSettings
 from app.module.mail.ModuleMail import ModuleMail
 from app.module.mail.ModuleMailOutgoing import ModuleMailOutgoing
 from app.module.user.ModuleUserProfile import ModuleUserProfile
-from app.service import sogo_cache
+from app.service import sogo_agent, sogo_cache
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
 from app.utils.api.ApiBaseResponse import create_api_base_response
@@ -21,7 +21,6 @@ from app.utils.logger.logger import logger_api
 from app.utils.maths.sogo_hash import generate_uuid
 from app.agent.jobs.ScheduleSendJob import ScheduleSendRequest
 from app.agent.jobs.UndoSendJob import UndoSendRequest
-from app.manager.agent.ClientAgent import ClientAgent
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
@@ -164,8 +163,7 @@ class InterfaceApiMailSend:
                     )
                 else:
                     # Schedule via Celery agent
-                    process_settings: ProcessSetting = self._process
-                    agent = ClientAgent(process_settings)
+                    agent = sogo_agent()
                     request = ScheduleSendRequest(
                         account_id=account_id,
                         mail_data=mail_data,
@@ -226,7 +224,7 @@ class InterfaceApiMailSend:
 
             # Schedule the actual delivery after the undo window elapses.
             try:
-                agent = ClientAgent(self._process)
+                agent = sogo_agent()
                 agent.enqueue(
                     UndoSendRequest(user_uid=self.user.uid, pending_key=pending_key),
                     user_uid=self.user.uid,

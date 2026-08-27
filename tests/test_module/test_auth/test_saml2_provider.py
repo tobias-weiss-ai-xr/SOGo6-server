@@ -132,7 +132,7 @@ class TestCreateProvider:
             "entity_id": "https://idp.example.org/idp/shibboleth",
             "sso_url": "https://idp.example.org/idp/profile/SAML2/Redirect/SSO",
         })
-        assert provider["id"] == "test-idp"
+        assert provider["saml2_id"] == "test-idp"
         assert provider["name"] == "Test IdP"
         assert provider["entity_id"] == "https://idp.example.org/idp/shibboleth"
         assert provider["is_active"] is True
@@ -203,7 +203,7 @@ class TestGetProvider:
         })
         provider = provider_module.get_provider_by_entity_id("https://eid.example.org/idp")
         assert provider is not None
-        assert provider["id"] == "eid-test"
+        assert provider["saml2_id"] == "eid-test"
 
 
 # ── List tests ────────────────────────────────────────────────────────────────

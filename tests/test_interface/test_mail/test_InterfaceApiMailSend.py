@@ -25,7 +25,7 @@ class TestSendMailScheduleSend:
 
     # ── send_at in the future → scheduled ──────────────────────────────────
 
-    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    @patch("app.interface.mail.InterfaceApiMailSend.sogo_agent")
     def test_send_mail_with_future_send_at_returns_scheduled(self, mock_client_agent):
         """send_at in the future → enqueue with eta → status: scheduled."""
         mock_agent = MagicMock()
@@ -96,7 +96,7 @@ class TestSendMailScheduleSend:
 
     # ── send_at beyond max delay ──────────────────────────────────
 
-    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    @patch("app.interface.mail.InterfaceApiMailSend.sogo_agent")
     def test_send_mail_with_send_at_beyond_max_delay(self, mock_client_agent):
         """send_at >30 days from now → 400 max delay error."""
         mock_agent = MagicMock()
@@ -114,7 +114,7 @@ class TestSendMailScheduleSend:
 
     # ── send_at exactly at max delay boundary ──────────────────────
 
-    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    @patch("app.interface.mail.InterfaceApiMailSend.sogo_agent")
     def test_send_mail_with_send_at_at_max_delay_boundary(self, mock_client_agent):
         """send_at exactly 30 days from now → accepted (boundary test)."""
         mock_agent = MagicMock()
@@ -139,7 +139,7 @@ class TestSendMailUndoSend:
         self.fake_mail = self.iface.mail_module
 
     @patch("app.interface.mail.InterfaceApiMailSend.sogo_cache")
-    @patch("app.interface.mail.InterfaceApiMailSend.ClientAgent")
+    @patch("app.interface.mail.InterfaceApiMailSend.sogo_agent")
     def test_undo_send_enabled_returns_pending(self, mock_client_agent, mock_cache):
         """Undo Send enabled → status: pending + delivery job enqueued."""
         mock_redis = MagicMock()
