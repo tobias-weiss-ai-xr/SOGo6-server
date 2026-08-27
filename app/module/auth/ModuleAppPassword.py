@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.manager.db.ClientSQL import ClientSQL
+from app.utils import errors as err
 from app.utils.db.Condition import EqualCondition
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_api
@@ -187,7 +188,12 @@ class ModuleAppPassword:
         condition = EqualCondition("id", record_id)
         deleted = self._db.delete_row_in_table(self.TABLE_NAME, condition=condition)
         if deleted == 0:
-            raise RequestException("App password not found or not owned by user")
+            # Not-found must be a 404 (S001220), never an untyped exception
+            # which would default to ERROR_UNKOWN and return a 500.
+            raise RequestException(
+                "App password not found or not owned by user",
+                err.ERROR_APP_PASSWORD_NOT_FOUND,
+            )
         logger_api.info("App password %d revoked for user=%s", record_id, user_uid)
 
     # ------------------------------------------------------------------
