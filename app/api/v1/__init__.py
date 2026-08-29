@@ -3,6 +3,7 @@ from flask_smorest import Blueprint
 from app.utils import constants as cs
 
 from .admin import admin_apis
+from .admin.ApiJmapProtocol import blp as jmap_protocol_api
 from .system import system_apis
 from .auth import user_auth_apis
 from .mail import mail_apis
@@ -24,6 +25,10 @@ v1_basic_apis += contact_apis
 v1_basic_apis += health_apis
 v1_basic_apis += securitytxt_apis
 v1_basic_apis.extend([webauthn_blp, webauthn_blp_admin])
+# JMAP is a user mail protocol: it needs a non-anonymous g.user (and
+# g.user_domain_settings) for JmapMailGateway to build, which only exists on
+# the BASIC/user API — not the ADMIN API where it was previously mounted.
+v1_basic_apis.append(jmap_protocol_api)
 
 v1_admin_apis: list[Blueprint] = []
 v1_admin_apis += admin_apis

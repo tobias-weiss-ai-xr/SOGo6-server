@@ -38,7 +38,6 @@ from .ApiVolunteerScheduling import blp as volunteer_scheduling_api
 # Tier 7 — Advanced
 from .ApiImportExport import blp as import_export_api
 from .ApiMatrixChat import blp as matrix_chat_api
-from .ApiJmapProtocol import blp as jmap_protocol_api
 from .ApiActiveSync import blp as active_sync_api
 from .ApiMobileApp import blp as mobile_app_api
 from .ApiSaml2Admin import blp as saml2_admin_api
@@ -81,7 +80,6 @@ admin_apis : list[Blueprint] = [
     # Tier 7
     import_export_api,
     matrix_chat_api,
-    jmap_protocol_api,
     active_sync_api,
     mobile_app_api,
     saml2_admin_api,

@@ -478,7 +478,10 @@ def _jmap_dispatch(method_calls: list[list], account: str, gateway: JmapMailGate
 @blp.route("/session")
 class JmapSession(MethodView):
     def get(self) -> ResponseReturnValue:
-        account_id = request.args.get("account") or getattr(getattr(g, "user", None), "uid", "default")
+        # The mail module identifies a user's main account as
+        # cs.DEFAULT_IDENTITY_KEY_VALUE ("0"); advertise that as the JMAP
+        # accountId so clients use the correct id in method calls.
+        account_id = request.args.get("account") or cs.DEFAULT_IDENTITY_KEY_VALUE
         session = {
             "capabilities": JMAP_CAPABILITIES,
             "accounts": {
@@ -496,7 +499,7 @@ class JmapSession(MethodView):
                 "urn:ietf:params:jmap:mail": account_id,
                 "urn:ietf:params:jmap:submission": account_id,
             },
-            "username": account_id,
+            "username": getattr(getattr(g, "user", None), "uid", account_id),
             "apiUrl": "/jmap",
             "downloadUrl": "/jmap/download/{accountId}/{blobId}/{name}",
             "uploadUrl": "/jmap/upload/{accountId}",
