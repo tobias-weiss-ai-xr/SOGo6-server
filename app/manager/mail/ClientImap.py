@@ -909,6 +909,38 @@ class ClientImap(ClientMailServer):
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
+    def uid_expunge(self, folder_path: str, mail_uids: str | list[str]) -> int:
+        """Expunge only the given UIDs from a mailbox (RFC 4315 UID EXPUNGE).
+
+        Precise counterpart to :meth:`expunge_folder`: marks nothing else and
+        removes exactly the flagged messages listed in ``mail_uids``. Used by
+        the JMAP move path so the source copy disappears while other messages
+        that a client deliberately flagged \\Deleted stay untouched.
+
+        :param folder_path: The mailbox containing the messages.
+        :type folder_path: str
+        :param mail_uids: A UID or a list of UIDs to expunge.
+        :type mail_uids: str or list[str]
+        :raises RequestException: If the server rejects the command.
+        :return: The number of messages expunged.
+        :rtype: int
+        """
+        logger_imap.debug("UID-expunging %s from mailbox '%s'", mail_uids, folder_path)
+        if self.connection is None or not self.authenticated:
+            raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
+        if not folder_path.isascii():
+            raise RequestException(f"Mailbox name is not ascii: {folder_path}", err.ERROR_IMAP_NOT_ASCII)
+        uids = mail_uids if isinstance(mail_uids, list) else [mail_uids]
+        if not uids:
+            return 0
+        folder_path = quote(self._fix_folder_path(folder_path))
+        self.select_mailbox(folder_path)
+        uid_arg = ",".join(str(u) for u in uids)
+        success, datas = self._exec_imap4_method(self.connection.uid, "EXPUNGE", uid_arg)
+        if not success and not (isinstance(datas, list) and datas and isinstance(datas[0], str) and "Unknown" in datas[0]):
+            raise RequestException(f"Failed to UID-expunge {uid_arg} from {folder_path}: {datas}", err.ERROR_IMAP_FAILED)
+        return len(datas) if isinstance(datas, list) else 0
+
 
     def purge_folder(self, folder_path: str, before_date: str = "", do_children: bool = True, permanently: bool = False) -> int:
         """Mark all mails in a folder as deleted (optionally before a specific date).
@@ -1150,7 +1182,7 @@ class ClientImap(ClientMailServer):
         else:
             raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
 
-    def uid_copy(self, mail_uid: str|list|Iterator, dest_mailbox: str) -> None:
+    def uid_copy(self, mail_uid: str|list|Iterator, dest_mailbox: str, source_folder: str | None = None) -> None:
         """
         Copy a mail from the selected folder to another folder
 
@@ -1170,10 +1202,16 @@ class ClientImap(ClientMailServer):
             if isinstance(mail_uid, (Iterator, list)):
                 mail_uid = ','.join(mail_uid)
             dest_mailbox = quote(dest_mailbox)
+            # UID COPY copies from the *selected* mailbox: a fresh connection in
+            # AUTH state rejects the command. Callers that just selected a
+            # folder stay untouched; movers pass source_folder explicitly.
+            if source_folder is not None:
+                self.select_mailbox(source_folder)
             success, datas = self._exec_imap4_method(self.connection.uid, 'COPY', mail_uid, dest_mailbox)
             # Beware, if the uid does not exist, IMAP4 still return OK with data to None. Not a big problem, though.
             if not success:
-                if datas[0].decode().startswith("[TRYCREATE]"):
+                err_text = datas[0].decode() if datas and isinstance(datas[0], bytes) else str(datas[0] if datas else '')
+                if err_text.startswith("[TRYCREATE]"):
                     raise RequestException(f"Folder '{dest_mailbox}' does not exist", err.ERROR_FOLDER_NAME_NOT_FOUND)
                 logger_imap.error("UID COPY failed for UID %s to %s", mail_uid, dest_mailbox)
                 raise RequestException(f"UID COPY failed for UID {mail_uid} to {dest_mailbox}", err.ERROR_IMAP_FAILED)

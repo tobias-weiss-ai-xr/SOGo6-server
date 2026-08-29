@@ -1072,7 +1072,7 @@ class ModuleMail:
         # Prefer the bulk UID COPY primitive when available; fall back to a
         # per-mail loop for compatibility (e.g. minimal/fake IMAP clients).
         if hasattr(client, "uid_copy"):
-            client.uid_copy(uid_list, to_folder)
+            client.uid_copy(uid_list, to_folder, source_folder=from_folder)
             client.add_flags_to_mail(from_folder, uid_list, ['\\Deleted'])
             moved_uids.extend(mail_uids)
         else:
@@ -1080,6 +1080,15 @@ class ModuleMail:
                 client.copy_mail_to_mailbox(from_folder, str(mail_uid), to_folder)
                 client.add_flags_to_mail(from_folder, str(mail_uid), ['\\Deleted'])
                 moved_uids.append(mail_uid)
+
+        # A move is not complete until the source copy is gone: expunge exactly
+        # the moved UIDs (RFC 4315 UID EXPUNGE) so the mailbox listings no
+        # longer show the \Deleted ghost. Folder-wide expunge is the fallback
+        # for servers/clients that do not support UIDPLUS.
+        if hasattr(client, "uid_expunge"):
+            client.uid_expunge(from_folder, uid_list)
+        elif hasattr(client, "expunge_folder"):
+            client.expunge_folder(from_folder, do_subfolders=False)
 
         logger_mail_server.info(
             "Moved %d mails from '%s' to '%s' (account %s)", len(moved_uids), from_folder, to_folder, account_id

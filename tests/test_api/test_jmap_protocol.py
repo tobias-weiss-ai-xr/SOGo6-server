@@ -121,6 +121,12 @@ def _mailbox_id(path):
     return base64.urlsafe_b64encode(("mailbox:" + path).encode()).decode("ascii")
 
 
+def _mailbox_id_unpadded(path):
+    """base64url with the padding omitted (RFC 4648 §5) — what real JS JMAP
+    clients (Buffer.toString('base64url'), browser btoa pipelines) emit."""
+    return _mailbox_id(path).rstrip("=")
+
+
 def _email_id(folder, uid):
     import base64
     return base64.urlsafe_b64encode(f"{folder}\x00{uid}".encode()).decode("ascii")
@@ -351,6 +357,22 @@ def test_email_query_returns_encoded_ids(authed_client, monkeypatch):
     assert gateway.call_log == [("get_mails", "u1", "INBOX", 100)]
     assert len(args["ids"]) == 2
     assert _email_id("INBOX", "101") in args["ids"]
+    assert args["total"] == 2
+
+
+def test_email_query_inMailboxes_accepts_unpadded_base64url_ids(authed_client, monkeypatch):
+    """RFC 4648 §5: base64url padding is optional; real JS JMAP clients omit it.
+    Regression: Python's urlsafe_b64decode rejected unpadded lengths as invalid,
+    so the inMailboxes filter silently matched nothing (Email/query returned
+    total 0) for such clients."""
+    gateway = FakeGateway()
+    monkeypatch.setattr("app.api.v1.admin.ApiJmapProtocol._gateway", lambda: gateway)
+    assert _mailbox_id_unpadded("INBOX") != _mailbox_id("INBOX")
+    resp = _post(authed_client, [["Email/query", {"filter": {"inMailboxes": [_mailbox_id_unpadded("INBOX")]}}, "c0"]])
+    (method, args, call), = resp.get_json()["methodResponses"]
+    assert method == "Email/query"
+    assert gateway.call_log == [("get_mails", "u1", "INBOX", 100)]
+    assert len(args["ids"]) == 2
     assert args["total"] == 2
 
 

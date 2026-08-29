@@ -75,9 +75,23 @@ def _email_id(folder_path: str, uid: str) -> str:
     return base64.urlsafe_b64encode(f"{folder_path}\x00{uid}".encode("utf-8")).decode("ascii")
 
 
+def _b64url_decode(s: bytes | str) -> bytes:
+    """Decode base64url, tolerating the omitted padding allowed by RFC 4648 §5.
+
+    Real-world JMAP clients (browsers, Node Buffer.toString('base64url'), most
+    JS libs) emit unpadded base64url; Python's urlsafe_b64decode rejects
+    lengths that are not a multiple of 4, which silently broke the inMailboxes /
+    parentId / ids filters for such clients (Email/query returned empty).
+    """
+    if isinstance(s, str):
+        s = s.encode("ascii")
+    pad = b"=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
+
+
 def _decode_email_id(email_id: str) -> tuple[str, str] | None:
     try:
-        raw = base64.urlsafe_b64decode(email_id.encode("ascii")).decode("utf-8")
+        raw = _b64url_decode(email_id.encode("ascii")).decode("utf-8")
         folder, uid = raw.split("\x00", 1)
         return folder, uid
     except Exception:
@@ -87,7 +101,7 @@ def _decode_email_id(email_id: str) -> tuple[str, str] | None:
 def _decode_box_id(box_id: str) -> str | None:
     """Decode a JMAP mailbox id back into a folder path (or None)."""
     try:
-        folder = base64.urlsafe_b64decode(box_id.encode("ascii")).decode("utf-8")
+        folder = _b64url_decode(box_id.encode("ascii")).decode("utf-8")
     except Exception:
         return None
     if not folder.startswith("mailbox:"):

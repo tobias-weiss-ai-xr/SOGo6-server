@@ -705,7 +705,7 @@ class ModuleAdminConfig:
         if len(domain_result) > 0:
             raise RequestException(f"Domain's name '{domain_name}' already taken", err.ERROR_DOMAIN_NAME_TAKEN)
 
-        domain_description = new_param["domain_description"]
+        domain_description = new_param.get("domain_description", "")
         domain_info = new_param.get("domain_info", {})
 
         values_default = self.get_default_domain_settings()
@@ -767,6 +767,11 @@ class ModuleAdminConfig:
 
         # raise RequestException if domain not found
         stored_data = self.get_one_domain_setting(domain_id)
+        if stored_data.get("domain_name") != domain_id:
+            # get_one_domain_setting silently falls back to the default-shaped
+            # dict (domain_name="default") when no row exists; patching a
+            # nonexistent domain must 404 instead of crashing on missing keys.
+            raise RequestException(f"Domain '{domain_id}' not found", err.ERROR_DOMAIN_NAME_NOT_FOUND)
 
         merge_patch(new_param, stored_data)
 
@@ -774,7 +779,7 @@ class ModuleAdminConfig:
         values_default = self.get_default_domain_settings()
         origins = set_origin_from_settings(domain_id, values, values_default)
 
-        update_values = [stored_data["domain_description"], stored_data["domain_info"], values, origins]
+        update_values = [stored_data.get("domain_description", ""), stored_data.get("domain_info", {}), values, origins]
         colums = (tbl.COL_DOMAIN_DESCRIPTION.name, tbl.COL_DOMAIN_INFO.name, tbl.COL_DOMAIN_SETTINGS.name, tbl.COL_DOMAIN_ORIGIN.name)
 
         #Update in column
