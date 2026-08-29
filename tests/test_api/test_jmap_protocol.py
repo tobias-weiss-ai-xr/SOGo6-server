@@ -12,21 +12,38 @@ import pytest
 from app import create_app
 from app.utils import constants as cs
 
-JMAP_URL = "/api/admin/v1/jmap"
+JMAP_URL = "/api/user/v1/jmap"
 JMAP_CORE = "urn:ietf:params:jmap:core"
 JMAP_MAIL = "urn:ietf:params:jmap:mail"
 
 
 @pytest.fixture()
 def authed_client(monkeypatch):
-    from app.auth.Admin import Admin
+    """JMAP is a user mail protocol mounted under the BASIC (user) API.
 
-    app = create_app(cs.SOGO_NOT_INIT)
+    The app must run in the initialized (SOGO_OK) state or the user API
+    412-blocks everything; the DB-backed config resolution (system/domain
+    settings, mail-credential check) is stubbed so no live DB is needed.
+    """
+    from app.auth.User import User
+
+    app = create_app(cs.SOGO_OK)
     app.config["TESTING"] = True
-    monkeypatch.setattr("app.VoucherAdminService.__init__", lambda self, ps: None)
+
+    class FakeAuthUser:
+        def __init__(self, *a, **k):
+            pass
+
+        def check_user_and_fill_info(self, user):
+            return True, user
+
+    monkeypatch.setattr("app.init_get_system_and_default_domain_settings", lambda: ({}, {}))
+    monkeypatch.setattr("app.init_get_user_domain_settings", lambda user: {})
+    monkeypatch.setattr("app.InterfaceAuthUser", FakeAuthUser)
+    monkeypatch.setattr("app.VoucherUserService.__init__", lambda self, ps: None)
     monkeypatch.setattr(
-        "app.VoucherAdminService.generate_admin_from_voucher",
-        staticmethod(lambda token: Admin("smoke-admin")),
+        "app.VoucherUserService.generate_user_from_voucher",
+        staticmethod(lambda token: User("testuser@example.org", cn="Test User", domain="example.org")),
     )
     client = app.test_client()
     client.environ_base["HTTP_AUTHORIZATION"] = "Bearer test-token"
@@ -286,6 +303,39 @@ def test_email_get_missing_from_store_is_not_found(authed_client, monkeypatch):
     (_, args, _), = resp.get_json()["methodResponses"]
     assert args["list"] == []
     assert len(args["notFound"]) == 1
+
+
+def test_email_get_list_flags_shape_does_not_server_fail(authed_client, monkeypatch):
+    """Regression: the real store (_parse_mail) returns ``flags`` as a LIST of
+    IMAP flag strings, not a dict. ``_mail_to_jmap`` must tolerate that shape
+    instead of crashing into a serverFail error for an otherwise valid message
+    (observed live on the demo: every Email/get on a real message 500'd)."""
+    gateway = FakeGateway()
+    # uid "88" mirrors the real _parse_mail output for a seen+flagged message.
+    gateway.mails.setdefault("INBOX", []).append({
+        "uid": "88",
+        "subject": "List-flags mail",
+        "from_": {"name": "Ada", "mail": "ada@example.org"},
+        "to": [{"name": "Bob", "mail": "bob@example.org"}],
+        "cc": [],
+        "date": "2026-08-01T11:00:00Z",
+        "size": 256,
+        "seen": False,
+        "flagged": False,
+        "has_attachment": False,
+        "contents": [{"contentType": "text/plain", "content": "body"}],
+        "attachments": [],
+        "flags": ["\\Seen", "\\Flagged"],
+    })
+    monkeypatch.setattr("app.api.v1.admin.ApiJmapProtocol._gateway", lambda: gateway)
+    resp = _post(authed_client, [["Email/get", {"ids": [_email_id("INBOX", "88")]}, "c0"]])
+    assert resp.status_code == 200
+    (method, args, call), = resp.get_json()["methodResponses"]
+    assert method == "Email/get"
+    assert args["notFound"] == []
+    email = args["list"][0]
+    assert email["subject"] == "List-flags mail"
+    assert email["keywords"] == {"$seen": True, "$flagged": True}
 
 
 # ---------------------------------------------------------------- #

@@ -168,11 +168,26 @@ def _address_list(addresses) -> list[dict]:
     return out
 
 
+def _flags_contains(flags, *names) -> bool:
+    """True if ``flags`` carries any of ``names``.
+
+    The real store (``ModuleMail._parse_mail``) returns ``flags`` as a LIST of
+    IMAP flags (e.g. ``["\\Seen", "\\Flagged"]``), while a dict form
+    (e.g. ``{"seen": True}``) is tolerated for gateway fakes/older shapes.
+    """
+    if isinstance(flags, dict):
+        return any(bool(flags.get(name)) for name in names)
+    if isinstance(flags, (list, tuple, set)):
+        lowered = {str(flag).lower() for flag in flags}
+        return any(name.lower() in lowered for name in names)
+    return bool(flags)
+
+
 def _mail_to_jmap(mail: dict, folder: str, uid: str) -> dict:
     """Map a parsed store mail to a JMAP Email object."""
-    flags = mail.get("flags") or {}
-    seen = bool(mail.get("seen")) or bool(flags.get("seen")) or bool(flags.get("\\Seen"))
-    flagged = bool(mail.get("flagged")) or bool(flags.get("flagged")) or bool(flags.get("\\Flagged"))
+    flags = mail.get("flags") or []
+    seen = bool(mail.get("seen")) or _flags_contains(flags, "seen", "\\Seen")
+    flagged = bool(mail.get("flagged")) or _flags_contains(flags, "flagged", "\\Flagged")
 
     preview_raw = ""
     for part in mail.get("contents", []) or []:
