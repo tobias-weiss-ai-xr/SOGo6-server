@@ -14,6 +14,7 @@ from .ApiUserCustomization import blp as user_customization_blueprint
 from .ApiGlobalSearch import blp as global_search_blueprint
 from .ApiOAuthProvider import blp as oauth_api
 from .ApiPushNotifications import blp as push_api
+from .ApiOpenCloud import blp as opencloud_api
 
 
 def register_user_blueprints(api: Api):
@@ -41,4 +42,5 @@ user_profile_apis: list[Blueprint] = [
     global_search_blueprint,
     oauth_api,
     push_api,
+    opencloud_api,
 ]

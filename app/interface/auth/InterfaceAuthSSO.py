@@ -123,6 +123,24 @@ class InterfaceAuthSSO:
                     err.ERROR_OIDC_USERINFO_FAILED,
                 )
 
+            # Store OIDC tokens in Redis for later token exchange (OpenCloud file picker)
+            # Keyed by user email (uid) with 24h TTL to match session lifetime
+            try:
+                from app.service import sogo_cache
+                cache = sogo_cache()
+                oidc_tokens = {
+                    "access_token": token_data.get("access_token", ""),
+                    "refresh_token": token_data.get("refresh_token", ""),
+                    "expires_in": token_data.get("expires_in", 3600),
+                    "scope": token_data.get("scope", ""),
+                }
+                cache.set(f"user_oidc_session:{email}", oidc_tokens, ttl=86400)
+                cache.close()
+                logger_api.info("Stored OIDC tokens for user %s (TTL=24h)", email)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger_api.warning("Failed to store OIDC tokens for %s: %s", email, exc)
+                # Continue anyway — file picker will fail but auth succeeds
+
             # Authenticate the user in the local user source
             result = self._authenticate_sso_user(domain, email, "oidc")
 
