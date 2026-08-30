@@ -187,9 +187,16 @@ class ModuleSnooze:
 
         record = self._row_to_dict(rows[0])
 
-        self._db.delete_from_table(
+        # Scope the delete to BOTH the id and the user so a user can never
+        # unsnooze another user's record by guessing an id. Uses
+        # ``delete_row_in_table`` (the only delete method on ClientSQL /
+        # ClientMySQL — there is no ``delete_from_table``).
+        self._db.delete_row_in_table(
             table_name=self.TABLE_NAME,
-            condition=EqualCondition(self.COL_ID, snooze_id),
+            condition=AndCondition(
+                EqualCondition(self.COL_ID, snooze_id),
+                EqualCondition(self.COL_USER_UID, user_uid),
+            ),
         )
 
         logger.info(
@@ -226,7 +233,7 @@ class ModuleSnooze:
 
     def remove_record(self, snooze_id: int) -> None:
         """Remove a snooze record (called after successful IMAP restore)."""
-        self._db.delete_from_table(
+        self._db.delete_row_in_table(
             table_name=self.TABLE_NAME,
             condition=EqualCondition(self.COL_ID, snooze_id),
         )

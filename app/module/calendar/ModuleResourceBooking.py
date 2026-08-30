@@ -237,7 +237,7 @@ class ModuleResourceBooking:
                 message=f"Resource '{resource_id}' not found.",
             )
 
-        self._db.delete_from_table(
+        self._db.delete_row_in_table(
             table_name=self.TABLE_NAME,
             condition=EqualCondition(self.COL_ID, resource_id),
         )

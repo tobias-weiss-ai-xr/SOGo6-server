@@ -102,12 +102,12 @@ class TestSnooze:
 class TestUnsnooze:
     def test_unsnooze_success(self, module: ModuleSnooze, mock_db: MagicMock):
         mock_db.select_from_table.return_value = [SAMPLE_SNOOZE_ROW]
-        mock_db.delete_from_table.return_value = None
+        mock_db.delete_row_in_table.return_value = None
 
         result = module.unsnooze("user@example.org", 1)
         assert result["mail_uid"] == "42"
         assert result["original_folder"] == "INBOX"
-        assert mock_db.delete_from_table.called
+        assert mock_db.delete_row_in_table.called
 
     def test_unsnooze_not_found_raises(self, module: ModuleSnooze, mock_db: MagicMock):
         mock_db.select_from_table.return_value = []

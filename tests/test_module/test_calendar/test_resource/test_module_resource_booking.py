@@ -179,10 +179,10 @@ class TestResourceUpdate:
 class TestResourceDelete:
     def test_delete_success(self, module: ModuleResourceBooking, mock_db: MagicMock):
         mock_db.select_from_table.return_value = [SAMPLE_RESOURCE_ROW]
-        mock_db.delete_from_table.return_value = None
+        mock_db.delete_row_in_table.return_value = None
 
         module.delete("res-001")
-        assert mock_db.delete_from_table.called
+        assert mock_db.delete_row_in_table.called
 
     def test_delete_not_found_raises(self, module: ModuleResourceBooking, mock_db: MagicMock):
         mock_db.select_from_table.return_value = []
