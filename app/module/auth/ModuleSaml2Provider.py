@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.config.db import tables as tbl
-from app.utils.db.Condition import EqualCondition
+from app.utils.db.Condition import EqualCondition, TrueCondition
 from app.utils.exceptions import RequestException
 from app.utils import errors as err
 from app.utils.logger.logger import logger_api
@@ -80,9 +80,10 @@ class ModuleSaml2Provider:
     def list_providers(self, active_only: bool = False) -> list[dict[str, Any]]:
         """Return all SAML2 providers."""
         db = self._get_db()
-        condition = None
         if active_only:
             condition = EqualCondition(tbl.COL_SAML2_IS_ACTIVE.name, True)
+        else:
+            condition = TrueCondition()
         rows = list(db.select_from_table(
             tbl.TABLE_SAML2_PROVIDERS.name,
             self._columns(),
