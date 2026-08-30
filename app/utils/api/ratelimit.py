@@ -25,9 +25,13 @@ DEFAULT_WINDOW_SECONDS = 60
 F = TypeVar('F', bound=Callable)
 
 # Global API rate limit: 300 requests per 60s per IP (broad protection against
-# flooding, while allowing normal multi-tab UI usage).
-GLOBAL_API_LIMIT = 300
-GLOBAL_API_WINDOW = 60
+# flooding, while allowing normal multi-tab UI usage). Both values can be
+# overridden via env — e.g. a CI test runner legitimately exceeds 300 req/min
+# from a single source IP.
+import os
+
+GLOBAL_API_LIMIT = int(os.environ.get("SOGO_P_GLOBAL_RATE_LIMIT", "300"))
+GLOBAL_API_WINDOW = int(os.environ.get("SOGO_P_GLOBAL_RATE_WINDOW", "60"))
 
 # Paths excluded from global limiting (monitoring, disclosure, docs)
 GLOBAL_EXCLUDED_PREFIXES = (

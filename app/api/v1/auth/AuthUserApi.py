@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+import os
+
 from flask import g, request, Response
 from flask.views import MethodView
 from flask.typing import ResponseReturnValue
@@ -63,14 +65,18 @@ class ApiAuthUserLogin(MethodView):
         """
         Action, Authenticate the user for plain mode
         """
-        # Per-IP rate limiting (20 requests per minute per IP)
+        # Per-IP rate limiting (defaults: 20 requests / 60 s per IP).
+        # Configurable via env — e.g. a CI test-runner or a NAT-ed office
+        # legitimately exceeds 20 logins/min from a single source IP.
         from app.service import sogo_cache
         from app.utils.api.login_rate_limiter import LoginRateLimiter
 
         client_ip = request.remote_addr or "unknown"
         limiter = LoginRateLimiter(sogo_cache())
-        if limiter.is_ip_rate_limited(client_ip, max_attempts=20, window_seconds=60):
-            logger_api.warning("Rate-limited login from IP=%s", client_ip)
+        ip_max = int(os.environ.get("SOGO_P_LOGIN_IP_MAX", "20"))
+        ip_window = int(os.environ.get("SOGO_P_LOGIN_IP_WINDOW", "60"))
+        if limiter.is_ip_rate_limited(client_ip, max_attempts=ip_max, window_seconds=ip_window):
+            logger_api.warning("Rate-limited login from IP=%s (%d/%ds)", client_ip, ip_max, ip_window)
             return create_api_base_response(None, err.ERROR_LOGIN_FAILED)
 
         interface_api : InterfaceAuthUser = g.inter

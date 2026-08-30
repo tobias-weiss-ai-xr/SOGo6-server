@@ -210,14 +210,35 @@ class ModuleAdminUser:
         :param data: User data (uid, cn, sn, givenName, mail, password, …)
         :return: Dict with ``dn`` and ``uid`` of the created entry
         """
+        uid = data["uid"]
+        mail = data["mail"]
+
+        # The login flow binds DN "uid=<login-username>,<base_dn>" where the
+        # username is the full email — the uid IS the login name (platform
+        # convention: every seeded entry uses the email as uid/RDN). A bare
+        # uid (e.g. "jdoe") would create an account that can never log in,
+        # so reject it up front instead of returning a misleading 200.
+        if "@" not in uid or "." not in uid.rsplit("@", 1)[-1]:
+            raise RequestException(
+                f"User uid '{uid}' must be the full email-format login "
+                f"(e.g. '{uid}@example.org') — it is used verbatim as the "
+                f"LDAP RDN and as the login name",
+                error=err.ERROR_VALIDATION_ERROR,
+            )
+        if uid != mail:
+            raise RequestException(
+                f"User uid '{uid}' and mail '{mail}' must match — the uid "
+                f"is the login name users type at sign-in",
+                error=err.ERROR_VALIDATION_ERROR,
+            )
+
         client = self._get_ldap_client()
         try:
-            uid = data["uid"]
             cn = data["cn"]
             sn = data["sn"]
             given_name = data.get("givenName", cn)
-            mail = data["mail"]
             password = data["password"]
+
             uid_number = data.get("uidNumber")
             gid_number = data.get("gidNumber")
             home_dir = data.get("homeDirectory") or f"/home/{uid.split('@')[0] if '@' in uid else uid}"

@@ -837,6 +837,15 @@ class ClientImap(ClientMailServer):
         if self.connection is not None and self.authenticated:
             folder_path = self._fix_folder_path(folder_path)
 
+            # A missing folder must be a 404, not an IMAP-error 500 — the
+            # rename-to-trash below would otherwise surface as
+            # S001302 "IMAP Command Failed" for a simple client typo.
+            if not self._mailbox_exists(folder_path):
+                raise RequestException(
+                    f"Cannot delete folder '{folder_path}': it does not exist",
+                    err.ERROR_FOLDER_NAME_NOT_FOUND,
+                )
+
             delimiter = self._get_delimiter_for(folder_path)
             if folder_path.startswith(self.folders_map_type_to_name[cs.MAIL_FOLDER_TRASH]):
                 self._imap_delete(folder_path, delimiter, do_children)

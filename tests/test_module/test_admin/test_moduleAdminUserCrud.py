@@ -203,23 +203,25 @@ class TestCreateUser:
         client._search.return_value = []  # no existing users → uid starts at 1001
 
         module, _ = _make_module(monkeypatch, client)
+        # uid must be the full email-format login (it IS the login name and
+        # the LDAP RDN) — a bare uid would create an un-loginable account
         result = module.create_user({
-            "uid": "newuser",
+            "uid": "newuser@example.org",
             "cn": "New User",
             "sn": "User",
             "givenName": "New",
             "mail": "newuser@example.org",
             "password": "secret123",
         })
-        assert result["uid"] == "newuser"
-        assert result["dn"] == "uid=newuser,dc=example,dc=org"
+        assert result["uid"] == "newuser@example.org"
+        assert result["dn"] == "uid=newuser@example.org,dc=example,dc=org"
         # Verify the LDAP add was called
         client.ldap_conn.add_s.assert_called_once()
         call_dn, call_attrs = client.ldap_conn.add_s.call_args[0]
-        assert call_dn == "uid=newuser,dc=example,dc=org"
+        assert call_dn == "uid=newuser@example.org,dc=example,dc=org"
         attr_dict = dict(call_attrs)
         assert b"inetOrgPerson" in attr_dict["objectClass"]
-        assert attr_dict["uid"] == [b"newuser"]
+        assert attr_dict["uid"] == [b"newuser@example.org"]
 
     def test_create_user_with_custom_ids(self, monkeypatch):
         """create_user respects provided uidNumber/gidNumber."""
@@ -231,16 +233,16 @@ class TestCreateUser:
 
         module, _ = _make_module(monkeypatch, client)
         result = module.create_user({
-            "uid": "customuser",
+            "uid": "customuser@example.org",
             "cn": "Custom",
             "sn": "User",
             "givenName": "Custom",
-            "mail": "c@example.org",
+            "mail": "customuser@example.org",
             "password": "pwd",
             "uidNumber": 5000,
             "gidNumber": 5000,
         })
-        assert result["uid"] == "customuser"
+        assert result["uid"] == "customuser@example.org"
         call_dn, call_attrs = client.ldap_conn.add_s.call_args[0]
         attr_dict = dict(call_attrs)
         assert attr_dict["uidNumber"] == [b"5000"]
@@ -275,10 +277,10 @@ class TestCreateUser:
         module, _ = _make_module(monkeypatch, client)
         with pytest.raises(RequestException) as exc:
             module.create_user({
-                "uid": "failuser",
+                "uid": "failuser@example.org",
                 "cn": "Fail",
                 "sn": "User",
-                "mail": "f@example.org",
+                "mail": "failuser@example.org",
                 "password": "pwd",
             })
         assert exc.value.error == err.ERROR_LDAP_CANNOT_CONNECT
