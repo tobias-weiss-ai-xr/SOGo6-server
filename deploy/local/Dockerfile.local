@@ -31,9 +31,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
         flask flask-compress flask-cors flask-smorest \
         gunicorn celery \
         prometheus-client authlib pyotp qrcode[pil] webauthn \
-        marshmallow icalendar \
+        marshmallow icalendar defusedxml \
         psycopg[binary] mysql-connector-python python-ldap redis \
-        cryptography pyjwt pydantic pydantic-settings \
+        cryptography pyjwt pydantic pydantic-settings bcrypt \
         sievelib yarl pysaml2 || \
     echo "Some packages failed - will check at runtime"
 

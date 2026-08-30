@@ -112,7 +112,10 @@ class ModuleAppPassword:
         :raises RequestException: If the label is empty or creation fails.
         """
         if not label or not label.strip():
-            raise RequestException("App-password label cannot be empty")
+            raise RequestException(
+                "App-password label cannot be empty",
+                err.ERROR_VALIDATION_ERROR,
+            )
 
         raw_token = self.generate_token()
         token_hash = self._hash_token(raw_token)
@@ -241,8 +244,7 @@ class ModuleAppPassword:
             # Always process all iterations (no early return)
         
         if matched_record_id is not None:
-            # Update last_used
-            from datetime import datetime, timezone
+            # Update last_used (datetime/timezone are module-level imports)
             self._db.update_in_table(
                 self.TABLE_NAME,
                 column_tuple=("last_used",),
