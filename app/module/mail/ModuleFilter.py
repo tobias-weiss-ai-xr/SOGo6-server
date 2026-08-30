@@ -127,7 +127,17 @@ class ModuleFilter:
             condition=condition,
         )
         if not updated:
-            raise RequestException(err.ERROR_USER_PROFILE_UPDATE_FAILED.m, err.ERROR_USER_PROFILE_UPDATE_FAILED)
+            # MySQL reports 0 affected rows for a no-op UPDATE (the stored value
+            # is identical to the new one, e.g. when re-pushing the same sieve
+            # configuration). That is still a success as long as the user row
+            # exists — only a genuinely missing row is a failure.
+            rows = list(self.sogo_db_manager.select_from_table(
+                table_name=tbl.TABLE_USER.name,
+                column_tuple=(tbl.COL_USER_UID.name,),
+                condition=condition,
+            ))
+            if not rows:
+                raise RequestException(err.ERROR_USER_PROFILE_UPDATE_FAILED.m, err.ERROR_USER_PROFILE_UPDATE_FAILED)
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
