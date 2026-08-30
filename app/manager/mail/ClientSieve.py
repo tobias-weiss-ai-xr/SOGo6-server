@@ -24,6 +24,35 @@ R = TypeVar("R")
 SIEVE_MASTER_SCRIPT = "sogo-master"
 
 
+class _SieveTlsClient(Client):
+    """sievelib ManageSieve Client with an optional TLS verification override.
+
+    sievelib's ``Client._Client__enable_ssl`` always builds ``ssl.create_default_context()``
+    (strict hostname + CA verification). Internal mail servers (e.g. Stalwart's ManageSieve
+    listener) commonly present self-signed certificates, so deployments set
+    ``SOGO_D_SIEVE_VERIFY_CERT=false`` to connect without verifying the peer certificate.
+    """
+
+    def __init__(self, srvaddr: str, srvport: int = 4190, verify_cert: bool = True) -> None:
+        super().__init__(srvaddr, srvport)
+        self._verify_cert = verify_cert
+
+    def _Client__enable_ssl(self, keyfile: str | None = None, certfile: str | None = None) -> None:
+        import ssl as _ssl
+
+        context = _ssl.create_default_context()
+        if not self._verify_cert:
+            context.check_hostname = False
+            context.verify_mode = _ssl.CERT_NONE
+        if certfile is not None:
+            context.load_cert_chain(certfile, keyfile=keyfile)
+        try:
+            nsock = context.wrap_socket(self.sock, server_hostname=self.srvhostname)
+        except _ssl.SSLError as e:
+            raise SieveError("SSL error: %s" % str(e)) from e
+        self.sock = nsock
+
+
 # ---------------------------------------------------------------------------
 # Vacation Condition Data Class
 # ---------------------------------------------------------------------------
@@ -130,7 +159,7 @@ class ClientSieve(ClientFiltering):
     # Note: "copy" is NOT a command, it's a flag on fileinto (:copy) and requires the "copy" extension
     BUILTIN_SIEVE_COMMANDS = {"redirect", "keep", "discard", "stop"}
 
-    def __init__(self, server: str, port: int, encryption: str, auth_mech: str) -> None:
+    def __init__(self, server: str, port: int, encryption: str, auth_mech: str, verify_cert: bool = True) -> None:
         """
         Initialize the Sieve client.
 
@@ -142,12 +171,16 @@ class ClientSieve(ClientFiltering):
         :type encryption: str
         :param auth_mech: Authentication mechanism (SOGO_D_SIEVE_AUTH_MECH), e.g. "plain", "xoauth2"
         :type auth_mech: str
+        :param verify_cert: Verify the TLS certificate presented by the sieve server
+            (SOGO_D_SIEVE_VERIFY_CERT). Set to False for internal self-signed servers.
+        :type verify_cert: bool
         """
         super().__init__()
         self.server    = server
         self.port      = port
         self.encryption = encryption
         self.auth_mech  = auth_mech
+        self.verify_cert = verify_cert
 
         self.connection: Client | None = None
 
@@ -168,7 +201,7 @@ class ClientSieve(ClientFiltering):
                 err.ERROR_CONFIG_ERROR,
             )
 
-        self.connection = Client(self.server, self.port)
+        self.connection = _SieveTlsClient(self.server, self.port, verify_cert=self.verify_cert)
         self.connected = True
         logger_sieve.info(
             "Sieve client initialised for %s:%d (encryption=%s)", self.server, self.port, self.encryption

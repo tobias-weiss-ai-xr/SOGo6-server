@@ -634,6 +634,7 @@ class MailSettings(SogoSchema):
     SOGO_D_SIEVE_PORT = fields.Integer(load_default=4190 , dump_default=4190 , validate=validate.Range(min=1, max=65535))
     SOGO_D_SIEVE_ENCRYPTION = fields.String(load_default="None", dump_default="None", validate=validate.OneOf(cs.SOCK_ENC_LIST))
     SOGO_D_SIEVE_AUTH_MECH =  fields.String(load_default="None", dump_default="None", validate=validate.OneOf(('plain', 'xoauth2')))
+    SOGO_D_SIEVE_VERIFY_CERT = fields.Boolean(load_default=True, dump_default=True) # Verify the sieve server TLS certificate (set to false for internal self-signed servers, e.g. Stalwart)
     SOGO_D_SIEVE_FOLDER_ENCODING = fields.String(load_default="utf-7", dump_default="utf-7", validate=validate.OneOf(('utf-7', 'utf-8')))
     SOGO_D_SIEVE_HEADER = fields.String() #Sieve script that will be set for each user sieve script at the top level
     SOGO_D_SIEVE_FOOTER = fields.String() #Sieve script that will be set for each user sieve script at the bottom level
@@ -702,6 +703,7 @@ class MailSettingsObj(SettingsObj):
     SOGO_D_SIEVE_PORT: int = 4190
     SOGO_D_SIEVE_ENCRYPTION: str = "None"
     SOGO_D_SIEVE_AUTH_MECH: str = "None"
+    SOGO_D_SIEVE_VERIFY_CERT: bool = True
     SOGO_D_SIEVE_FOLDER_ENCODING: str = "utf-7"
     SOGO_D_SIEVE_HEADER: str = ""
     SOGO_D_SIEVE_FOOTER: str = ""
@@ -773,7 +775,7 @@ class MailSettingsObj(SettingsObj):
                 "port": self.SOGO_D_SIEVE_PORT,
                 "encryption": self.SOGO_D_SIEVE_ENCRYPTION,
                 "auth_mech": self.SOGO_D_SIEVE_AUTH_MECH,
-                
+                "verify_cert": self.SOGO_D_SIEVE_VERIFY_CERT,
             }
         raise AggravatedException(err.ERROR_CONFIG_WRONG_MAIL_FILTERING.m, err.ERROR_CONFIG_WRONG_MAIL_FILTERING)
 
