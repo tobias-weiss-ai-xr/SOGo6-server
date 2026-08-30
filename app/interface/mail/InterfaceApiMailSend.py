@@ -169,8 +169,12 @@ class InterfaceApiMailSend:
                         mail_data=mail_data,
                         extra_headers=extra_headers or None,
                         tmp_draft_key=key,
+                        # The agent worker has no request context — persist the
+                        # user so the job can rebuild it (same as Undo Send).
+                        user_session=self.user.get_user_session(),
+                        login_mail_outgoing=self.user.login_mail_outgoing,
                     )
-                    job_id: str = agent.enqueue(request, eta=send_at_dt)
+                    job_id: str = agent.enqueue(request, eta=send_at_dt, user_uid=self.user.uid)
                     logger_api.info(
                         "Schedule Send: scheduled %s for %s (job=%s)",
                         mail_data.get("subject", ""), send_at_raw, job_id,

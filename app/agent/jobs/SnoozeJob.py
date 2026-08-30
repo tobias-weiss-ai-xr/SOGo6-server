@@ -40,7 +40,9 @@ class SnoozeJob(Job):
     """
     request_class = SnoozeCheckRequest
 
-    def process(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def process(
+        self, payload: dict[str, Any], *, user_uid: str | None = None, job_id: str = "",
+    ) -> dict[str, Any]:
         """Check and process due snooze records."""
         now = datetime.now(timezone.utc)
 
