@@ -181,3 +181,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# taskfleet worktrees (do not commit)
+.tf-worktrees/
