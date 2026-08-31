@@ -62,7 +62,11 @@ class ModuleResourceBooking:
 
     def _row_to_dict(self, row: list[Any]) -> dict[str, Any]:
         resource = CalResource.from_row(row)
-        return resource.to_dict()
+        data = resource.to_dict()
+        # MariaDB tinyint rows surface as 0/1 — the API contract is boolean
+        data["is_active"] = bool(data["is_active"])
+        data["auto_accept"] = bool(data["auto_accept"])
+        return data
 
     # ── CRUD ────────────────────────────────────────────────────────────────
 
@@ -383,7 +387,8 @@ class ModuleResourceBooking:
         
         # Create a User object for the booker
         # Note: This is a minimal user object - in production, use the authenticated user
-        user = User(uid=user_id, email=user_email, name=user_id)
+        # User(uid, password, cn, domain, ...) — uid is the mail-style id
+        user = User(uid=user_email, cn=user_id)
         calendar_user = CalendarUser(user=user, owner=user)
         
         # Get the calendar to use (default to user's primary calendar)
@@ -404,7 +409,7 @@ class ModuleResourceBooking:
                 # Create a default calendar if one doesn't exist
                 calendar_to_use = module_calendar.create_personal_calendar(
                     user_uid=user_id,
-                    tz=start_time.tzinfo.zone if start_time.tzinfo else "UTC",
+                    tz=getattr(start_time.tzinfo, "zone", None) or "UTC",
                 )
             
             calendar_key = calendar_to_use.key
@@ -451,7 +456,7 @@ class ModuleResourceBooking:
                 description=description,
                 date_start=start_time,
                 date_end=end_time,
-                timezone=start_time.tzinfo.zone if start_time.tzinfo else "UTC",
+                timezone=getattr(start_time.tzinfo, "zone", None) or "UTC",
                 location=location or resource.get("location"),
                 status=event_status,
                 visibility=EventVisibility.PRIVATE,
@@ -551,56 +556,11 @@ class ModuleResourceBooking:
         bookings = []
         
         try:
-            # First, try to query sogo6_resource_bookings table directly
-            # This table may not exist yet, so we'll fall back to calendar events
-            try:
-                rows = list(self._db.select_from_table(
-                    table_name="sogo6_resource_bookings",
-                    column_tuple=(
-                        "id", "event_id", "resource_id", "start_ts", "end_ts",
-                        "status", "organizer_id", "booking_purpose", "created_at"
-                    ),
-                    condition=EqualCondition("organizer_id", user_id),
-                ))
-                
-                for row in rows:
-                    (booking_id, event_id, resource_id, start_ts, end_ts, booking_status,
-                     organizer_id, booking_purpose, created_at) = row
-                    
-                    # Filter by time range if specified
-                    if start and end_ts and end_ts < start:
-                        continue
-                    if end and start_ts and start_ts >= end:
-                        continue
-                    
-                    # Filter by status if specified
-                    if status and booking_status != status:
-                        continue
-                    
-                    # Get resource details
-                    resource = self.get_by_id(resource_id)
-                    
-                    bookings.append({
-                        "id": booking_id,
-                        "event_id": event_id,
-                        "resource_id": resource_id,
-                        "resource_name": resource.get("name", "Unknown") if resource else "Unknown",
-                        "resource_type": resource.get("resource_type", "other") if resource else "other",
-                        "start_time": start_ts.isoformat() if start_ts else None,
-                        "end_time": end_ts.isoformat() if end_ts else None,
-                        "status": booking_status,
-                        "organizer_id": organizer_id,
-                        "booking_purpose": booking_purpose,
-                        "created_at": created_at.isoformat() if created_at else None,
-                    })
-                
-                return bookings
-            except Exception as exc:
-                # sogo6_resource_bookings table doesn't exist yet
-                logger.debug("sogo6_resource_bookings table not found, falling back to calendar events: %s", exc)
-            
-            # Fall back to querying calendar events for bookings
-            # This looks for events where the user is organizer and that have resource attendees
+            # Bookings are stored as calendar events with RESOURCE/ROOM
+            # attendees. The optional sogo6_resource_bookings fast-path table
+            # is not created anywhere, and select_from_table swallows the
+            # missing-table error — so the events scan is the only reliable
+            # source.
             
             repo_calendar = RepositoryCalendar(self._db)
             calendars = repo_calendar.find_all(user_id)
@@ -614,11 +574,12 @@ class ModuleResourceBooking:
                 if not calendar.key:
                     continue
                 
-                # Get all events in this calendar
+                # Get all events in this calendar (wide window: bookings
+                # queries take optional filters, so scan everything)
                 calendar_events = repo_event.find_by_calendar(
                     calendar.key,
-                    start_time=None,
-                    end_time=None,
+                    start=datetime(1970, 1, 1, tzinfo=timezone.utc),
+                    end=datetime(2100, 1, 1, tzinfo=timezone.utc),
                 )
                 
                 for event in calendar_events:
@@ -686,6 +647,20 @@ class ModuleResourceBooking:
         
         return bookings
 
+    def _find_event_key_owner(self, event_key: str) -> tuple[str, str] | None:
+        """Return (calendar_key, key) for a non-deleted event row with this key."""
+        from app.config.db import tables as tbl
+
+        rows = list(self._db.select_from_table(
+            table_name=tbl.TABLE_EVENT.name,
+            column_tuple=(tbl.COL_EVT_CALENDAR_KEY.name, tbl.COL_EVT_KEY.name),
+            condition=AndCondition(
+                EqualCondition(tbl.COL_EVT_KEY.name, event_key),
+                EqualCondition(tbl.COL_EVT_IS_DELETED.name, False),
+            ),
+        ))
+        return (rows[0][0], rows[0][1]) if rows else None
+
     def get_booking(self, booking_id: str) -> dict[str, Any] | None:
         """Get a specific booking by ID.
         
@@ -741,12 +716,14 @@ class ModuleResourceBooking:
             # Fall back to querying calendar events
             repo_event = RepositoryEvent(self._db)
             
-            # Try to find event by UID or key
-            event = repo_event.find_by_uid(booking_id)
+            # Try to find the event by UID (masters), then by key
+            matches = repo_event.find_all_by_uid(booking_id)
+            event = matches[0] if matches else None
             if not event:
-                # Try by key
-                all_events = repo_event.find_all()
-                event = next((e for e in all_events if e.key == booking_id), None)
+                event_key_owner = self._find_event_key_owner(booking_id)
+                if event_key_owner is not None:
+                    calendar_key, key = event_key_owner
+                    event = repo_event.find_by_key(calendar_key, key)
             
             if not event:
                 return None
@@ -861,13 +838,15 @@ class ModuleResourceBooking:
             if event_key or event_uid:
                 repo_event = RepositoryEvent(self._db)
                 
-                # Find the event
+                # Find the event (by UID masters, then by key)
                 event = None
                 if event_uid:
-                    event = repo_event.find_by_uid(event_uid)
+                    matches = repo_event.find_all_by_uid(event_uid)
+                    event = matches[0] if matches else None
                 if not event and event_key:
-                    all_events = repo_event.find_all()
-                    event = next((e for e in all_events if e.key == event_key), None)
+                    key_owner = self._find_event_key_owner(event_key)
+                    if key_owner is not None:
+                        event = repo_event.find_by_key(key_owner[0], key_owner[1])
                 
                 if event:
                     # Update event status to cancelled
@@ -876,7 +855,7 @@ class ModuleResourceBooking:
                     
                     # Update the event in the database
                     # Note: We need a source to update the event
-                    from app.module.calendar.Serializer import CalendarSources
+                    from app.module.calendar.source.CalendarSources import CalendarSources
                     
                     try:
                         sources = CalendarSources(self._db, RepositoryCalendarShare(self._db))

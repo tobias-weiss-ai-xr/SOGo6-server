@@ -332,6 +332,11 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
         if not request.is_json:
             return create_api_base_response(error=err.ERROR_API_CONTENT_TYPE)
         data = request.get_data(as_text=True)
+        # An absent Content-Length with an empty body must pass too — same
+        # case the explicit content_length == 0 branch above already allows
+        # (body-less POST toggles etc.).
+        if not data.strip():
+            return None
         try:
             loads(data)
         except (TypeError, JSONDecodeError):

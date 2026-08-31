@@ -35,6 +35,7 @@ from app.module.calendar.serializer.CalCalendarsSerializerList import CalCalenda
 from app.module.calendar.serializer.CalEventReminderSerializerDict import CalEventReminderSerializerDict
 from app.module.calendar.model.CalendarShare import CalendarShare
 from app.module.calendar.model.enums.CalendarShareLevel import CalendarShareLevel
+from app.module.calendar.model.enums.EventStatus import EventStatus
 from app.module.calendar.serializer.CalendarShareSerializerDict import CalendarShareSerializerDict
 from app.module.calendar.freebusy.FreeBusyEngine import FreeBusyPrefs
 from app.module.calendar.serializer.CalFreeBusyResultSerializerDict import CalFreeBusyResultSerializerDict
@@ -423,10 +424,23 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
             logger_api.error("get_tasks failed for user %s, calendar %s: %s", self.user.uid, key, ex)
             return create_api_base_response(None, ex.error)
 
+    @staticmethod
+    def _sync_task_completion(task: CalEvent, previous: CalEvent | None = None) -> None:
+        """Keep COMPLETED consistent with the VTODO status (RFC 5545).
+
+        Transitioning to COMPLETED stamps completed_at when the client did not
+        provide one; leaving COMPLETED clears a stale stamp again.
+        """
+        if task.status == EventStatus.COMPLETED and task.completed_at is None:
+            task.completed_at = datetime.now(timezone.utc)
+        elif task.status != EventStatus.COMPLETED and previous is not None and previous.completed_at is not None and task.completed_at == previous.completed_at:
+            task.completed_at = None
+
     def create_task(self, calendar_key: str, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
         """Create a new VTODO in the given calendar."""
         try:
             task: CalEvent = self._task_deserializer.deserialize(body)
+            self._sync_task_completion(task)
             created: CalEvent = self.module.create_task(self._calendar_user_for(calendar_key), calendar_key, task)
             return create_api_base_response(self._task_serializer.serialize(created), code=201)
         except RequestException as ex:
@@ -451,6 +465,7 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
             calendar_user: CalendarUser = self._event_user_for(task_key)
             existing: CalEvent = self.module.get_task(calendar_user, task_key)
             task_update: CalEvent = self._task_deserializer.deserialize_with_update(existing, body)
+            self._sync_task_completion(task_update, existing)
             updated: CalEvent = self.module.update_task(calendar_user, task_key, task_update)
             return create_api_base_response(self._task_serializer.serialize(updated))
         except RequestException as ex:

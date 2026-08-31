@@ -396,7 +396,8 @@ def test_post_new_domain_settings_request_exception(monkeypatch):
     new_domain = {"domain_name": "existing.com"}
     result, status_code = interface.post_new_domain_settings(new_domain)
 
-    assert status_code == 400
+    # bug #22: S000301 is declared HTTPStatus.CONFLICT (409), not 400
+    assert status_code == 409
     assert result["error_code"] == err.ERROR_DOMAIN_NAME_TAKEN.c
 
 

@@ -43,13 +43,15 @@ class InterfaceApiGlobalSearch:
         self.calendar_module = ModuleCalendar(process_setting, cache=sogo_cache())
         self.user_module = ModuleAdminUser(process_setting)
 
-    def global_search(self, query: str) -> tuple[dict[str, Any], int]:
+    def global_search(self, query: str, limit: int | None = None) -> tuple[dict[str, Any], int]:
         """Run a unified search and return grouped results.
 
         :param query: Free-text query (already validated by the API schema).
+        :param limit: Max results per section (from the request, default 8).
         :return: (response, status_code) with ``data.contacts``,
             ``data.events`` and ``data.users`` arrays.
         """
+        per_section = limit if limit and limit > 0 else _GLOBAL_SEARCH_LIMIT
         query = query.strip()
         if len(query) < 2:
             return create_api_base_response({
@@ -58,15 +60,15 @@ class InterfaceApiGlobalSearch:
 
         contacts, events, users = [], [], []
         try:
-            contacts = self._search_contacts(query)
+            contacts = self._search_contacts(query, per_section)
         except (RequestException, Exception) as exc:  # noqa: BLE001
             logger_api.warning("Global search: contacts failed for %s: %s", self.user.uid, repr(exc))
         try:
-            events = self._search_events(query)
+            events = self._search_events(query, per_section)
         except (RequestException, Exception) as exc:  # noqa: BLE001
             logger_api.warning("Global search: events failed for %s: %s", self.user.uid, repr(exc))
         try:
-            users = self._search_users(query)
+            users = self._search_users(query, per_section)
         except (RequestException, Exception) as exc:  # noqa: BLE001
             logger_api.warning("Global search: users failed for %s: %s", self.user.uid, repr(exc))
 
@@ -78,9 +80,9 @@ class InterfaceApiGlobalSearch:
 
     # ── Section searches ───────────────────────────────────────────────
 
-    def _search_contacts(self, query: str) -> list[dict[str, Any]]:
+    def _search_contacts(self, query: str, limit: int) -> list[dict[str, Any]]:
         contacts, _ = self.contact_module.get_contacts(
-            self.user, search=query, limit=_GLOBAL_SEARCH_LIMIT, resolve_images=False,
+            self.user, search=query, limit=limit, resolve_images=False,
         )
         return [
             {
@@ -92,14 +94,14 @@ class InterfaceApiGlobalSearch:
             for c in contacts
         ]
 
-    def _search_events(self, query: str) -> list[dict[str, Any]]:
+    def _search_events(self, query: str, limit: int) -> list[dict[str, Any]]:
         now = datetime.now(timezone.utc)
         end = now + timedelta(days=_GLOBAL_SEARCH_LOOKAHEAD_DAYS)
         calendar_user = CalendarUser(user=self.user, owner=self.user)
         events = self.calendar_module.get_all_events(
             calendar_user, start=now, end=end, search=query,
         )
-        events = events[:_GLOBAL_SEARCH_LIMIT]
+        events = events[:limit]
         return [
             {
                 "key": getattr(e, "key", "") or "",
@@ -117,8 +119,8 @@ class InterfaceApiGlobalSearch:
             for e in events
         ]
 
-    def _search_users(self, query: str) -> list[dict[str, Any]]:
-        _, users = self.user_module.list_users(query=query, page=1, per_page=_GLOBAL_SEARCH_LIMIT)
+    def _search_users(self, query: str, limit: int) -> list[dict[str, Any]]:
+        _, users = self.user_module.list_users(query=query, page=1, per_page=limit)
         return [
             {
                 "uid": u.get("uid", ""),

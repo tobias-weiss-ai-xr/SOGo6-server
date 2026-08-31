@@ -49,4 +49,4 @@ class ApiGlobalSearch(MethodView):
         """Search contacts, events and users for the given query."""
         logger_api.debug("GET /search/global user=%s q=%s", g.user.uid, args.get("q"))
         interface: InterfaceApiGlobalSearch = g.inter
-        return interface.global_search(args.get("q", ""))
+        return interface.global_search(args.get("q", ""), args.get("limit"))

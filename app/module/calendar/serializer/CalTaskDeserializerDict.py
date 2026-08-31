@@ -5,6 +5,7 @@ from typing import Any
 
 from app.module.calendar.model.CalEvent import CalEvent
 from app.module.calendar.model.enums.ComponentType import ComponentType
+from app.module.calendar.model.enums.EventStatus import EventStatus
 from app.module.calendar.serializer.CalEventDeserializer import CalEventDeserializer
 from app.module.calendar.serializer.CalEventDeserializerDict import CalEventDeserializerDict
 
@@ -24,6 +25,10 @@ class CalTaskDeserializerDict(CalEventDeserializer[dict]):
         body: dict[str, Any] = self._map_task_fields(data)
         body["date_start"] = body.get("date_start") or datetime.now(timezone.utc).isoformat()
         body["component_type"] = ComponentType.TASK.value
+        # VTODOs default to NEEDS_ACTION — the event-level default
+        # (CONFIRMED) is not a valid task status.
+        if body.get("status") is None:
+            body["status"] = EventStatus.NEEDS_ACTION.value
         return self._event_deserializer.deserialize(body)
 
     def deserialize_with_update(self, origin: CalEvent, update: dict | CalEvent) -> CalEvent:

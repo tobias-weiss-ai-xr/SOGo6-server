@@ -314,7 +314,7 @@ class ApiResourceList(MethodView):
     """List available resources with optional filters."""
 
     @blp.arguments(ResourceListQuerySchema, location="query")
-    @blp.response(200, ResourceSchema(many=True))
+    @blp.response(200)
     def get(self, query: dict) -> dict[str, Any]:
         """List resources that the user has access to."""
         module = _get_module()
@@ -384,7 +384,7 @@ class ApiResourceList(MethodView):
 class ApiResourceFavorites(MethodView):
     """List the current user's favorite resources."""
 
-    @blp.response(200, ResourceSchema(many=True))
+    @blp.response(200)
     def get(self) -> dict[str, Any]:
         """Return resources the current user has favorited."""
         module = _get_module()
@@ -428,7 +428,7 @@ class ApiResourceFavoriteToggle(MethodView):
 class ApiResourceDetail(MethodView):
     """Get detailed information about a specific resource."""
 
-    @blp.response(200, DetailedResourceSchema)
+    @blp.response(200)
     def get(self, resource_id: str) -> dict[str, Any]:
         """Get details for a specific resource."""
         module = _get_module()
@@ -453,7 +453,7 @@ class ApiAvailableResources(MethodView):
     """List resources available during a specific time range."""
 
     @blp.arguments(TimeRangeSchema, location="query")
-    @blp.response(200, ResourceSchema(many=True))
+    @blp.response(200)
     def get(self, time_range: dict) -> dict[str, Any]:
         """List resources that are available during the specified time range."""
         module = _get_module()
@@ -473,12 +473,13 @@ class ApiAvailableResources(MethodView):
             if not resource.get("is_active", True):
                 continue
             
-            # Check availability
-            is_available, conflicts = module.check_availability(
+            # Check availability (module returns a dict, not a tuple)
+            availability = module.check_availability(
                 resource["id"],
                 start_time,
                 end_time,
             )
+            is_available = availability["available"]
             
             if is_available:
                 resource["is_available"] = True
@@ -508,7 +509,7 @@ class ApiResourceAvailabilityCheck(MethodView):
     """Check if a specific resource is available during a time range."""
 
     @blp.arguments(AvailabilityCheckSchema)
-    @blp.response(200, AvailabilityResponseSchema)
+    @blp.response(200)
     def post(self, data: dict, resource_id: str) -> dict[str, Any]:
         """Check availability of a specific resource."""
         module = _get_module()
@@ -527,20 +528,20 @@ class ApiResourceAvailabilityCheck(MethodView):
         start_time = _parse_datetime(data["start_time"], data.get("timezone", "UTC"))
         end_time = _parse_datetime(data["end_time"], data.get("timezone", "UTC"))
         
-        # Check availability
-        is_available, conflicts = module.check_availability(
+        # Check availability (module returns a dict, not a tuple)
+        availability = module.check_availability(
             resource_id,
             start_time,
             end_time,
         )
         
         return create_api_base_response({
-            "available": is_available,
+            "available": availability["available"],
             "resource_id": resource_id,
             "resource_name": resource.get("name"),
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "conflicts": conflicts,
+            "conflicts": availability["conflicts"],
         })
 
 
@@ -549,7 +550,7 @@ class ApiResourceBook(MethodView):
     """Book a resource by creating a calendar event."""
 
     @blp.arguments(BookResourceSchema)
-    @blp.response(201, BookingCreateResponseSchema)
+    @blp.response(201)
     def post(self, data: dict, resource_id: str) -> dict[str, Any]:
         """Create a booking by creating a calendar event with the resource."""
         module = _get_module()
@@ -573,12 +574,13 @@ class ApiResourceBook(MethodView):
         start_time = _parse_datetime(data["start_time"], data.get("timezone", "UTC"))
         end_time = _parse_datetime(data["end_time"], data.get("timezone", "UTC"))
         
-        # Check availability first
-        is_available, conflicts = module.check_availability(
+        # Check availability first (module returns a dict, not a tuple)
+        availability = module.check_availability(
             resource_id,
             start_time,
             end_time,
         )
+        is_available = availability["available"]
         
         if not is_available:
             return create_api_base_response(None, err.ERROR_RESOURCE_CONFLICT, message="Resource not available during the selected time")
@@ -629,7 +631,7 @@ class ApiResourceBook(MethodView):
 class ApiMyBookings(MethodView):
     """List the current user's resource bookings."""
 
-    @blp.response(200, BookingListSchema)
+    @blp.response(200)
     def get(self) -> dict[str, Any]:
         """Get all bookings for the current user."""
         module = _get_module()
@@ -649,7 +651,7 @@ class ApiMyBookings(MethodView):
 class ApiMyBookingDetail(MethodView):
     """Get details or cancel a specific booking."""
 
-    @blp.response(200, BookingSchema)
+    @blp.response(200)
     def get(self, booking_id: str) -> dict[str, Any]:
         """Get details for a specific booking."""
         module = _get_module()
@@ -680,7 +682,7 @@ class ApiMyBookingDetail(MethodView):
             return create_api_base_response(None, err.ERROR_BOOKING_ACCESS_DENIED)
         
         try:
-            module.cancel_booking(booking_id)
+            module.cancel_booking(booking_id, user_id)
             return create_api_base_response({
                 "message": "Booking cancelled successfully",
                 "booking_id": booking_id,
