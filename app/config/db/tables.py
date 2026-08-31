@@ -1,3 +1,5 @@
+import os
+
 from app.utils.db.Table import Column, Index, Table
 from app.config.settings.ProcessSetting import process_config
 
@@ -295,6 +297,63 @@ IDX_REM_EVENT_KEY = Index(name="idx_rem_event_key", columns=(COL_REM_EVENT_KEY.n
 
 TABLE_REMINDER = Table(name=process_config.SOGO_P_TABLE_REMINDERS, columns=ALL_REM_COL, primary_keys=(COL_ID.name,),
                        indexes=[IDX_REM_TRIGGER, IDX_REM_EVENT_KEY])
+
+############################
+# Table sogo6_calendar_attendees #
+############################
+"""RSVP persistence for calendar event attendees (RFC 5545 PARTSTAT).
+
+One row per (event, attendee email). The attendee list of an event is also
+embedded in the cal_event JSON for full-text filtering, but the RSVP lifecycle
+— who was invited, with which status, when the invitation was sent and when the
+attendee replied — is tracked relationally here so it can be queried, indexed
+and updated without rewriting the serialized component.
+
+Status values are the RFC 5545 PARTSTAT literals that AttendeeStatus models:
+needs-action, accepted, declined, tentative, delegated (stored lowercase,
+matches the enum value, keeps SQL filtering trivial).
+
+Key queries:
+  SELECT ... FROM sogo6_calendar_attendees WHERE event_key = ?              (attendee list of an event)
+  SELECT ... FROM sogo6_calendar_attendees WHERE email = ?                  (events of a user)
+  SELECT ... FROM sogo6_calendar_attendees WHERE event_key = ? AND email = ? (single RSVP row)
+"""
+# id: serial primary key
+# event_key: FK to sogo6_calendar_events.key — the event the attendee is on (opaque key, like reminders)
+# email: attendee address; may be any valid calendar user address (mailto), not only local users
+# status: RFC 5545 PARTSTAT — needs-action | accepted | declined | tentative | delegated
+# rsvp: whether a reply was requested from this attendee (RFC 5545 RSVP parameter)
+# sent_at: UTC datetime the invitation was dispatched; NULL until sent
+# responded_at: UTC datetime the attendee replied; NULL until the RSVP is answered
+# created_at / updated_at: UTC timestamps
+COL_ATT_EVENT_KEY    = Column(name="event_key",      data_type="str",      is_nullable=False, extra_args={"max_len": 64})
+COL_ATT_EMAIL        = Column(name="email",          data_type="str",      is_nullable=False, extra_args={"max_len": 512})
+COL_ATT_STATUS       = Column(name="status",         data_type="str",      is_nullable=False, extra_args={"max_len": 16})
+COL_ATT_RSVP         = Column(name="rsvp",           data_type="bool",     is_nullable=False)
+COL_ATT_SENT_AT      = Column(name="sent_at",        data_type="datetime", is_nullable=True)
+COL_ATT_RESPONDED_AT = Column(name="responded_at",   data_type="datetime", is_nullable=True)
+COL_ATT_CREATED_AT   = Column(name="created_at",     data_type="datetime")
+COL_ATT_UPDATED_AT   = Column(name="updated_at",     data_type="datetime")
+
+ALL_ATT_COL = [COL_ID,
+               COL_ATT_EVENT_KEY,
+               COL_ATT_EMAIL,
+               COL_ATT_STATUS,
+               COL_ATT_RSVP,
+               COL_ATT_SENT_AT,
+               COL_ATT_RESPONDED_AT,
+               COL_ATT_CREATED_AT,
+               COL_ATT_UPDATED_AT]
+
+IDX_ATT_EVENT_KEY  = Index(name="idx_att_event_key",   columns=(COL_ATT_EVENT_KEY.name,))
+IDX_ATT_EMAIL      = Index(name="idx_att_email",       columns=(COL_ATT_EMAIL.name,))
+# One RSVP row per (event, attendee): re-inviting the same address updates in place instead of duplicating.
+IDX_ATT_EVENT_EMAIL = Index(name="idx_att_event_email", columns=(COL_ATT_EVENT_KEY.name, COL_ATT_EMAIL.name), unique=True)
+
+TABLE_ATTENDEE = Table(name=os.environ.get("SOGO_P_TABLE_CALENDAR_ATTENDEES", "sogo6_calendar_attendees"),
+                       columns=ALL_ATT_COL,
+                       primary_keys=(COL_ID.name,),
+                       indexes=[IDX_ATT_EVENT_KEY, IDX_ATT_EMAIL, IDX_ATT_EVENT_EMAIL])
 
 ####################################
 # Table sogo6_contacts_addressbooks #
@@ -889,6 +948,7 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_CALENDAR,
               TABLE_EVENT,
               TABLE_REMINDER,
+              TABLE_ATTENDEE,
               TABLE_ADDRESSBOOK,
               TABLE_CONTACT,
               TABLE_CONTACT_LIST,
