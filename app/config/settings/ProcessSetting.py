@@ -198,6 +198,43 @@ class ProcessSetting(FlaskConfig):
     # Clock skew tolerance for SAML Conditions validation (seconds)
     SOGO_SAML2_CLOCK_SKEW: int = 60
 
+    # --- Upload Storage ---
+    # Path for storing uploaded attachments and files
+    SOGO_UPLOAD_PATH: str = os.environ.get("SOGO_UPLOAD_PATH", "/var/lib/sogo6/uploads")
+    # Temporary path for uploads in transit
+    SOGO_UPLOAD_TEMP_PATH: str = os.environ.get("SOGO_UPLOAD_TEMP_PATH", "/var/lib/sogo6/uploads/tmp")
+    # Maximum attachment size in bytes (default: 25MB)
+    SOGO_MAX_ATTACHMENT_SIZE: int = int(os.environ.get("SOGO_MAX_ATTACHMENT_SIZE", "25_000_000"))
+    # Allowed attachment MIME types
+    SOGO_ALLOWED_ATTACHMENT_TYPES: list[str] = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/plain",
+        "text/csv",
+        "text/html",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "image/svg+xml",
+        "application/zip",
+        "application/x-rar-compressed",
+        "application/x-tar",
+        "application/gzip",
+        "application/octet-stream",
+        "audio/mpeg",
+        "audio/wav",
+        "audio/ogg",
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
+    ]
+
     # --- Table names ---
     SOGO_P_TABLE_SETTINGS:   str = "sogo6_sogo_settings"
     SOGO_P_TABLE_DOMAINS:    str = "sogo6_sogo_settings_domains"

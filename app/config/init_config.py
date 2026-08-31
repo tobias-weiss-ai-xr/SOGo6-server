@@ -157,6 +157,22 @@ def init_infra() -> tuple[ClientRedis, JobPersistency]:
     return cache_client, persistency
 
 
+def init_upload_storage() -> None:
+    """
+    Initialize upload storage directories on startup.
+    
+    Creates the upload storage directory and temporary directory if they don't exist.
+    This is called during application startup to ensure required directories are available.
+    """
+    upload_path = process_config.SOGO_UPLOAD_PATH
+    temp_path = process_config.SOGO_UPLOAD_TEMP_PATH
+    
+    os.makedirs(upload_path, exist_ok=True)
+    os.makedirs(temp_path, exist_ok=True)
+    
+    logger.info("Upload storage directories initialized: %s and %s", upload_path, temp_path)
+
+
 def _check_admin_password_hardening() -> None:
     """CRA Art. 15 — refuse startup if admin password is default or empty."""
     pwd = process_config.SOGO_P_ADMIN_PWD
@@ -177,6 +193,7 @@ def init_sogo() -> tuple[int, ClientRedis, ClientAgent]:
     """
     _check_admin_password_hardening()
     cache_client, persistency = init_infra()
+    init_upload_storage()
     agent_client = ClientAgent(
         agent, persistency, JobCanceller(agent, persistency), cache_client,
         agent.get_large_store(),
