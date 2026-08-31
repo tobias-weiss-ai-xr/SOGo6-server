@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
-from email.message import EmailMessage
+from email import message_from_bytes, message_from_string
+from email.message import EmailMessage, Message
 from email.utils import make_msgid, formatdate, parseaddr
 
 from app.manager.outgoing.ClientOutgoing import ClientOutgoing
@@ -254,6 +255,84 @@ class ModuleMailOutgoing:
                 ) from exc
 
         self.send_raw_message(account_id, message)
+        return message
+
+    def send_mime_message(
+        self,
+        recipient: str | list[str],
+        subject: str,
+        mime_msg: Message | EmailMessage | str | bytes | Callable[[], Message],
+        account_id: str | None = None,
+        from_addr: str | None = None,
+    ) -> Message:
+        """Send a fully-formed MIME message through the account's SMTP relay (Stalwart).
+
+        This is the calendar-integration mailer entry point (F1 'Email Delivery
+        Integration'): unlike :meth:`send_mail` -- which rebuilds the body from a
+        field dict and can therefore only emit text/plain and text/html -- it
+        delivers an already-built MIME message verbatim. That is what iMIP
+        invitations (RFC 6047) need, since their body carries the iTIP method
+        (``text/calendar; method=REQUEST``). The mail module stays generic and
+        never learns about iTIP/VEVENT: the caller assembles the MIME upstream
+        and this method handles recipient/subject/From bookkeeping plus delivery
+        through the configured outgoing SMTP client (Stalwart by default).
+
+        :param recipient: Address(es) the message is sent to. Fills a missing To header.
+        :type recipient: str or list[str]
+        :param subject: Subject used to fill a missing Subject header.
+        :type subject: str
+        :param mime_msg: The message to send. May be an ``email.message.Message`` /
+            ``EmailMessage`` built upstream, a raw MIME string or bytes, or a
+            zero-argument callable returning the message (lazy build).
+        :type mime_msg: Message | EmailMessage | str | bytes | Callable[[], Message]
+        :param account_id: Account identifier whose SMTP (Stalwart) settings are used
+            to deliver the mail. Defaults to the main account (DEFAULT_IDENTITY_KEY_VALUE).
+        :type account_id: str or None
+        :param from_addr: Optional sender. If missing, an existing From header is kept;
+            otherwise the user's outgoing mailbox is used as fallback.
+        :type from_addr: str or None
+        :return: The message that was sent (already delivered).
+        :rtype: Message
+        """
+        message: Message
+        if callable(mime_msg):
+            message = mime_msg()
+        elif isinstance(mime_msg, Message):
+            message = mime_msg
+        elif isinstance(mime_msg, bytes):
+            message = message_from_bytes(mime_msg)
+        else:
+            message = message_from_string(str(mime_msg))
+
+        # --- Recipient(s): To header -----------------------------------------
+        to_header: str = recipient if isinstance(recipient, str) else ", ".join(recipient)
+        if "To" not in message:
+            message["To"] = to_header
+
+        # --- Subject -----------------------------------------------------------
+        if "Subject" not in message:
+            message["Subject"] = subject
+
+        # --- From: explicit sender wins, else keep existing, else user mailbox --
+        if from_addr:
+            if "From" in message:
+                del message["From"]
+            message["From"] = from_addr
+        elif "From" not in message:
+            message["From"] = self.user.login_mail_outgoing
+
+        # --- Message-ID: generate once, never overwrite ------------------------
+        if "Message-ID" not in message:
+            _, addr = parseaddr(from_addr or str(message.get("From", "")))
+            domain = get_domain_from_mail(addr)
+            message["Message-ID"] = make_msgid(domain=domain)
+
+        # --- Date: always reflect the actual send time -------------------------
+        if "Date" in message:
+            del message["Date"]
+        message["Date"] = formatdate(localtime=True)
+
+        self.send_raw_message(account_id or cs.DEFAULT_IDENTITY_KEY_VALUE, message)
         return message
 
     def send_raw_message(self, account_id: str, message: EmailMessage) -> None:

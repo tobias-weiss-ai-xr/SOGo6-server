@@ -332,6 +332,53 @@ class InterfaceApiMailSend:
 
         return create_api_base_response(None)
 
+    def send_mime_message(
+        self,
+        recipient: str | list[str],
+        subject: str,
+        mime_msg,
+        account_id: str | None = None,
+        from_addr: str | None = None,
+    ) -> tuple[dict, int]:
+        """Send a fully-formed MIME message via the configured SMTP relay (Stalwart).
+
+        Calendar/iMIP integration entry point (F1 'Email Delivery Integration').
+        The message is delivered verbatim -- no field-dict reconstruction -- so it
+        can carry parts that ``send_mail`` cannot express (e.g. a
+        ``text/calendar; method=REQUEST`` iTIP body).
+
+        :param recipient: Address(es) the message is sent to (fills To).
+        :type recipient: str or list[str]
+        :param subject: Subject used when the MIME message has none.
+        :type subject: str
+        :param mime_msg: The MIME message (Message/EmailMessage, raw str/bytes, or
+            a zero-argument callable returning the message).
+        :param account_id: Account whose SMTP (Stalwart) settings deliver the mail.
+            Defaults to the main account.
+        :type account_id: str or None
+        :param from_addr: Optional explicit sender address.
+        :type from_addr: str or None
+        :return: A tuple of (API response dict, status code)
+        :rtype: tuple[dict, int]
+        """
+        try:
+            message = self.mail_outgoing_module.send_mime_message(
+                recipient, subject, mime_msg,
+                account_id=account_id,
+                from_addr=from_addr,
+            )
+            return create_api_base_response({
+                "status": "sent",
+                "to": message.get("To", ""),
+                "subject": message.get("Subject", ""),
+            })
+        except RequestException as ex:
+            logger_api.error(
+                "Request exception in send_mime_message for user %s: %s",
+                self.user.uid, str(ex),
+            )
+            return create_api_base_response(None, ex.error, error_msg=str(ex))
+
     def delete_draft(self, account_id: str, key: str) -> tuple[dict, int]:
         """Delete the IMAP draft and its tmp_draft row.
 
