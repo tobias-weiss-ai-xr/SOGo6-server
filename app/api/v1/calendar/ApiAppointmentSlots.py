@@ -102,6 +102,8 @@ class BookingCreateSchema(Schema):
 @blp.route("/<string:slot_id>/book")
 class ApiSlotBook(MethodView):
     """Book an appointment slot (public, no auth required)."""
+
+    public_access = True
     @blp.arguments(BookingCreateSchema)
     def post(self, body: dict, slot_id: str) -> ResponseReturnValue:
         cache = sogo_cache()
@@ -123,6 +125,13 @@ class ApiSlotBook(MethodView):
             "created_at": int(time.time()),
         }
         cache.set(f"{_BOOKING_PREFIX}{booking_id}", json.dumps(booking), ttl=86400 * 30)
+        # index the booking per-slot so the owner's /bookings listing can find it
+        index_key = f"{_BOOKING_PREFIX}index:{slot_id}"
+        raw_index = cache.get(index_key, list)
+        index = raw_index if isinstance(raw_index, list) else []
+        if booking_id not in index:
+            index.append(booking_id)
+        cache.set(index_key, index, ttl=86400 * 30)
         logger_api.info("Appointment booked: slot=%s by %s", slot_id[:8], body["email"])
         return create_api_base_response(booking, code=201)
 

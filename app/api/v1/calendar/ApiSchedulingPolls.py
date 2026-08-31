@@ -44,7 +44,7 @@ class PollCreateSchema(Schema):
 
 class PollResponseSchema(Schema):
     participant = fields.String(required=True, metadata={"description": "Email address of the responding participant"})
-    available_slots = fields.List(fields.String(), load_default=list, metadata={"description": "List of time slot indices that work"})
+    available_slots = fields.List(fields.String(), load_default=list, metadata={"description": "Time slot indices that work, as strings, e.g. ['0', '1']"})
 
 
 @blp.route("")
@@ -98,7 +98,14 @@ class ApiPollListCreate(MethodView):
 
 @blp.route("/<string:poll_id>/respond")
 class ApiPollRespond(MethodView):
-    """Respond to a scheduling poll."""
+    """Respond to a scheduling poll.
+
+    Participants are arbitrary email addresses (not system users), so this
+    endpoint is reachable without authentication; the poll id acts as the
+    capability secret.
+    """
+
+    public_access = True
 
     @blp.arguments(PollResponseSchema)
     def post(self, body: dict, poll_id: str) -> ResponseReturnValue:
@@ -107,6 +114,10 @@ class ApiPollRespond(MethodView):
         if not raw:
             return create_api_base_response(None, err.ERROR_NOT_FOUND)
         poll = json.loads(raw)
+        expires_at = poll.get("expires_at")
+        if expires_at is not None and int(time.time()) > int(expires_at) and poll.get("status") == "open":
+            poll["status"] = "closed"
+            cache.set(f"{_POLL_PREFIX}{poll_id}", json.dumps(poll), ttl=86400 * 30)
         if poll.get("status") != "open":
             return create_api_base_response(None, err.ERROR_POLL_CLOSED)
         if body["participant"] not in poll["participants"]:
