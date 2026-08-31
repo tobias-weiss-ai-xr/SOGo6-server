@@ -351,6 +351,7 @@ ERROR_CONTACT_ADDRESSBOOK_NOT_FOUND          = E("S000701", "Address Book Not Fo
 ERROR_CONTACT_ADDRESSBOOK_DUPLICATE          = E("S000702", "Address Book Already Exists", HTTPStatus.CONFLICT)
 ERROR_CONTACT_NOT_FOUND                      = E("S000703", "Contact Not Found", HTTPStatus.NOT_FOUND)
 ERROR_CONTACT_DUPLICATE                      = E("S000704", "Contact Already Exists", HTTPStatus.CONFLICT)
+ERROR_CONTACT_SHARE_DUPLICATE                = E("S000721", "Share Already Exists", HTTPStatus.CONFLICT)
 ERROR_CONTACT_INSERT_FAILED                  = E("S000705", "Failed To Persist Contact", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_CONTACT_UPDATE_FAILED                  = E("S000706", "Failed To Update Contact", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_CONTACT_ADDRESSBOOK_NOT_SUPPORTED      = E("S000707", "Operation Not Supported On This Address Book Source", HTTPStatus.METHOD_NOT_ALLOWED)

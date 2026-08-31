@@ -169,7 +169,8 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         if existing is not None:
             from app.utils import errors as err
             from app.utils.exceptions import RequestException
-            raise RequestException(error=err.ERROR_CONTACT_ADDRESSBOOK_DUPLICATE)
+            # a duplicate SHARE, not a duplicate address book
+            raise RequestException(error=err.ERROR_CONTACT_SHARE_DUPLICATE)
         return self._share_repo.insert(share)
 
     def remove_share(self, addressbook_key: str, user_uid: str) -> None:

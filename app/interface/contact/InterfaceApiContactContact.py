@@ -169,8 +169,10 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
                 share_level=self._parse_share_level(body.get("share_level"), "view"),
             )
             created: ContactShare = self.module.add_share(key, share)
+            # 201 Created — matches the route's declared @blp.response(201, ...)
             return create_api_base_response(
-                {"user_uid": created.user_uid, "share_level": created.share_level.name.lower()}
+                {"user_uid": created.user_uid, "share_level": created.share_level.name.lower()},
+                status_code=201,
             )
         except RequestException as ex:
             logger_api.error("add_share failed for address book %s user %s: %s", key, body.get("user_uid"), ex)

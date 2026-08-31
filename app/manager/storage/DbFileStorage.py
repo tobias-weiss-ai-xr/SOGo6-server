@@ -74,8 +74,11 @@ class DbFileStorage:
                 err.ERROR_FILE_TOO_LARGE
             )
         
-        # Validate content type
-        if not self.ALLOWED_CONTENT_TYPE_PATTERN.match(content_type):
+        # Validate content type. RFC 9110 allows a media type to carry
+        # parameters (e.g. "text/vcard; charset=utf-8; version=3.0"), so the
+        # parameters part is stripped before the allow-list match.
+        base_type = content_type.split(";", 1)[0].strip().lower()
+        if not self.ALLOWED_CONTENT_TYPE_PATTERN.match(base_type):
             raise RequestException(
                 f"Content type not allowed: {content_type}",
                 err.ERROR_FILE_TYPE_NOT_ALLOWED
