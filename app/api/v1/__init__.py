@@ -13,6 +13,7 @@ from .jobs import job_apis
 from .contact import contact_apis
 from .health import health_apis
 from .securitytxt import securitytxt_apis
+from .mail.ApiAttachments import blp as attachments_blueprint
 
 v1_basic_apis: list[Blueprint] = []
 v1_basic_apis += system_apis
@@ -24,6 +25,7 @@ v1_basic_apis += job_apis
 v1_basic_apis += contact_apis
 v1_basic_apis += health_apis
 v1_basic_apis += securitytxt_apis
+v1_basic_apis.append(attachments_blueprint)
 v1_basic_apis.extend([webauthn_blp, webauthn_blp_admin])
 # JMAP is a user mail protocol: it needs a non-anonymous g.user (and
 # g.user_domain_settings) for JmapMailGateway to build, which only exists on
