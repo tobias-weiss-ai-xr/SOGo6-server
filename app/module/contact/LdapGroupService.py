@@ -234,7 +234,7 @@ class LDAPGroupService:
         try:
             mod_list = [(ldap.MOD_ADD, _MEMBER_ATTR, member_dn.encode())]
             client.ldap_conn.modify_s(group_dn, mod_list)  # type: ignore[union-attr]
-        except ldap.ALREADY_EXISTS:
+        except (ldap.ALREADY_EXISTS, ldap.TYPE_OR_VALUE_EXISTS):
             # Member already present; idempotent success.
             logger_ldap.debug("Member %s already in group %s", member_dn, group_dn)
         except ldap.NO_SUCH_OBJECT:
@@ -262,7 +262,7 @@ class LDAPGroupService:
         try:
             mod_list = [(ldap.MOD_DELETE, _MEMBER_ATTR, member_dn.encode())]
             client.ldap_conn.modify_s(group_dn, mod_list)  # type: ignore[union-attr]
-        except ldap.NO_SUCH_OBJECT:
+        except (ldap.NO_SUCH_OBJECT, ldap.NO_SUCH_ATTRIBUTE):
             # Member (or group) already absent; idempotent success.
             logger_ldap.debug("Member %s not in group %s", member_dn, group_dn)
         except ldap.LDAPError as e:
