@@ -209,23 +209,47 @@ class TestScheduleSendJob:
         """ScheduleSendRequest.name matches the registered job name."""
         assert ScheduleSendRequest.name == "schedule_send"
 
-    @patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing")
-    def test_schedule_send_job_process_calls_execute_send(self, mock_outgoing_cls):
+    @staticmethod
+    def _job_patches(outgoing):
+        """Patch set for ScheduleSendJob.process: the worker rebuilds the user
+        from payload['user_session'] with no request context (see UndoSendJob
+        tests for the same pattern)."""
+        from contextlib import ExitStack
+        stack = ExitStack()
+        # ModuleMailOutgoing is bound at import time in ScheduleSendJob — patch
+        # the job module's binding, not the source module.
+        stack.enter_context(patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing", return_value=outgoing))
+        stack.enter_context(patch("app.config.init_config.init_get_user_domain_settings",
+                                  return_value={"MAIL_SETTINGS": {}}))
+        stack.enter_context(patch("app.module.user.ModuleUserProfile.ModuleUserProfile"))
+        stack.enter_context(patch("app.config.settings.DomainSettings.MailSettingsObj"))
+        return stack
+
+    @staticmethod
+    def _job_payload(mail_data: dict, extra_headers=None) -> dict:
+        return {
+            "account_id": "0",
+            "mail_data": mail_data,
+            "extra_headers": extra_headers,
+            "tmp_draft_key": None,
+            # Mirrors User.get_user_session(): all five keys are required by
+            # User.init_from_user_session in the worker.
+            "user_session": {"uid": "testuser@example.org", "password": "", "domain": "example.org",
+                             "email": "testuser@example.org", "source_id": "example.org"},
+            "login_mail_outgoing": None,
+        }
+
+    def test_schedule_send_job_process_calls_execute_send(self):
         """ScheduleSendJob.process() calls outgoing.send_mail with correct data."""
         from app.agent.jobs.ScheduleSendJob import ScheduleSendJob
 
         mock_outgoing = MagicMock()
         mock_outgoing.send_mail.return_value = {"uid": "sent-42"}
-        mock_outgoing_cls.return_value = mock_outgoing
 
         job = ScheduleSendJob()
-        payload = {
-            "account_id": "0",
-            "mail_data": {"from": "a@b.com", "to": ["c@d.com"], "subject": "Test", "body": "Hello"},
-            "extra_headers": None,
-            "tmp_draft_key": None,
-        }
-        result = job.process(payload)
+        with self._job_patches(mock_outgoing):
+            result = job.process(self._job_payload(
+                {"from": "a@b.com", "to": ["c@d.com"], "subject": "Test", "body": "Hello"}))
 
         assert result["status"] == "sent"
         assert result["uid"] == "sent-42"
@@ -233,51 +257,42 @@ class TestScheduleSendJob:
         sent_data = mock_outgoing.send_mail.call_args[0][1]
         assert "send_at" not in sent_data
 
-    @patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing")
-    def test_schedule_send_job_process_strips_send_at(self, mock_outgoing_cls):
+    def test_schedule_send_job_process_strips_send_at(self):
         """ScheduleSendJob.process() strips send_at from mail_data if present."""
         from app.agent.jobs.ScheduleSendJob import ScheduleSendJob
 
         mock_outgoing = MagicMock()
         mock_outgoing.send_mail.return_value = {"uid": "sent-99"}
-        mock_outgoing_cls.return_value = mock_outgoing
 
         job = ScheduleSendJob()
-        payload = {
-            "account_id": "0",
-            "mail_data": {
-                "from": "a@b.com",
-                "to": ["c@d.com"],
-                "subject": "Test",
-                "body": "Hello",
-                "send_at": "2026-08-01T14:00:00Z",  # should be stripped
-            },
-            "extra_headers": None,
-            "tmp_draft_key": None,
-        }
-        result = job.process(payload)
+        payload = self._job_payload({
+            "from": "a@b.com",
+            "to": ["c@d.com"],
+            "subject": "Test",
+            "body": "Hello",
+            "send_at": "2026-08-01T14:00:00Z",  # should be stripped
+        })
+        with self._job_patches(mock_outgoing):
+            result = job.process(payload)
 
         assert result["status"] == "sent"
         sent_data = mock_outgoing.send_mail.call_args[0][1]
         assert "send_at" not in sent_data, "send_at leaked through to outgoing.send_mail"
 
-    @patch("app.agent.jobs.ScheduleSendJob.ModuleMailOutgoing")
-    def test_schedule_send_job_process_with_extra_headers(self, mock_outgoing_cls):
+    def test_schedule_send_job_process_with_extra_headers(self):
         """ScheduleSendJob.process() forwards extra_headers to outgoing.send_mail."""
         from app.agent.jobs.ScheduleSendJob import ScheduleSendJob
 
         mock_outgoing = MagicMock()
         mock_outgoing.send_mail.return_value = {"uid": "sent-77"}
-        mock_outgoing_cls.return_value = mock_outgoing
 
         job = ScheduleSendJob()
-        payload = {
-            "account_id": "0",
-            "mail_data": {"from": "a@b.com", "to": ["c@d.com"], "subject": "Test", "body": "Hello"},
-            "extra_headers": {"References": "<msgid@example>"},
-            "tmp_draft_key": None,
-        }
-        result = job.process(payload)
+        payload = self._job_payload(
+            {"from": "a@b.com", "to": ["c@d.com"], "subject": "Test", "body": "Hello"},
+            extra_headers={"References": "<msgid@example>"},
+        )
+        with self._job_patches(mock_outgoing):
+            result = job.process(payload)
 
         assert result["status"] == "sent"
         mock_outgoing.send_mail.assert_called_once()

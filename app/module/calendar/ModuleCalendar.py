@@ -210,7 +210,9 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         if existing is not None:
             from app.utils import errors as err
             from app.utils.exceptions import RequestException
-            raise RequestException(error=err.ERROR_CALENDAR_DUPLICATE)
+            # S000653: a duplicate SHARE is not a duplicate calendar — clients
+            # must be able to distinguish "share exists" from "calendar exists".
+            raise RequestException(error=err.ERROR_CALENDAR_SHARE_DUPLICATE)
         return self._share_repo.insert(share)
 
     def remove_share(self, calendar_key: str, user_uid: str) -> None:
@@ -288,7 +290,9 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     #
     def create_event(self, calendar_user: CalendarUser, calendar_key: str, event: CalEvent, organizer: CalOrganizer) -> CalEvent:
         """Persist a new event in the calendar and propagate it to local attendees."""
-        source: CalendarSource = self.get_calendar(calendar_user.owner, calendar_key)
+        # Resolve + ACL-check as the ACTING user (share rows apply to them).
+        # calendar_user.owner would grant owner permissions to sharees.
+        source: CalendarSource = self.get_calendar(calendar_user.user, calendar_key)
         self._acl.check_permission(source.calendar.permissions, CalendarPermissionAction.CREATE)
         calendar: CalCalendar = source.calendar
         event.apply_defaults(
@@ -372,7 +376,7 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             logger_calendar.exception("Unexpected error updating event %s", event_key)
             raise RequestException(error=err.ERROR_CALENDAR_EVENT_UPDATE_FAILED) from exc
 
-    def delete_event(self, calendar_user: CalendarUser, event_key: str) -> CalEvent | None:
+    def delete_event(self, calendar_user: CalendarUser, event_key: str, recurrence_id: datetime | None = None) -> CalEvent | None:
         """Soft-delete an event by key and propagate the deletion to attendees.
 
         If the event is a detached occurrence, only that row is deleted and its
@@ -387,6 +391,14 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         self._acl.check_permission(
             self._acl.get_permissions(source.calendar, calendar_user), CalendarPermissionAction.DELETE,
         )
+        if recurrence_id is not None and event.recurrence_id is None:
+            # Occurrence-scoped delete on a series master: resolve (or create)
+            # the detached occurrence for the slot so the existing delete path
+            # EXDATEs it — the master and the rest of the series survive.
+            # Without a rule there are no occurrences to scope to.
+            if event.recurrence_rule is None:
+                raise RequestException(error=err.ERROR_CALENDAR_EVENT_NOT_FOUND)
+            event = source.get_or_create_occurrence(event, recurrence_id)
         try:
             scope_result: ScopeResult = RecurrenceScopeProcessor.process_delete(source=source, event=event)
             # Propagate deletion to attendees if the user is the organizer
@@ -522,7 +534,8 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     #
     def create_task(self, calendar_user: CalendarUser, calendar_key: str, task: CalEvent) -> CalEvent:
         """Persist a new VTODO in the calendar and return it."""
-        source: CalendarSource = self.get_calendar(calendar_user.owner, calendar_key)
+        # Resolve + ACL-check as the ACTING user (see create_event).
+        source: CalendarSource = self.get_calendar(calendar_user.user, calendar_key)
         self._acl.check_permission(source.calendar.permissions, CalendarPermissionAction.CREATE)
         # Mark it a task before defaulting so the calendar default duration never forces a due date.
         task.component_type = ComponentType.TASK

@@ -353,10 +353,14 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
             logger_api.error("Invalid attendance status value for event %s: %s", event_key, exc)
             return create_api_base_response(None, ERROR_CALENDAR_JSON_PARSE_FAILED)
 
-    def delete_event(self, event_key: str) -> tuple[dict[str, Any], int]:
-        """Delete an event, sending an iMIP cancellation to attendees when the organizer deletes it."""
+    def delete_event(self, event_key: str, recurrence_id: datetime | None = None) -> tuple[dict[str, Any], int]:
+        """Delete an event (or one occurrence, when ``recurrence_id`` is given).
+
+        Sends an iMIP cancellation to attendees when the organizer deletes it.
+        """
         try:
-            cancelled: CalEvent | None = self.module.delete_event(self._event_user_for(event_key), event_key)
+            cancelled: CalEvent | None = self.module.delete_event(
+                self._event_user_for(event_key), event_key, recurrence_id=recurrence_id)
             if cancelled is not None:
                 imip_msg: ImipMessage | None = ImipBuilder.build_cancel(cancelled)
                 if imip_msg is not None:
@@ -577,7 +581,9 @@ class InterfaceApiCalendarCalendar:  # pylint: disable=too-many-instance-attribu
                 can_delete=body.get("can_delete", False),
             )
             created: CalendarShare = self.module.add_share(key, share)
-            return create_api_base_response(self._share_serializer.serialize(created))
+            # route declares 201 Created — honor it (same contract as every
+            # other create endpoint)
+            return create_api_base_response(self._share_serializer.serialize(created), code=201)
         except RequestException as ex:
             logger_api.error("add_share failed for calendar %s user %s: %s", key, body.get("user_uid"), ex)
             return create_api_base_response(None, ex.error)

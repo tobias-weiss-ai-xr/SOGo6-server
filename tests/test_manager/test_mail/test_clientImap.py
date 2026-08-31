@@ -116,6 +116,10 @@ class FakeIMAPConnection:
     def response(self, name):
         if name == "CAPABILITY":
             return ("OK", [b"IMAP4rev1 LIST-EXTENDED LIST-STATUS ACL"])
+        # LIST-EXTENDED replies are read back via response("LIST"): route them
+        # through list_response so tests can drive _imap_list_folders.
+        if name == "LIST":
+            return self.list_response
         return ("OK", [None])
 
     # --- folders ---
@@ -546,7 +550,8 @@ def test_delete_folder_success():
     # The implementation quotes folder paths before calling rename,
     # so the key stored in fake_conn.folders must be the quoted form
     fake_conn.folders = {'"TestFolder"': True}
-    fake_conn.list_response = ('OK', [])  # no children to iterate
+    # delete_folder probes the exact mailbox via LIST first (missing -> 404)
+    fake_conn.list_response = ('OK', [b'(\\HasNoChildren) "." "TestFolder"'])
     client = authenticated_client(fake_conn)
 
     client.delete_folder('TestFolder')

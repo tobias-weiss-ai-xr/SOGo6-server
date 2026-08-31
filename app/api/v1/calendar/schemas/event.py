@@ -78,6 +78,17 @@ class CalendarEventQueryArgsSchema(Schema):
     )
 
 
+class CalendarEventDeleteArgsSchema(Schema):
+    """Query parameters for deleting an event (occurrence-scoped delete)."""
+
+    recurrence_id = DateTimeUtcField(
+        load_default=None,
+        allow_none=True,
+        metadata={"description": "ISO 8601 UTC datetime. When set on a recurring master, "
+                                 "only this single occurrence is deleted (EXDATE) instead of the whole series."},
+    )
+
+
 class CalendarEventSchema(Schema):
     """
     Representation of a single calendar event in API responses.

@@ -27,6 +27,7 @@ from .schemas.calendar import (
 )
 from .schemas.event import (
     AttendanceSchema,
+    CalendarEventDeleteArgsSchema,
     CalendarEventQueryArgsSchema,
     CalendarEventListResponseSchema,
     CalendarEventCreateSchema,
@@ -261,12 +262,19 @@ class ApiEventDetail(MethodView):
         interface: InterfaceApiCalendarCalendar = g.inter
         return interface.patch_event(event_key, body)
 
+    @blp.arguments(CalendarEventDeleteArgsSchema, location="query", arg_name="query_args")
     @blp.response(200, CalendarEventResponseSchema)
-    def delete(self, event_key: str) -> ResponseReturnValue:
-        """Delete an event."""
-        logger_api.debug("DELETE /events/%s user=%s", event_key, g.user.uid)
+    def delete(self, query_args: dict, event_key: str) -> ResponseReturnValue:
+        """Delete an event, or a single occurrence when ``recurrence_id`` is given.
+
+        Without ``recurrence_id`` a recurring master is deleted WITH its whole
+        series (including detached occurrences) — passing the parameter scopes
+        the delete to that occurrence only (EXDATE on the master).
+        """
+        logger_api.debug("DELETE /events/%s user=%s recurrence_id=%s", event_key, g.user.uid,
+                         query_args.get("recurrence_id"))
         interface: InterfaceApiCalendarCalendar = g.inter
-        return interface.delete_event(event_key)
+        return interface.delete_event(event_key, recurrence_id=query_args.get("recurrence_id"))
 
 
 @blp.route("/calendars/<string:key>/tasks")

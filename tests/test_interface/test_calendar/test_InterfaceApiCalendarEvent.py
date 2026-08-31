@@ -186,7 +186,7 @@ def test_delete_event_success():
     response, _ = inter.delete_event("evt-key")
     assert response["error_code"] == "S000000"
     assert response["data"] is None
-    module.delete_event.assert_called_once_with(CalendarUser(user=inter.user, owner=inter.user), "evt-key")
+    module.delete_event.assert_called_once_with(CalendarUser(user=inter.user, owner=inter.user), "evt-key", recurrence_id=None)
     inter._mail_outgoing.send_raw_message.assert_not_called()
 
 

@@ -814,7 +814,13 @@ class ModuleAdminConfig:
         self.sogo_db_manager.connect()
 
         #Just use this method to check if the domain exist
-        self.get_one_domain_setting(domain_id)
+        stored_data = self.get_one_domain_setting(domain_id)
+        if stored_data.get("domain_name") != domain_id:
+            # get_one_domain_setting silently falls back to the default-shaped
+            # dict (domain_name="default") when no row exists; deleting a
+            # nonexistent domain must 404 instead of surfacing the raw
+            # row-count mismatch from delete_row_in_table (500 S000403).
+            raise RequestException(f"Domain '{domain_id}' not found", err.ERROR_DOMAIN_NAME_NOT_FOUND)
 
         cond = EqualCondition(tbl.COL_DOMAIN_NAME.name, domain_id)
 

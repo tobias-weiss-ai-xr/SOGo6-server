@@ -105,7 +105,7 @@ ERROR_LOGIN_FAILED             = E("S000208", "Login Failed: Invalid Credentials
 #API
 ERROR_VALIDATION_ERROR      = E("S000300", "Request Data Incorrect Format", HTTPStatus.BAD_REQUEST)
 ERROR_VALIDATION_FAILED      = ERROR_VALIDATION_ERROR  # alias kept for module callers
-ERROR_DOMAIN_NAME_TAKEN     = E("S000301", "Domain's Name Already Taken", HTTPStatus.BAD_REQUEST)
+ERROR_DOMAIN_NAME_TAKEN     = E("S000301", "Domain's Name Already Taken", HTTPStatus.CONFLICT)
 ERROR_DOMAIN_NAME_NOT_FOUND = E("S000302", "Domain's Name Not Found", HTTPStatus.NOT_FOUND)
 
 ERROR_MAIL_UID_NOT_FOUND    = E("S000303", "Mail's UID Not Found", HTTPStatus.NOT_FOUND)
@@ -344,6 +344,7 @@ ERROR_CALDAV_NO_COMPONENT            = E("S000649", "iCalendar Body Has No Match
 ERROR_CALDAV_AUTH_REQUIRED           = E("S000650", "CalDAV Authentication Required", HTTPStatus.UNAUTHORIZED)
 ERROR_CALDAV_PROP_READ_ONLY          = E("S000651", "Property Is Read-Only", HTTPStatus.FORBIDDEN)
 ERROR_CALDAV_REPORT_UNSUPPORTED      = E("S000652", "Unsupported CalDAV REPORT Type", HTTPStatus.BAD_REQUEST)
+ERROR_CALENDAR_SHARE_DUPLICATE      = E("S000653", "Share Already Exists", HTTPStatus.CONFLICT)
 
 #the contacts
 ERROR_CONTACT_JSON_PARSE_FAILED              = E("S000700", "Failed To Parse Contact JSON Content", HTTPStatus.UNPROCESSABLE_ENTITY)
