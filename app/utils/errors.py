@@ -383,6 +383,8 @@ ERROR_LDAP_BIND_WRONG_CRED = E("S000901", "Wrong bind dn credentials for the lda
 ERROR_LDAP_CANNOT_BIND = E("S000902", "Cannot bind to the ldap server", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_LDAP_CANNOT_SEARCH = E("S000903", "Cannot bind to the ldap server", HTTPStatus.INTERNAL_SERVER_ERROR)
 ERROR_LDAP_NOT_UNIQUE_USER = E("S000904", "Ldap server returns more than 1 entry for a unique user", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_LDAP_MODIFY_FAILED = E("S000905", "Failed to modify the ldap entry", HTTPStatus.INTERNAL_SERVER_ERROR)
+ERROR_LDAP_GROUP_NOT_FOUND = E("S000906", "LDAP group not found", HTTPStatus.NOT_FOUND)
 
 # ADMIN AUTH
 ERROR_ADMIN_LOGIN_FAILED   = E("S001000", "Admin Login Failed: Invalid Credentials", HTTPStatus.UNAUTHORIZED)

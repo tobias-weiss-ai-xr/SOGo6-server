@@ -11,6 +11,7 @@ from app.config.settings.DomainSettings import (
     UserSourceSettingsObj,
 )
 from app.module.contact.ContactConst import AUTOCOMPLETE_DEFAULT_LIMIT
+from app.module.contact.LdapGroupService import LDAPGroupService
 from app.module.contact.ModuleContact import ModuleContact
 from app.module.contact.jobs.ContactJobKind import ContactJobKind
 from app.module.contact.model.CardAddressBook import CardAddressBook
@@ -54,6 +55,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
     def __init__(self, process_setting: ProcessSetting, user_domain_settings: dict, user: User) -> None:
         self.user: User = user
         self._process_setting: ProcessSetting = process_setting
+        self._user_domain_settings: dict = user_domain_settings
         self.settings: CalendarContactSettingsObj = CalendarContactSettingsObj(
             user_domain_settings[CalendarContactSettings.subparent]
         )
@@ -385,6 +387,74 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
             return create_api_base_response(None, ex.error)
 
     #
+    # LDAP distribution groups (get/add/remove members on groupOfNames lists)
+    #
+    def _ldap_list_service(self) -> LDAPGroupService:
+        """Build (and cache) the LDAPGroupService bound to this request's process settings.
+
+        The service connects lazily to LDAP on the first member operation; connection
+        failures surface as ``RequestException`` which the callers below translate into
+        an API error envelope.
+        """
+        if not hasattr(self, "_ldap_list_service_cache"):
+            self._ldap_list_service_cache = LDAPGroupService(
+                self._process_setting, user_domain_settings=self._user_sources)
+        return self._ldap_list_service_cache
+
+    def get_list_members(self, addressbook_key: str) -> tuple[dict[str, Any], int]:
+        """Get all members of an LDAP group list.
+
+        LDAP groups are address books backed by the directory (groupOfNames
+        entries). The addressbook_key may be an ``ldap:``-prefixed id, a DN, or
+        a plain CN; numeric ids refer to SQL address books and are rejected.
+
+        :param addressbook_key: The list id (ldap: prefix, DN, or CN).
+        :return: API envelope with the member DNs, plus HTTP status code.
+        """
+        try:
+            service = self._ldap_list_service()
+            members: list[str] = service.get_members(addressbook_key)
+            return create_api_base_response({"members": members, "total_count": len(members)})
+        except RequestException as ex:
+            logger_api.error(
+                "get_list_members failed for user %s key %s: %s", self.user.uid, addressbook_key, ex)
+            return create_api_base_response(None, ex.error)
+
+    def add_list_member(self, addressbook_key: str, contact_id: str) -> tuple[dict[str, Any], int]:
+        """Add a contact (by uid) to an LDAP group list.
+
+        :param addressbook_key: The group id (ldap: prefix, DN, or CN).
+        :param contact_id: The contact identifier (uid or email local part).
+        :return: API envelope with the added member DN, plus HTTP status code (201).
+        """
+        try:
+            service = self._ldap_list_service()
+            member_dn: str = service.add_member(addressbook_key, contact_id)
+            return create_api_base_response({"member_dn": member_dn}, code=201)
+        except RequestException as ex:
+            logger_api.error(
+                "add_list_member failed for user %s key %s contact %s: %s",
+                self.user.uid, addressbook_key, contact_id, ex)
+            return create_api_base_response(None, ex.error)
+
+    def remove_list_member(self, addressbook_key: str, contact_id: str) -> tuple[dict[str, Any], int]:
+        """Remove a contact (by uid) from an LDAP group list.
+
+        :param addressbook_key: The group id (ldap: prefix, DN, or CN).
+        :param contact_id: The contact identifier (uid or email local part).
+        :return: API envelope with the removed member DN, plus HTTP status code.
+        """
+        try:
+            service = self._ldap_list_service()
+            member_dn: str = service.remove_member(addressbook_key, contact_id)
+            return create_api_base_response({"member_dn": member_dn})
+        except RequestException as ex:
+            logger_api.error(
+                "remove_list_member failed for user %s key %s contact %s: %s",
+                self.user.uid, addressbook_key, contact_id, ex)
+            return create_api_base_response(None, ex.error)
+
+    #
     # Import / export (async: enqueue an Agent job, return 202 {job_id})
     #
     def import_addressbook(self, document: str, fmt: str) -> tuple[dict[str, Any], int]:
@@ -508,4 +578,70 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
             return create_api_base_response({"job_id": job_id, "status": "completed"}, code=200)
         except RequestException as ex:
             logger_api.error("enqueue_external_sync failed for user %s key %s: %s", self.user.uid, key, ex)
+            return create_api_base_response(None, ex.error)
+
+
+    #
+    # LDAP group member operations
+    #
+
+    def _ldap_group_service(self) -> Any:
+        """Build the LDAP group service bound to the domain settings.
+
+        The service opens an admin-bound LDAP connection from the domain's user
+        sources and derives the groups/users base from the source settings; it
+        is only used when the ``addressbook_key`` resolves to an LDAP group.
+        """
+        from app.module.contact.LdapGroupService import LDAPGroupService
+
+        return LDAPGroupService(self._process_setting, self._user_domain_settings)
+
+    def get_list_members(self, addressbook_key: str) -> tuple[dict[str, Any], int]:
+        """Get all members of an LDAP group list.
+
+        LDAP groups are address books backed by the directory (``groupOfNames``
+        entries). The ``addressbook_key`` may be an ``ldap:``-prefixed id, a DN
+        or a plain CN; numeric ids refer to SQL address books and are rejected.
+
+        :param addressbook_key: The list id (ldap: prefix, DN, or CN).
+        :return: API envelope with the member DNs, plus HTTP status code.
+        """
+        try:
+            service = self._ldap_group_service()
+            members: list[str] = service.get_members(addressbook_key)
+            return create_api_base_response({"members": members, "total_count": len(members)})
+        except RequestException as ex:
+            logger_api.error("get_list_members failed for user %s key %s: %s", self.user.uid, addressbook_key, ex)
+            return create_api_base_response(None, ex.error)
+
+    def add_list_member(self, addressbook_key: str, contact_id: str) -> tuple[dict[str, Any], int]:
+        """Add a contact (by uid) to an LDAP group list.
+
+        :param addressbook_key: The group id (``ldap:`` prefix, DN, or CN).
+        :param contact_id: The contact identifier (uid, email, or DN).
+        :return: API envelope with the added member DN, plus HTTP status code (201).
+        """
+        try:
+            service = self._ldap_group_service()
+            member_dn: str = service.add_member(addressbook_key, contact_id)
+            return create_api_base_response({"member_dn": member_dn}, code=201)
+        except RequestException as ex:
+            logger_api.error("add_list_member failed for user %s key %s contact %s: %s",
+                             self.user.uid, addressbook_key, contact_id, ex)
+            return create_api_base_response(None, ex.error)
+
+    def remove_list_member(self, addressbook_key: str, contact_id: str) -> tuple[dict[str, Any], int]:
+        """Remove a contact (by uid) from an LDAP group list.
+
+        :param addressbook_key: The group id (``ldap:`` prefix, DN, or CN).
+        :param contact_id: The contact identifier (uid, email, or DN).
+        :return: API envelope with the removed member DN, plus HTTP status code.
+        """
+        try:
+            service = self._ldap_group_service()
+            member_dn: str = service.remove_member(addressbook_key, contact_id)
+            return create_api_base_response({"member_dn": member_dn})
+        except RequestException as ex:
+            logger_api.error("remove_list_member failed for user %s key %s contact %s: %s",
+                             self.user.uid, addressbook_key, contact_id, ex)
             return create_api_base_response(None, ex.error)
