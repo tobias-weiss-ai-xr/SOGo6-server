@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 _GROUP_OBJECT_CLASS = "groupOfNames"
 # LDAP attribute holding the member DNs.
 _MEMBER_ATTR = "member"
+# Attributes fetched when listing groups (CN, description and membership).
+_LIST_ATTRS: tuple[str, ...] = ("cn", "description", _MEMBER_ATTR)
 
 
 def _looks_like_dn(value: str) -> bool:
@@ -75,6 +77,34 @@ class LDAPGroupService:
         base_dn: str = getattr(client, "base_dn", "") or "" if client is not None else ""
         self._groups_base: str = groups_base or (f"ou=groups,{base_dn}" if base_dn else "")
         self._users_base: str = users_base or base_dn
+
+    # ------------------------------------------------------------------
+    # Read-only accessors (used by composite services / testing)
+    # ------------------------------------------------------------------
+
+    @property
+    def client(self) -> Any | None:
+        """The raw LDAP client backing this service (may be None)."""
+        return self._client
+
+    @property
+    def groups_base(self) -> str:
+        """Base DN under which groupOfNames entries live."""
+        return self._groups_base
+
+    @property
+    def users_base(self) -> str:
+        """Base DN under which member users live."""
+        return self._users_base
+
+    @property
+    def has_client(self) -> bool:
+        """True when a live (connected) LDAP client backs this service.
+
+        Used by composite services to degrade gracefully when no LDAP source is
+        configured (listing then simply returns the SQL side only).
+        """
+        return self._client is not None and getattr(self._client, "ldap_conn", None) is not None
 
     def __del__(self) -> None:  # pragma: no cover - defensive teardown
         if self._client is not None:
@@ -180,6 +210,32 @@ class LDAPGroupService:
     def _resolve_cn(self, list_id: str) -> str:
         """Extract the CN from an ldap: prefix, a DN, or a plain CN id."""
         return resolve_address_book_id(list_id).normalized_id
+
+    # ------------------------------------------------------------------
+    # Group listing
+    # ------------------------------------------------------------------
+
+    def list_groups(self) -> list[dict[str, list[str]]]:
+        """Return every ``groupOfNames`` entry under the groups base.
+
+        Each returned dict is a parsed LDAP record keyed by lower-case attribute
+        name (``cn``, ``description``, ``member``, plus ``dn``); values are lists
+        of strings. Raises ERROR_LDAP_CANNOT_SEARCH on a directory failure.
+
+        :return: List of raw group entries.
+        """
+        client = self._get_ldap_client()
+        try:
+            return client.search_entries(
+                base_dn=self._groups_base,
+                l_filter=f"(objectClass={_GROUP_OBJECT_CLASS})",
+                attributes=list(_LIST_ATTRS),
+            )
+        except RequestException:
+            raise
+        except Exception as e:  # pragma: no cover - defensive
+            logger_ldap.error("Failed to list LDAP groups under %s: %s", self._groups_base, e)
+            raise RequestException(f"Failed to list LDAP groups: {e}", error=err.ERROR_LDAP_CANNOT_SEARCH) from e
 
     # ------------------------------------------------------------------
     # Member operations

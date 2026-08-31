@@ -11,6 +11,7 @@ from app.config.settings.DomainSettings import (
     UserSourceSettingsObj,
 )
 from app.module.contact.ContactConst import AUTOCOMPLETE_DEFAULT_LIMIT
+from app.module.contact.LDAPListService import LDAPListService, ModuleSQLListProvider
 from app.module.contact.LdapGroupService import LDAPGroupService
 from app.module.contact.ModuleContact import ModuleContact
 from app.module.contact.jobs.ContactJobKind import ContactJobKind
@@ -384,6 +385,43 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
             return create_api_base_response(None)
         except RequestException as ex:
             logger_api.error("delete_list failed for user %s list %s: %s", self.user.uid, key, ex)
+            return create_api_base_response(None, ex.error)
+
+    #
+    # Hybrid SQL+LDAP lists (section F3: LDAPListService)
+    #
+    def _hybrid_list_service(self) -> LDAPListService:
+        """Build (and cache) the hybrid LDAPListService bound to this request.
+
+        The LDAP client connects lazily on the first member operation / listing;
+        until then the service degrades to the SQL address books only. The SQL
+        side is backed by this request's ModuleContact, so no live DB is touched
+        at construction time.
+        """
+        if not hasattr(self, "_hybrid_list_service_cache"):
+            self._hybrid_list_service_cache = LDAPListService(
+                self._process_setting,
+                user_domain_settings=self._user_sources,
+                sql_provider=ModuleSQLListProvider(self.module, self.user),
+            )
+        return self._hybrid_list_service_cache
+
+    def list_lists(self) -> tuple[dict[str, Any], int]:
+        """List every addressable contact list: SQL address books + LDAP groups.
+
+        Hybrid bridge between PostgreSQL address books and LDAP ``groupOfNames``
+        distribution lists (BACKEND-GAPS F3). Each returned entry is normalized
+        with ``source`` (sql/ldap), ``id`` (book key or ``ldap:<cn>``), name,
+        description, member_count and (for LDAP) members.
+
+        :return: API envelope with the merged lists, plus HTTP status code.
+        """
+        try:
+            service = self._hybrid_list_service()
+            lists: list[dict[str, Any]] = service.list_lists(user_sources=self._user_sources)
+            return create_api_base_response({"lists": lists, "total_count": len(lists)}, error_code="")
+        except RequestException as ex:
+            logger_api.error("list_lists failed for user %s: %s", self.user.uid, ex)
             return create_api_base_response(None, ex.error)
 
     #
