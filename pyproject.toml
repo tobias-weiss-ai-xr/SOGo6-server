@@ -52,6 +52,11 @@ packages = [
 ]
 exclude = ["tests"]
 
+[dependency-groups]
+dev = [
+    "hypothesis>=6.167.1",
+]
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.0"
 pytest-cov = "^7.0.0"
