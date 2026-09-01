@@ -187,12 +187,19 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         return calendar
 
     def delete_calendar(self, user: User, key: str) -> None:
-        """Delete a calendar and all its events."""
+        """Delete a calendar and all its events.
+
+        The calendar owner may always delete their own calendar: for a LOCAL
+        calendar this matches the owner ACL, and for an ICS/CALDAV subscription
+        it is the only way to unsubscribe (the read-only cap intentionally
+        blocks event edits on mirrored calendars, not subscription removal).
+        """
         source: CalendarSource = self.get_calendar(user, key)
-        _ = CalendarUser(user=user, owner=user)
-        self._acl.check_permission(
-            source.calendar.permissions, CalendarPermissionAction.DELETE,
-        )
+        if source.calendar.user_uid != user.uid:
+            _ = CalendarUser(user=user, owner=user)
+            self._acl.check_permission(
+                source.calendar.permissions, CalendarPermissionAction.DELETE,
+            )
         source.delete_calendar()
         _emit_webhook("calendar.deleted", {"uid": user.uid, "calendar_key": key})
 

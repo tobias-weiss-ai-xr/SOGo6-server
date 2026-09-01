@@ -32,7 +32,10 @@ class SharedMailboxSchema(Schema):
     email = fields.String()
     description = fields.String(allow_none=True)
     is_active = fields.Boolean()
-    created_at = fields.DateTime()
+    # The module returns created_at/updated_at as strings (SQL str() or the
+    # create payload); DateTime() would call .isoformat on them and 500.
+    created_at = fields.String()
+    updated_at = fields.String(allow_none=True)
     role = fields.String()
     member_uids = fields.List(fields.String())
     member_roles = fields.List(fields.Dict())
