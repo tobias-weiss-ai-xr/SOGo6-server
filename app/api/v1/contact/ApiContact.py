@@ -36,6 +36,12 @@ from .schemas.contact import (
     ContactAutocompleteQueryArgsSchema,
     ContactAutocompleteResponseSchema,
 )
+from .schemas.hybrid import (
+    ListEntriesResponseSchema,
+    ListMemberCreateSchema,
+    ListMemberResponseSchema,
+    ListMembersResponseSchema,
+)
 from .schemas.list import (
     ListCreateSchema,
     ListPatchSchema,
@@ -254,6 +260,64 @@ class ApiListCollection(MethodView):
         logger_api.debug("POST /addressbooks/%s/lists user=%s", key, g.user.uid)
         interface: InterfaceApiContactContact = g.inter
         return interface.create_list(key, body)
+
+
+@blp.route("/addressbooks/lists")
+class ApiContactLists(MethodView):
+    """Hybrid backend: list every addressable contact list (SQL address books + LDAP groups)."""
+
+    @blp.response(200, ListEntriesResponseSchema)
+    def get(self) -> ResponseReturnValue:
+        """List all contact lists across both backends (PostgreSQL address books and LDAP groupOfNames).
+
+        Each entry is normalized with ``source`` ('sql'|'ldap'), ``id`` (book key or ``ldap:<cn>``),
+        name, description, member_count and (for LDAP) members. The address books endpoint
+        (``GET /addressbooks``) keeps returning the SQL books only; this route is the merged view.
+        """
+        logger_api.debug("GET /addressbooks/lists user=%s", g.user.uid)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.list_lists()
+
+
+@blp.route("/addressbooks/<string:key>/members")
+class ApiAddressBookMemberList(MethodView):
+    """Hybrid backend: list and add members of a contact list (routed by id type)."""
+
+    @blp.response(200, ListMembersResponseSchema)
+    def get(self, key: str) -> ResponseReturnValue:
+        """List the members of a contact list, routed by id type.
+
+        LDAP groups (``ldap:<cn>`` / DN) return their member DNs; SQL address books (numeric keys)
+        return their contact uids. A missing group/address book yields 404.
+        """
+        logger_api.debug("GET /addressbooks/%s/members user=%s", key, g.user.uid)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.get_list_members(key)
+
+    @blp.arguments(ListMemberCreateSchema)
+    @blp.response(201, ListMemberResponseSchema)
+    def post(self, body: dict, key: str) -> ResponseReturnValue:
+        """Add a contact (by id) to a contact list, routed by id type.
+
+        LDAP groups receive a ``member`` MOD_ADD (idempotent); SQL address books reject direct
+        member additions with ``S000707`` (use the distribution-list API instead).
+        """
+        logger_api.debug("POST /addressbooks/%s/members user=%s contact=%s",
+                         key, g.user.uid, body.get("contact_id"))
+        interface: InterfaceApiContactContact = g.inter
+        return interface.add_list_member(key, body["contact_id"])
+
+
+@blp.route("/addressbooks/<string:key>/members/<string:contact_id>")
+class ApiAddressBookMemberDetail(MethodView):
+    """Hybrid backend: remove a member from a contact list (routed by id type)."""
+
+    @blp.response(200, ListMemberResponseSchema)
+    def delete(self, key: str, contact_id: str) -> ResponseReturnValue:
+        """Remove a contact from a contact list, routed by id type (idempotent)."""
+        logger_api.debug("DELETE /addressbooks/%s/members/%s user=%s", key, contact_id, g.user.uid)
+        interface: InterfaceApiContactContact = g.inter
+        return interface.remove_list_member(key, contact_id)
 
 
 @blp.route("/addressbooks/<string:key>/lists/<string:list_key>")
