@@ -41,12 +41,22 @@ class LoginRateLimiter:
         return self._redis.redis
 
     # ── Public API ─────────────────────────────────────────────────────────
+    #
+    # All Redis-backed methods FAIL OPEN: a cache hiccup (e.g. a stale pooled
+    # connection raising ``ValueError: I/O operation on closed file`` — which
+    # bypasses redis-py's ConnectionError retry) must never turn into a 500
+    # on the login endpoint. Rate limiting is an optimization, not a
+    # precondition, for authentication.
 
     def is_blocked(self, uid: str, max_attempt: int, block_time: int) -> bool:
         """Return ``True`` if *uid* is currently blocked."""
         if max_attempt <= 0:
             return False
-        blocked = self._r.get(self._block_key(uid))
+        try:
+            blocked = self._r.get(self._block_key(uid))
+        except Exception:
+            logger_api.warning("Login rate-limiter is_blocked failed (fail open)", exc_info=True)
+            return False
         return blocked is not None
 
     def record_failure(self, uid: str, time_span: int) -> int:
@@ -56,14 +66,22 @@ class LoginRateLimiter:
         auto-expires.
         """
         key = self._fail_key(uid)
-        count = self._r.incr(key)
-        if count == 1:
-            self._r.expire(key, time_span)
+        try:
+            count = self._r.incr(key)
+            if count == 1:
+                self._r.expire(key, time_span)
+        except Exception:
+            logger_api.warning("Login rate-limiter record_failure failed (fail open)", exc_info=True)
+            return 0
         return count
 
     def block(self, uid: str, block_time: int) -> None:
         """Mark *uid* as blocked for *block_time* seconds."""
-        self._r.setex(self._block_key(uid), block_time, "1")
+        try:
+            self._r.setex(self._block_key(uid), block_time, "1")
+        except Exception:
+            logger_api.warning("Login rate-limiter block failed (fail open)", exc_info=True)
+            return
         logger_api.warning("Login blocked for uid=%s (%d seconds)", uid, block_time)
 
     def reset_failures(self, uid: str) -> None:
@@ -73,7 +91,11 @@ class LoginRateLimiter:
 
     def get_fail_count(self, uid: str) -> int:
         """Return the current number of consecutive failures."""
-        val = self._r.get(self._fail_key(uid))
+        try:
+            val = self._r.get(self._fail_key(uid))
+        except Exception:
+            logger_api.warning("Login rate-limiter get_fail_count failed (fail open)", exc_info=True)
+            return 0
         return int(val) if val else 0
 
     # ── Per-IP Rate Limiting ──────────────────────────────────────────────
@@ -87,9 +109,13 @@ class LoginRateLimiter:
         :return: True if the IP is rate-limited
         """
         key = self._ip_key(ip)
-        count = self._r.incr(key)
-        if count == 1:
-            self._r.expire(key, window_seconds)
+        try:
+            count = self._r.incr(key)
+            if count == 1:
+                self._r.expire(key, window_seconds)
+        except Exception:
+            logger_api.warning("Login rate-limiter is_ip_rate_limited failed (fail open)", exc_info=True)
+            return False
         return count > max_attempts
 
     def reset_ip_rate_limit(self, ip: str) -> None:

@@ -132,7 +132,9 @@ class RepositoryCalendarInvite:
         updated = self._db.update_in_table(
             table_name=tbl.TABLE_CALENDAR_INVITE.name,
             column_tuple=(tbl.COL_CAL_INVITE_STATUS.name, tbl.COL_CAL_INVITE_UPDATED_AT.name),
-            values_list=[[status, datetime.now(timezone.utc)]],
+            # update_in_table takes ONE value per column (flat list), not a
+            # row-nested list — [[...]] trips its column/value length check.
+            values_list=[status, datetime.now(timezone.utc)],
             condition=condition,
         )
         if not updated:
