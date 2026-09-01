@@ -37,6 +37,7 @@ from app.utils.logger.logger import logger_ldap
 
 if TYPE_CHECKING:
     from app.config.settings.DomainSettings import UserSourceSettingsObj
+    from app.utils.api.paginate_sort_filter import CollectionPaginateArgs
 
 # Normalized list entry source marker for LDAP groups.
 _SOURCE_LDAP = "ldap"
@@ -61,17 +62,50 @@ class ModuleSQLListProvider:
         self._module = module
         self._user = user
 
-    def books(self, user_sources: dict[str, UserSourceSettingsObj] | None = None) -> list[dict]:
+    def books(
+        self,
+        user_sources: dict[str, UserSourceSettingsObj] | None = None,
+        collection_param: Any | None = None,
+    ) -> list[dict]:
         """Return the user's SQL address books as normalized list entries.
 
         Member counts are derived from a single transverse contact scan (one
         query) instead of one count query per book.
+
+        Pagination is applied to the SQL address books before merging with LDAP groups.
+        When ``collection_param`` is provided, the SQL books are sorted and paginated
+        according to the parameters. When omitted, all books are returned.
+
+        :param user_sources: Domain user sources (passed through to the contact module).
+        :param collection_param: Optional pagination arguments (page, page_size, sort_by, sort_order).
+        :return: Normalized list entries for SQL address books.
         """
         from app.module.contact.model.CardAddressBook import CardAddressBook
 
         counts: Counter = self._contact_counts(user_sources)
         entries: list[dict[str, Any]] = []
-        for book in self._module.get_all_addressbooks(self._user, user_sources):
+        
+        # Get all address books
+        all_books = self._module.get_all_addressbooks(self._user, user_sources)
+        
+        # Convert to list for sorting/pagination
+        books_list = list(all_books)
+        
+        # Apply sorting if requested
+        if collection_param and collection_param.sort_by:
+            books_list = sorted(
+                books_list,
+                key=lambda b: getattr(b, collection_param.sort_by, "") or "",
+                reverse=(collection_param.sort_order == "desc")
+            )
+        
+        # Apply pagination if requested
+        if collection_param:
+            offset = (collection_param.page - 1) * collection_param.page_size
+            limit = collection_param.page_size
+            books_list = books_list[offset:offset + limit]
+        
+        for book in books_list:
             key: str | None = book.key
             entries.append({
                 "source": _SOURCE_SQL,
@@ -132,6 +166,8 @@ class LDAPListService:
     :param users_base: Base DN under which member users live (defaults to the
         client base_dn).
     :param sql_provider: Duck-typed SQL-side provider (see module docstring).
+    :param redis_client: Optional Redis client for caching (duck-typed: needs
+        ``get``, ``setex``, ``delete``). When omitted caching is disabled.
     """
 
     def __init__(
@@ -139,6 +175,7 @@ class LDAPListService:
         process_settings: Any | None = None,
         user_domain_settings: dict | None = None,
         client: Any | None = None,
+        redis_client: Any | None = None,
         groups_base: str | None = None,
         users_base: str | None = None,
         sql_provider: Any | None = None,
@@ -147,6 +184,7 @@ class LDAPListService:
             process_settings,
             user_domain_settings=user_domain_settings or {},
             client=client,
+            redis_client=redis_client,
             groups_base=groups_base,
             users_base=users_base,
         )
@@ -196,23 +234,45 @@ class LDAPListService:
     # ------------------------------------------------------------------
 
     def list_lists(
-        self, user_sources: dict[str, UserSourceSettingsObj] | None = None,
-    ) -> list[dict[str, Any]]:
+        self,
+        user_sources: dict[str, UserSourceSettingsObj] | None = None,
+        collection_param: Any | None = None,
+    ) -> tuple[int, list[dict[str, Any]]]:
         """Return all addressable contact lists: SQL address books + LDAP groups.
 
         SQL entries come first (stable order from the provider), followed by LDAP
         groups. When no live LDAP client is configured the method degrades to the
         SQL side only instead of failing the whole listing.
 
+        Pagination is applied after merging both backends. The total count includes
+        all lists (SQL + LDAP), while the returned slice respects page/limit.
+
         :param user_sources: Domain user sources (passed through to the SQL provider).
-        :return: Normalized ``{source, id, name, description, member_count, members}`` dicts.
+        :param collection_param: Optional pagination arguments (page, page_size, sort_by, sort_order).
+        :return: Tuple of (total_count, normalized list entries).
         """
         entries: list[dict[str, Any]] = []
         if self._sql_provider is not None:
-            entries.extend(self._sql_provider.books(user_sources=user_sources))
+            entries.extend(self._sql_provider.books(user_sources=user_sources, collection_param=collection_param))
         if self._groups.has_client:
             entries.extend(self._ldap_groups())
-        return entries
+
+        # Apply pagination if requested (for combined SQL+LDAP results)
+        if collection_param:
+            total = len(entries)
+            offset = (collection_param.page - 1) * collection_param.page_size
+            limit = collection_param.page_size
+            # Apply sorting if specified (overrides SQL-side sorting)
+            if collection_param.sort_by:
+                entries = sorted(
+                    entries,
+                    key=lambda x: x.get(collection_param.sort_by, "") or "",
+                    reverse=(collection_param.sort_order == "desc")
+                )
+            paginated = entries[offset:offset + limit]
+            return total, paginated
+
+        return len(entries), entries
 
     def _ldap_groups(self) -> list[dict[str, Any]]:
         """Search the groups base and normalize each groupOfNames entry."""

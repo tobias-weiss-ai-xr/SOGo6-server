@@ -106,7 +106,7 @@ class FakeSQLProvider:
         self.add_member_calls: list = []
         self.remove_member_calls: list = []
 
-    def books(self, user_sources=None):
+    def books(self, user_sources=None, collection_param=None):
         self.books_calls.append(user_sources)
         return self.books_result
 
@@ -171,7 +171,7 @@ class TestLDAPListServiceListing:
              "member_count": 3, "members": []},
         ])
         svc = _make_service(client=fake, provider=provider)
-        lists = svc.list_lists()
+        total, lists = svc.list_lists()
         assert [lst["source"] for lst in lists] == ["sql", "ldap", "ldap"]
         assert lists[0]["id"] == "book-1"
         assert lists[0]["member_count"] == 3
@@ -194,17 +194,18 @@ class TestLDAPListServiceListing:
     def test_no_ldap_client_degrades_to_sql_only(self):
         provider = FakeSQLProvider(books=[{"source": "sql", "id": "b1", "name": "B", "member_count": 0}])
         svc = _make_service(client=None, provider=provider)
-        lists = svc.list_lists()
+        total, lists = svc.list_lists()
         assert [lst["source"] for lst in lists] == ["sql"]
         assert lists[0]["id"] == "b1"
 
     def test_no_provider_returns_ldap_only(self):
         svc = _make_service(client=FakeLdapClient(entries=LDAP_GROUPS), provider=None)
-        lists = svc.list_lists()
+        total, lists = svc.list_lists()
         assert [lst["source"] for lst in lists] == ["ldap", "ldap"]
 
     def test_neither_side_returns_empty(self):
-        assert _make_service(client=None, provider=None).list_lists() == []
+        total, lists = _make_service(client=None, provider=None).list_lists()
+        assert lists == []
 
     def test_ldap_search_failure_surfaces(self):
         fake = FakeLdapClient(entries=[])
@@ -403,17 +404,17 @@ class TestInterfaceHybridListMethods:
 
     def test_list_lists_envelope(self):
         fake = MagicMock()
-        fake.list_lists.return_value = [
+        fake.list_lists.return_value = (2, [
             {"source": "sql", "id": "b1", "name": "One", "member_count": 1},
             {"source": "ldap", "id": "ldap:engineering", "name": "engineering", "member_count": 2},
-        ]
+        ])
         data, status = self._build_interface(fake).list_lists()
         assert status == 200
         assert data["data"]["total_count"] == 2
         assert data["data"]["lists"][0]["source"] == "sql"
         assert data["data"]["lists"][1]["id"] == "ldap:engineering"
         assert data["error_code"] == ""
-        fake.list_lists.assert_called_once_with(user_sources={})
+        fake.list_lists.assert_called_once_with(user_sources={}, collection_param=None)
 
     def test_list_lists_ldap_error_envelope(self):
         fake = MagicMock()

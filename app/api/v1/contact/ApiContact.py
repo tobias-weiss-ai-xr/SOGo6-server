@@ -267,16 +267,18 @@ class ApiContactLists(MethodView):
     """Hybrid backend: list every addressable contact list (SQL address books + LDAP groups)."""
 
     @blp.response(200, ListEntriesResponseSchema)
-    def get(self) -> ResponseReturnValue:
+    @blp.arguments(ListSearchQueryArgsSchema, location="query", arg_name="query_args")
+    @collection_paginate(blp, sort_value_set=_LIST_SORT_VALUES, can_filter=False)
+    def get(self, query_args: dict, collection_param: CollectionPaginateArgs) -> CustomPaginateResponse:
         """List all contact lists across both backends (PostgreSQL address books and LDAP groupOfNames).
 
         Each entry is normalized with ``source`` ('sql'|'ldap'), ``id`` (book key or ``ldap:<cn>``),
         name, description, member_count and (for LDAP) members. The address books endpoint
         (``GET /addressbooks``) keeps returning the SQL books only; this route is the merged view.
         """
-        logger_api.debug("GET /addressbooks/lists user=%s", g.user.uid)
+        logger_api.debug("GET /addressbooks/lists user=%s params=%s", g.user.uid, collection_param)
         interface: InterfaceApiContactContact = g.inter
-        return interface.list_lists()
+        return interface.list_lists(collection_param)
 
 
 @blp.route("/addressbooks/<string:key>/members")

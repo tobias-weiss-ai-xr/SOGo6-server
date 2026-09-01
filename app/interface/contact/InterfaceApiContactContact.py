@@ -406,7 +406,10 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
             )
         return self._hybrid_list_service_cache
 
-    def list_lists(self) -> tuple[dict[str, Any], int]:
+    def list_lists(
+        self,
+        collection_param: Any | None = None,
+    ) -> tuple[dict[str, Any], int]:
         """List every addressable contact list: SQL address books + LDAP groups.
 
         Hybrid bridge between PostgreSQL address books and LDAP ``groupOfNames``
@@ -414,12 +417,19 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
         with ``source`` (sql/ldap), ``id`` (book key or ``ldap:<cn>``), name,
         description, member_count and (for LDAP) members.
 
+        Pagination is applied after merging both backends. The total count includes
+        all lists (SQL + LDAP), while the returned slice respects page/limit.
+
+        :param collection_param: Optional pagination arguments (page, page_size, sort_by, sort_order).
         :return: API envelope with the merged lists, plus HTTP status code.
         """
         try:
             service = self._hybrid_list_service()
-            lists: list[dict[str, Any]] = service.list_lists(user_sources=self._user_sources)
-            return create_api_base_response({"lists": lists, "total_count": len(lists)}, error_code="")
+            total, lists = service.list_lists(
+                user_sources=self._user_sources,
+                collection_param=collection_param,
+            )
+            return create_api_base_response({"lists": lists, "total_count": total}, error_code="")
         except RequestException as ex:
             logger_api.error("list_lists failed for user %s: %s", self.user.uid, ex)
             return create_api_base_response(None, ex.error)

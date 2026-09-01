@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 import ldap
 
 from app.utils import errors as err
+from app.utils.cache.redis_cache import RedisCache
 from app.utils.exceptions import RequestException
 from app.utils.id_resolver import is_ldap_group, resolve_address_book_id
 from app.utils.logger.logger import logger_ldap
@@ -57,10 +58,13 @@ class LDAPGroupService:
     :param client: An optional already-connected LDAP client (duck-typed: needs
         ``ldap_conn``, ``search_entries`` and ``base_dn``). When omitted the
         service has no live connection and member operations raise.
+    :param redis_client: An optional Redis client for caching (duck-typed: needs
+        ``get``, ``setex``, ``delete``). When omitted caching is disabled.
     :param groups_base: Base DN under which groups live. Defaults to
         ``"ou=groups,{base_dn}"`` (derived from the client base_dn).
     :param users_base: Base DN under which member users live. Defaults to the
         client base_dn.
+    :param cache_ttl: Redis cache TTL for group listings (seconds). Default 300 (5 min).
     """
 
     def __init__(
@@ -68,15 +72,21 @@ class LDAPGroupService:
         process_settings: Any | None = None,
         user_domain_settings: dict | None = None,
         client: Any | None = None,
+        redis_client: Any | None = None,
         groups_base: str | None = None,
         users_base: str | None = None,
+        cache_ttl: int = 300,
     ) -> None:
         self.process_settings = process_settings
         self.user_domain_settings = user_domain_settings or {}
         self._client: Any | None = client
+        self._redis_client: Any | None = redis_client
         base_dn: str = getattr(client, "base_dn", "") or "" if client is not None else ""
         self._groups_base: str = groups_base or (f"ou=groups,{base_dn}" if base_dn else "")
         self._users_base: str = users_base or base_dn
+        self._cache_ttl: int = cache_ttl
+        # Cache key for list_groups() results
+        self._cache_key = "groups_list"
 
     # ------------------------------------------------------------------
     # Read-only accessors (used by composite services / testing)
@@ -222,11 +232,29 @@ class LDAPGroupService:
         name (``cn``, ``description``, ``member``, plus ``dn``); values are lists
         of strings. Raises ERROR_LDAP_CANNOT_SEARCH on a directory failure.
 
+        The result is cached in Redis for 5 minutes (configurable via ``cache_ttl``
+        on construction). Call :meth:`clear_cache` to invalidate the cache.
+
         :return: List of raw group entries.
         """
-        client = self._get_ldap_client()
+        if self._client is None:
+            raise RequestException("LDAP client not available", error=err.ERROR_LDAP_CANNOT_CONNECT)
+
+        # Try to get from cache first (if Redis client is available)
+        if self._redis_client is not None:
+            cache = RedisCache[list[dict[str, list[str]]]](
+                prefix="sogo:ldap:groups",
+                ttl=self._cache_ttl,
+                client=self._redis_client,
+            )
+            cached = cache.get(self._cache_key)
+            if cached is not None:
+                logger_ldap.debug("LDAP groups list hit cache")
+                return cached
+
+        # Cache miss - fetch from LDAP
         try:
-            return client.search_entries(
+            entries = self._client.search_entries(
                 base_dn=self._groups_base,
                 l_filter=f"(objectClass={_GROUP_OBJECT_CLASS})",
                 attributes=list(_LIST_ATTRS),
@@ -236,6 +264,31 @@ class LDAPGroupService:
         except Exception as e:  # pragma: no cover - defensive
             logger_ldap.error("Failed to list LDAP groups under %s: %s", self._groups_base, e)
             raise RequestException(f"Failed to list LDAP groups: {e}", error=err.ERROR_LDAP_CANNOT_SEARCH) from e
+
+        # Store in cache (if Redis client is available)
+        if self._redis_client is not None:
+            cache = RedisCache[
+                list[dict[str, list[str]]]
+            ](prefix="sogo:ldap:groups", ttl=self._cache_ttl, client=self._redis_client)
+            cache.set(self._cache_key, entries)
+            logger_ldap.debug("LDAP groups list stored in cache (TTL: %s seconds)", self._cache_ttl)
+        return entries
+
+    def clear_cache(self) -> None:
+        """Invalidate the cached groups list.
+
+        Call this method after making changes to LDAP groups (add_member,
+        remove_member) to ensure subsequent list_groups() calls fetch fresh data.
+        """
+        if self._redis_client is None:
+            return
+        cache = RedisCache(
+            prefix="sogo:ldap:groups",
+            ttl=self._cache_ttl,
+            client=self._redis_client,
+        )
+        cache.delete(self._cache_key)
+        logger_ldap.debug("LDAP groups list cache invalidated")
 
     # ------------------------------------------------------------------
     # Member operations
@@ -301,6 +354,8 @@ class LDAPGroupService:
             raise RequestException(f"Failed to add member to group: {e}", error=err.ERROR_LDAP_MODIFY_FAILED) from e
 
         logger_ldap.info("Added member %s to LDAP group %s", member_dn, group_dn)
+        # Invalidate cache to ensure subsequent list_groups() calls fetch fresh data
+        self.clear_cache()
         return member_dn
 
     def remove_member(self, list_id: str, contact_id: str) -> str:
@@ -326,6 +381,8 @@ class LDAPGroupService:
             raise RequestException(f"Failed to remove member from group: {e}", error=err.ERROR_LDAP_MODIFY_FAILED) from e
 
         logger_ldap.info("Removed member %s from LDAP group %s", member_dn, group_dn)
+        # Invalidate cache to ensure subsequent list_groups() calls fetch fresh data
+        self.clear_cache()
         return member_dn
 
     def _resolve_for_modify(self, list_id: str, contact_id: str) -> tuple[str, str]:
