@@ -85,6 +85,38 @@ testpaths = [
 ]
 
 
+[tool.coverage.run]
+# Measure how much of the `app` package the unit suite exercises.
+# NOTE: __init__.py files are intentionally NOT omitted — several carry real
+# code (e.g. app/api/v1/__init__.py registers blueprints) and hiding them
+# would inflate the reported coverage.
+source = ["app"]
+omit = [
+    "tests/*",
+]
+# Environment-dependent integrations (live Redis/LDAP/SMTP) must not abort a
+# coverage run; failing tests still count toward the report.
+parallel = false
+
+
+[tool.coverage.report]
+# Keep the report stable and focused on the app package.
+show_missing = true
+skip_covered = true
+skip_empty = true
+sort = "Miss"
+# Round-17 baseline (unit suite): 66% total / 66k statements. The gate script
+# asserts this floor so future test additions cannot silently regress coverage.
+fail_under = 66
+
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+
 [tool.pylint.basic]
 module-naming-style="any"
 class-naming-style="PascalCase"

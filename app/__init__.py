@@ -211,7 +211,10 @@ def create_app(sogo_state: int) -> Flask:
     from app.utils.api.ApiBaseResponse import create_api_base_response
 
     def _request_exception_response(_e: RequestException) -> tuple[dict, int]:
-        return create_api_base_response(None, error=_e.error)
+        # status_code is forwarded so an explicit http_status override on the
+        # exception (e.g. 403 for a shared-mailbox membership denial reusing a
+        # NOT_FOUND error code) survives into the actual HTTP response.
+        return create_api_base_response(None, error=_e.error, status_code=_e.http_status)
 
     app.errorhandler(RequestException)(_request_exception_response)
     app.errorhandler(AggravatedException)(_request_exception_response)

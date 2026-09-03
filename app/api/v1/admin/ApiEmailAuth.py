@@ -72,9 +72,8 @@ class ApiEmailAuthDomains(MethodView):
             domain = _module().add_domain(data["name"], data.get("description", ""), data.get("is_active", True))
         except KeyError:
             raise RequestException(
-                error=err.ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS.error_code,
-                error_msg=err.ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS.message,
-                http_status=err.ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS.http_status,
+                error=err.ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS,
+                http_status=err.ERROR_EMAIL_AUTH_DOMAIN_ALREADY_EXISTS.h,
             ) from None
         return create_api_base_response({"domain": domain})
 
@@ -132,9 +131,8 @@ class ApiEmailAuthDkimGenerate(MethodView):
             keys = module.generate_key_pair(data.get("key_length", 2048))
         except ValueError:
             raise RequestException(
-                error=err.ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH.error_code,
-                error_msg=err.ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH.message,
-                http_status=err.ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH.http_status,
+                error=err.ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH,
+                http_status=err.ERROR_EMAIL_AUTH_INVALID_KEY_LENGTH.h,
             ) from None
         return create_api_base_response({"key_pair": keys})
 
