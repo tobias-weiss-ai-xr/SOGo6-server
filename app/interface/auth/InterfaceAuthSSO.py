@@ -88,9 +88,10 @@ class InterfaceAuthSSO:
         8. Redirect to frontend with token
         """
         code = params.get("code", "")
-        _ = params.get("state", "")
-        # For now, the state is passed via the redirect URL — in production,
-        # validate against the session cookie value.
+        state = params.get("state", "")
+        # The state token (random, generated during /auth/mode) is used to
+        # retrieve the persisted PKCE code verifier + nonce from Redis in the
+        # token exchange below (see ModuleOIDC._load_pkce_state).
 
         if not code:
             return create_api_base_response("Missing authorization code", err.ERROR_OIDC_TOKEN_EXCHANGE_FAILED)
@@ -102,7 +103,7 @@ class InterfaceAuthSSO:
             oidc.discover()
 
             # Exchange code for token
-            token_data = oidc.fetch_token(code, redirect_uri)
+            token_data = oidc.fetch_token(code, redirect_uri, state=state)
             id_token_jwt = token_data.get("id_token", "")
 
             if not id_token_jwt:

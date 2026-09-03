@@ -68,6 +68,12 @@ class ModuleOIDC:
         self._code_verifier: str | None = None
         # Nonce for ID token replay protection
         self._expected_nonce: str | None = None
+        # Cross-request OIDC state store: PKCE verifier + nonce are persisted in
+        # Redis keyed by a random state token, because create_authorization_url()
+        # (called from /auth/mode) and fetch_token() (called in the separate
+        # callback request) run in DIFFERENT HTTP requests / workers where the
+        # instance fields would be lost.
+        self._state_ttl = 600  # seconds — one login attempt window
 
     # ------------------------------------------------------------------
     # Discovery
@@ -142,6 +148,14 @@ class ModuleOIDC:
         # Generate nonce for ID token replay protection
         self._expected_nonce = secrets.token_urlsafe(32)
 
+        # Generate a random state token and persist the PKCE verifier + nonce in
+        # Redis under it. The callback request reads them back using the `state`
+        # query parameter Keycloak echoes on redirect. This keeps the flow
+        # working across separate requests/workers while retaining PKCE + nonce
+        # protections.
+        state_token = secrets.token_urlsafe(32)
+        self._persist_pkce_state(state_token)
+
         auth_endpoint = self._get_metadata("authorization_endpoint", "")
         if not auth_endpoint:
             # Fallback: construct from issuer
@@ -152,15 +166,70 @@ class ModuleOIDC:
             "client_id": self._client_id,
             "redirect_uri": redirect_uri,
             "scope": self._scope,
-            "state": state,
+            "state": state_token,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "nonce": self._expected_nonce,
         }
 
         authorization_url = f"{auth_endpoint}?{urlencode(params)}"
-        logger_api.debug("OIDC authorization URL built (PKCE+S256+nonce)")
+        logger_api.debug("OIDC authorization URL built (PKCE+S256+nonce, state=%s)", state_token)
         return authorization_url
+
+    # ------------------------------------------------------------------
+    # Cross-request PKCE state persistence (Redis)
+    # ------------------------------------------------------------------
+
+    def _persist_pkce_state(self, state_token: str) -> None:
+        """Store the PKCE verifier + nonce in Redis under ``state_token``.
+
+        Best-effort: if Redis is unavailable the authorization URL is still
+        returned with an instance-local verifier (only usable in-process).
+        """
+        try:
+            from app.service import sogo_cache
+            cache = sogo_cache()
+            cache.set(
+                f"oidc:state:{state_token}",
+                {
+                    "code_verifier": self._code_verifier,
+                    "nonce": self._expected_nonce,
+                },
+                ttl=self._state_ttl,
+            )
+            cache.close()
+        except Exception as exc:  # pylint: disable=broad-except
+            logger_api.warning("OIDC: could not persist PKCE state %s: %s", state_token, exc)
+
+    def _load_pkce_state(self, state_token: str) -> None:
+        """Restore the PKCE verifier + nonce from Redis for the given state.
+
+        Resets instance state to None when the entry is missing (already
+        consumed or expired) so ``fetch_token`` fails safe with a clear error.
+        """
+        try:
+            from app.service import sogo_cache
+            cache = sogo_cache()
+            data = cache.get(f"oidc:state:{state_token}", expected_type=dict)
+            cache.close()
+            if data:
+                self._code_verifier = data.get("code_verifier")
+                self._expected_nonce = data.get("nonce")
+                logger_api.debug("OIDC: restored PKCE state %s from cache", state_token)
+                return
+        except Exception as exc:  # pylint: disable=broad-except
+            logger_api.warning("OIDC: failed to load PKCE state %s: %s", state_token, exc)
+        self._code_verifier = None
+
+    def _delete_pkce_state(self, state_token: str) -> None:
+        """Remove a consumed PKCE state entry (one-time use)."""
+        try:
+            from app.service import sogo_cache
+            cache = sogo_cache()
+            cache.delete(f"oidc:state:{state_token}")
+            cache.close()
+        except Exception as exc:  # pylint: disable=broad-except
+            logger_api.debug("OIDC: failed to delete PKCE state %s: %s", state_token, exc)
 
     # ------------------------------------------------------------------
     # Token exchange
@@ -170,6 +239,7 @@ class ModuleOIDC:
         self,
         code: str,
         redirect_uri: str,
+        state: str = "",
     ) -> dict[str, Any]:
         """Exchange the authorisation ``code`` for an access / ID token.
 
@@ -193,6 +263,17 @@ class ModuleOIDC:
         if not token_endpoint:
             token_endpoint = f"{self._issuer.rstrip('/')}/token"
 
+        # Retrieve the PKCE verifier + nonce stored during authorization URL
+        # construction (cross-request flow). If no state token is provided,
+        # fall back to instance attributes (single-process / in-memory flow).
+        if state:
+            self._load_pkce_state(state)
+        if not self._code_verifier:
+            raise RequestException(
+                "OIDC PKCE: no code verifier available. "
+                "create_authorization_url() must be called before fetch_token()."
+            )
+
         session = OAuth2Session(
             client_id=self._client_id,
             client_secret=self._client_secret,
@@ -209,8 +290,11 @@ class ModuleOIDC:
         self._session = session
         self._token = token
 
-        # Clear PKCE verifier after use (one-time use)
+        # Clear PKCE verifier after use (one-time use) and purge the persisted
+        # state entry so a stolen/old code cannot be exchanged twice.
         self._code_verifier = None
+        if state:
+            self._delete_pkce_state(state)
 
         return dict(token)
 
