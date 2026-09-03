@@ -253,12 +253,6 @@ class ModuleOIDC:
         :raises RequestException: If no PKCE code verifier was generated
             (i.e., create_authorization_url was not called first).
         """
-        if not self._code_verifier:
-            raise RequestException(
-                "OIDC PKCE: no code verifier available. "
-                "create_authorization_url() must be called before fetch_token()."
-            )
-
         token_endpoint = self._get_metadata("token_endpoint", "")
         if not token_endpoint:
             token_endpoint = f"{self._issuer.rstrip('/')}/token"
