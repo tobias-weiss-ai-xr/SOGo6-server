@@ -315,13 +315,13 @@ class ModuleOIDC:
 
         jwt = JsonWebToken(["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"])
 
-        # Load public keys
-        public_keys = [JsonWebKey.import_key(k) for k in self._jwks]
-
-        # Validate
+        # Validate against the raw JWKS list. authlib 1.7's ``jwt.decode``
+        # expects dicts (it wraps them as a KeySet and finds the key by kid);
+        # passing pre-imported ``JsonWebKey`` objects makes it call ``.get``
+        # on them and crash with ``'RSAKey' object has no attribute 'get'``.
         claims = jwt.decode(
             id_token,
-            public_keys,
+            self._jwks,
             claims_options={
                 "iss": {"value": self._issuer.rstrip("/")},
                 "aud": {"value": self._client_id},
