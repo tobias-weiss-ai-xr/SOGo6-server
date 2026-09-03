@@ -413,7 +413,7 @@ class TestInterfaceHybridListMethods:
         assert data["data"]["total_count"] == 2
         assert data["data"]["lists"][0]["source"] == "sql"
         assert data["data"]["lists"][1]["id"] == "ldap:engineering"
-        assert data["error_code"] == ""
+        assert data["error_code"] == "S000000"  # generic success code (not empty)
         fake.list_lists.assert_called_once_with(user_sources={}, collection_param=None)
 
     def test_list_lists_ldap_error_envelope(self):

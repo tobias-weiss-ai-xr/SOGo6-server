@@ -165,7 +165,13 @@ def test_hybrid_listing_merges_sql_and_ldap(client, fake_interface):
     assert by_id["ldap:engineering"]["members"] == [MEMBER_DN]
     # the LDAP group surfaces its member list, the SQL book does not
     assert by_id["42"]["members"] == []
-    fake_interface.list_lists.assert_called_once_with()
+    # the endpoint forwards the parsed pagination args to the interface
+    # (``@collection_paginate`` parses page/page_size… and passes them along)
+    fake_interface.list_lists.assert_called_once()
+    forwarded = fake_interface.list_lists.call_args.args
+    assert len(forwarded) == 1
+    assert forwarded[0].page == 1
+    assert forwarded[0].page_size == 20
 
 
 def test_hybrid_listing_empty_is_valid(client, fake_interface):

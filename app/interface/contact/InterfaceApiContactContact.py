@@ -429,7 +429,7 @@ class InterfaceApiContactContact:  # pylint: disable=too-many-instance-attribute
                 user_sources=self._user_sources,
                 collection_param=collection_param,
             )
-            return create_api_base_response({"lists": lists, "total_count": total}, error_code="")
+            return create_api_base_response({"lists": lists, "total_count": total})
         except RequestException as ex:
             logger_api.error("list_lists failed for user %s: %s", self.user.uid, ex)
             return create_api_base_response(None, ex.error)

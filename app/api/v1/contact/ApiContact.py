@@ -275,11 +275,18 @@ class ApiContactLists(MethodView):
         Each entry is normalized with ``source`` ('sql'|'ldap'), ``id`` (book key or ``ldap:<cn>``),
         name, description, member_count and (for LDAP) members. The address books endpoint
         (``GET /addressbooks``) keeps returning the SQL books only; this route is the merged view.
+
+        ``InterfaceApiContactContact.list_lists`` returns the 2-tuple ``(response, status)`` while
+        ``@collection_paginate`` expects ``(item_count, response, status)``; the merged total is
+        already inside the payload (``total_count``) so we adapt it here.
         """
         logger_api.debug("GET /addressbooks/lists user=%s params=%s", g.user.uid, collection_param)
         interface: InterfaceApiContactContact = g.inter
-        return interface.list_lists(collection_param)
-
+        data, status = interface.list_lists(collection_param)
+        total: int = 0
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            total = int(data["data"].get("total_count") or 0)
+        return total, data, status
 
 @blp.route("/addressbooks/<string:key>/members")
 class ApiAddressBookMemberList(MethodView):
