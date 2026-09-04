@@ -61,12 +61,12 @@ class ApiAttachmentsUpload(MethodView):
 
         # Get the file from the request
         if 'file' not in request.files:
-            raise RequestException(err.ERROR_TMP_DRAFT_UPLOAD_NO_FILE)
+            raise RequestException(err.ERROR_TMP_DRAFT_UPLOAD_NO_FILE.m, error=err.ERROR_TMP_DRAFT_UPLOAD_NO_FILE)
         
         file_storage = request.files['file']
         
         if file_storage is None or file_storage.filename == '':
-            raise RequestException(err.ERROR_TMP_DRAFT_UPLOAD_NO_FILE)
+            raise RequestException(err.ERROR_TMP_DRAFT_UPLOAD_NO_FILE.m, error=err.ERROR_TMP_DRAFT_UPLOAD_NO_FILE)
 
         # Get current user
         user = g.user
