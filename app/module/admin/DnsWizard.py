@@ -190,8 +190,10 @@ class DnsWizard:
             errors.append("DMARC record must start with 'v=DMARC1'")
 
         tags = dict(
-            part.split("=", 1) for part in dmarc_value.split(";")
+            (k.strip(), v.strip())
+            for part in dmarc_value.split(";")
             if "=" in part
+            for k, v in [part.split("=", 1)]
         )
 
         policy = tags.get("p", "").strip()
