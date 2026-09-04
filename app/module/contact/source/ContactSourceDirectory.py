@@ -344,7 +344,7 @@ class ContactSourceDirectory(ContactSource):  # pylint: disable=unused-argument
                 return (c.first_name or c.display_name or "").casefold()
             if sort_key == "email":
                 if c.emails:
-                    return c.emails[0].email.casefold()
+                    return c.emails[0].value.casefold()
                 return ""
             return (c.display_name or "").casefold()
 
