@@ -5,6 +5,16 @@ Uses mocks when Redis is not available (CI without full stack).
 import os
 import pytest
 
+# Many test modules call ``os.environ.setdefault("SOGO_P_REDIS_URL",
+# "redis://localhost:6379/0")`` at import time to satisfy the ProcessSetting
+# model. Because ``_proc_setting()`` in app/service/monitoring gives the raw
+# environment precedence, the first such module that runs would otherwise pin
+# the health probes to the unreachable loopback URL and make
+# test_check_redis_ok_when_local_redis_up fail inside the stack. Pre-seeding
+# the REAL in-stack URL here (conftest is imported before any test module)
+# turns every later setdefault into a no-op.
+os.environ.setdefault("SOGO_P_REDIS_URL", "redis://sogo6-redis:6379/0")
+
 try:
     from app.service import sogo_cache
     HAS_APP = True

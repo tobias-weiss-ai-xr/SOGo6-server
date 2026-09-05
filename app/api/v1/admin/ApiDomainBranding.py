@@ -14,7 +14,6 @@ from flask.typing import ResponseReturnValue
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.logger.logger import logger_api
 from app.service import sogo_cache
 
@@ -51,12 +50,12 @@ class ApiDomainBranding(MethodView):
         cache = sogo_cache()
         raw = cache.get(f"{_BRANDING_PREFIX}{domain}", str)
         if not raw:
-            return create_api_base_response({})
+            return {}
         try:
             import json
-            return create_api_base_response(json.loads(raw))
+            return json.loads(raw)
         except Exception:
-            return create_api_base_response({})
+            return {}
 
     @blp.arguments(BrandingSchema)
     @blp.response(200, BrandingSchema)
@@ -66,7 +65,7 @@ class ApiDomainBranding(MethodView):
         import json
         cache.set(f"{_BRANDING_PREFIX}{domain}", json.dumps(body), ttl=86400 * 365)
         logger_api.info("Branding updated for domain %s", domain)
-        return create_api_base_response(body)
+        return body
 
 
 @blp.route("/<string:domain>/public")
@@ -79,12 +78,12 @@ class ApiPublicBranding(MethodView):
         cache = sogo_cache()
         raw = cache.get(f"{_BRANDING_PREFIX}{domain}", str)
         if not raw:
-            return create_api_base_response({})
+            return {}
         try:
             import json
             data = json.loads(raw)
             # Only return public-safe fields
             safe = {k: data[k] for k in PublicBrandingSchema._declared_fields if k in data}
-            return create_api_base_response(safe)
+            return safe
         except Exception:
-            return create_api_base_response({})
+            return {}

@@ -691,12 +691,21 @@ class ClientSieve(ClientFiltering):
             # Remove script parts that depend on this extension
             script_parts_retry = []
             for section_name, section_content in script_parts:
-                # Skip notification section if notify extension is unsupported
-                if missing_capability == "notify" and section_name == cs.FILTER_SECTION_NOTIFICATION:
+                # Skip the section whose own extension is unsupported (e.g. the
+                # notification section for 'notify'/'enotify', the vacation section for
+                # 'vacation'). Otherwise the recompiled script would re-declare the
+                # unsupported extension via the section's own require line and keep
+                # failing indefinitely.
+                section_depends_on = {
+                    cs.FILTER_SECTION_NOTIFICATION: ("notify", "enotify"),
+                    cs.FILTER_SECTION_VACATION: ("vacation",),
+                }
+                if missing_capability in (section_depends_on.get(section_name) or ()):
                     logger_sieve.warning(
-                        "Skipping notification section because 'notify' extension is not supported"
+                        "Skipping %s section because '%s' extension is not supported",
+                        section_name, missing_capability
                     )
-                    skipped_sections.add(cs.FILTER_SECTION_NOTIFICATION)
+                    skipped_sections.add(section_name)
                     continue
                 script_parts_retry.append((section_name, section_content))
 
@@ -1127,20 +1136,23 @@ class ClientSieve(ClientFiltering):
 
             for nested_rule in nested_rules:
                 nested_conditions, nested_matchtype = self._build_nested_conditions_recursive(nested_rule)
-                
+
+                if not nested_conditions:
+                    # Unmatchable / invalid rule subtree (e.g. header field without a
+                    # custom_header name) contributes no conditions - skip it instead
+                    # of crashing on nested_conditions[0].
+                    continue
+
                 if len(nested_conditions) == 1 and not (isinstance(nested_conditions[0], tuple) and nested_conditions[0][0] == "__group__"):
                     # Single condition from nested rule, add directly
                     conditions.extend(nested_conditions)
                 else:
                     # Multiple conditions or nested group, wrap as a group if needed
-                    if len(nested_conditions) > 1 or (isinstance(nested_conditions[0], tuple) and nested_conditions[0][0] == "__group__"):
-                        if nested_matchtype != group_matchtype:
-                            # Different operator, wrap as nested group
-                            conditions.append(("__group__", nested_matchtype, nested_conditions))
-                        else:
-                            # Same operator, flatten
-                            conditions.extend(nested_conditions)
+                    if nested_matchtype != group_matchtype:
+                        # Different operator, wrap as nested group
+                        conditions.append(("__group__", nested_matchtype, nested_conditions))
                     else:
+                        # Same operator, flatten
                         conditions.extend(nested_conditions)
 
             return conditions, group_matchtype

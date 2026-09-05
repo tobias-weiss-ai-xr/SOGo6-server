@@ -433,7 +433,14 @@ class ModuleAdminConfig:
         # Process results into a list of dictionaries
         ret = []
         for record in result:
-            record_dict = dict(zip(column_names, record))
+            record_dict = {}
+            for col_name, value in zip(column_names, record):
+                if col_name == tbl.COL_DOMAIN_SETTINGS.name:
+                    # expose the domain settings under the same "settings" key
+                    # used by get_one_domain_setting/create/update
+                    record_dict["settings"] = value
+                else:
+                    record_dict[col_name] = value
             if "settings" in record_dict:
                 # MySQL/MariaDB returns JSON columns as strings, PostgreSQL returns parsed dicts.
                 # Normalize to dict for consistent behavior across database backends.
