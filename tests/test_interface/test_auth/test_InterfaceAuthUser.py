@@ -2,7 +2,12 @@
 Tests unitaires pour InterfaceAuthUser (Interface layer).
 Ces tests utilisent des fake modules pour tester la logique de l'interface.
 """
+import os
+os.environ.setdefault("SOGO_P_VOUCHER_SECRET", "0123456789abcdef0123456789abcdef")
+os.environ.setdefault("SOGO_AES_ENC_KEY", "A9fK2QxM7eR3PZLwH6Jd8sC4T5mNByU")
+
 import pytest
+from unittest.mock import MagicMock
 from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
 from app.utils.exceptions import RequestException, BugException
 from app.utils import errors as err
@@ -96,6 +101,11 @@ class FakeModuleUserProfile:
     def create_user_profile(self, user):
         """Create user profile."""
         self.create_user_profile_args = user
+
+    def get_user_profile(self, user):
+        """Fill the user instance with its profile (no-op in tests)."""
+        self.get_user_profile_args = user
+        user.profile = MagicMock()
 
     def get_partial_user_preferences(self, uid, subparent):
         """Return fake general preferences carrying the user timezone."""
@@ -433,3 +443,86 @@ def test_logout_invalid_voucher_type_returns_error_response(monkeypatch):
 
     assert status_code == err.ERROR_WRONG_AUTHORIZATION_TYPE.h
     assert result["error_code"] == err.ERROR_WRONG_AUTHORIZATION_TYPE.c
+
+
+# ========== Tests for check_user_and_fill_info ==========
+
+def _make_interface(monkeypatch, fake_auth, fake_profile):
+    patch_modules_on_interface(monkeypatch, fake_auth, fake_profile, FakeModuleUserSource)
+    return InterfaceAuthUser(
+        process={"test": "config"},
+        system={"SYSTEM_SETTINGS": {"test": "value"}},
+        default_domain={"AUTH_SETTINGS": {"test": "value"}, "USER_SOURCE": {}}
+    )
+
+
+def test_check_user_and_fill_info_trusts_oidc_session(monkeypatch):
+    """SSO (oidc) sessions must be trusted without a user-source password check."""
+    from app.auth.User import User
+    fake_auth = FakeModuleAuth(None, None, None, None)
+    fake_profile = FakeModuleUserProfile(None, None)
+    interface = _make_interface(monkeypatch, fake_auth, fake_profile)
+    user = User("sso@home.opendesk-edu.org", password="")
+    user.domain = "home.opendesk-edu.org"
+    user.auth_method = "oidc"
+
+    ok, returned = interface.check_user_and_fill_info(user)
+
+    assert ok is True
+    assert returned is user
+    assert fake_profile.get_user_profile_args is user
+
+
+def test_check_user_and_fill_info_trusts_saml2_session(monkeypatch):
+    from app.auth.User import User
+    fake_auth = FakeModuleAuth(None, None, None, None)
+    fake_profile = FakeModuleUserProfile(None, None)
+
+    interface = _make_interface(monkeypatch, fake_auth, fake_profile)
+    user = User("sso@home.opendesk-edu.org", password="")
+    user.auth_method = "saml2"
+
+    ok, returned = interface.check_user_and_fill_info(user)
+
+    assert ok is True
+    assert returned is user
+
+
+def test_check_user_and_fill_info_sso_missing_profile_is_unauthorized(monkeypatch):
+    """If the SSO session's profile cannot be loaded, treat as unauthorized."""
+    from app.auth.User import User
+    from app.utils.exceptions import RequestException
+    fake_auth = FakeModuleAuth(None, None, None, None)
+    fake_profile = FakeModuleUserProfile(None, None)
+    fake_profile.get_user_profile = lambda user: (_ for _ in ()).throw(
+        RequestException("No user profile", err.ERROR_USER_PROFILE_NOT_FOUND)
+    )
+
+    interface = _make_interface(monkeypatch, fake_auth, fake_profile)
+    user = User("sso@home.opendesk-edu.org", password="")
+    user.auth_method = "oidc"
+
+    ok, returned = interface.check_user_and_fill_info(user)
+
+    assert ok is False
+    assert type(returned).__name__ == "UserAnonymous"
+
+
+def test_check_user_and_fill_info_password_session_still_validated(monkeypatch):
+    """Password sessions must still go through the user-source login check."""
+    from app.auth.User import User
+    fake_auth = FakeModuleAuth(None, None, None, None)
+    fake_auth.get_user_and_domain_user_sources_result = (
+        User("user@example.com", password="secret"), {}
+    )
+    fake_profile = FakeModuleUserProfile(None, None)
+
+    interface = _make_interface(monkeypatch, fake_auth, fake_profile)
+    user = User("user@example.com", password="secret")
+    user.auth_method = ""  # plain/password session
+
+    ok, returned = interface.check_user_and_fill_info(user)
+
+    assert ok is True
+    assert fake_auth.get_user_and_domain_user_sources_args == ("user@example.com", "secret")
+    assert fake_profile.get_user_profile_args is not None

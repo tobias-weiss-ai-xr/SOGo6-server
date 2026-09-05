@@ -215,6 +215,20 @@ class InterfaceAuthUser:
         :return: True if the user credentials are ok
         :rtype: bool
         """
+        # SSO-established sessions carry no password (the IdP authenticated the
+        # user during the OIDC/SAML login; the voucher + Redis session is the
+        # trust anchor). Re-validating an empty password against a user source
+        # here would always fail (and can never succeed on SSO-only domains that
+        # have no user source configured at all), turning every protected API
+        # call into 401. Skip the source check for SSO sessions and just fill
+        # the user profile.
+        if user.auth_method in ("oidc", "saml2"):
+            try:
+                self.module_user_profile.get_user_profile(user)
+            except RequestException:
+                return False, UserAnonymous()
+            return True, user
+
         success, user_found, module_us = self._check_login(user.uid, user.password)
         if success and user_found is not None:
             self.module_user_profile.get_user_profile(user_found)

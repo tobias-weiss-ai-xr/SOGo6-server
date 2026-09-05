@@ -402,6 +402,11 @@ class InterfaceAuthSSO:
         user = User(email, password="")  # password is empty — we use SSO
         user.domain = domain
         user.mail = email
+        # Mark the session as SSO-established so per-request "credential" checks
+        # (which would try to re-validate the empty password against a user
+        # source) can be skipped: the IdP already authenticated this user and
+        # the server-issued voucher + Redis session is the proof of auth.
+        user.auth_method = auth_type  # "oidc" | "saml2"
         # Use SAML display_name if available, otherwise derive from email
         user.cn = display_name or email.split("@")[0]
 

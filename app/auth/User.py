@@ -80,6 +80,7 @@ class User:
         user = User(uid, password, domain=domain, is_domainless=is_domainless)
         user.mail = user_session[cs.USER_EMAIL]
         user.source_id = user_session[cs.USER_SRC_ID]
+        user.auth_method = user_session.get(cs.USER_AUTH_METHOD, "")
         return user
 
     def __init__(self, uid:str, password:str= "", cn:str= "", domain:str= "", is_domainless:bool = False):
@@ -104,6 +105,8 @@ class User:
         self.authenticated = False
         self.anonymous = False
         self.user_class = cs.USER_CLASS_USER
+        # How this session was established: "" (password auth) | "oidc" | "saml2"
+        self.auth_method = ""
 
         uid_domain = get_domain_from_mail(uid)
 
@@ -142,7 +145,8 @@ class User:
             cs.USER_PWD:    self.password,
             cs.USER_DOMAIN: self.domain,
             cs.USER_EMAIL:  self.mail,
-            cs.USER_SRC_ID: self.source_id
+            cs.USER_SRC_ID: self.source_id,
+            cs.USER_AUTH_METHOD: self.auth_method
         }
 
         return ret

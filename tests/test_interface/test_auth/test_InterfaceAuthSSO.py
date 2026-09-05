@@ -574,6 +574,56 @@ class TestAuthenticateSsoUser:
 
         assert result == {"jwt_token": "jwt-4"}
 
+    def test_sso_user_sets_auth_method_on_session(self, iface):
+        """SSO sessions must be marked so per-request source checks are skipped."""
+        voucher = MagicMock()
+        user_module_us = MagicMock()
+        user_module_us.check_login.return_value = False
+        profile = MagicMock()
+        profile.is_user_profile_present.return_value = True
+
+        with patch(
+            "app.config.init_config.init_get_system_and_default_domain_settings",
+            return_value=({}, {"USER_SOURCE": {}, "AUTH_SETTINGS": {}}),
+        ), patch("app.module.auth.ModuleAuth.ModuleAuth"), patch.object(
+            iface, "_load_domain_user_sources", return_value={}
+        ), patch(
+            "app.module.auth.ModuleUserSource.ModuleUserSource", return_value=user_module_us
+        ), patch(
+            "app.module.user.ModuleUserProfile.ModuleUserProfile", return_value=profile
+        ), patch(
+            "app.auth.service.VoucherUserService.VoucherUserService", return_value=voucher
+        ):
+            iface._authenticate_sso_user("example.org", "oidc@example.org", "oidc")
+
+        user_passed = voucher.generate_voucher_from_user.call_args.args[0]
+        assert user_passed.auth_method == "oidc"
+        assert user_passed.password == ""
+
+    def test_saml_user_sets_auth_method_on_session(self, iface):
+        voucher = MagicMock()
+        user_module_us = MagicMock()
+        user_module_us.check_login.return_value = False
+        profile = MagicMock()
+        profile.is_user_profile_present.return_value = True
+
+        with patch(
+            "app.config.init_config.init_get_system_and_default_domain_settings",
+            return_value=({}, {"USER_SOURCE": {}, "AUTH_SETTINGS": {}}),
+        ), patch("app.module.auth.ModuleAuth.ModuleAuth"), patch.object(
+            iface, "_load_domain_user_sources", return_value={}
+        ), patch(
+            "app.module.auth.ModuleUserSource.ModuleUserSource", return_value=user_module_us
+        ), patch(
+            "app.module.user.ModuleUserProfile.ModuleUserProfile", return_value=profile
+        ), patch(
+            "app.auth.service.VoucherUserService.VoucherUserService", return_value=voucher
+        ):
+            iface._authenticate_sso_user("example.org", "saml@example.org", "saml2")
+
+        user_passed = voucher.generate_voucher_from_user.call_args.args[0]
+        assert user_passed.auth_method == "saml2"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # _load_domain_user_sources
