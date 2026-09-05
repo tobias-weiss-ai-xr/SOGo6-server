@@ -1,88 +1,137 @@
-"""Structural tests for the Smart Calendar API (0% coverage baseline)."""
-from pathlib import Path
+"""Functional tests for ApiSmartCalendar — suggest-times & analyze-patterns.
 
-API_DIR = Path(__file__).resolve().parents[3] / "app" / "api" / "v1" / "user"
+Uses a fake cache injected via monkeypatch on the module-level ``sogo_cache``.
+"""
+import json
+from unittest import mock
 
+import pytest
+from flask import Flask
 
-class TestApiSmartCalendarBlueprint:
-    """Verify the Smart Calendar API blueprint structure."""
+from app.api.v1.user.ApiSmartCalendar import blp
 
-    def test_api_file_exists(self):
-        assert (API_DIR / "ApiSmartCalendar.py").exists()
-
-    def test_blueprint_url_prefix(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert 'url_prefix="/ai/smart-calendar"' in content
-
-    def test_suggest_times_route(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert '@blp.route("/suggest-times")' in content
-        assert "class ApiSmartCalendarSuggest" in content
-        assert "def post(self" in content
-
-    def test_analyze_patterns_route(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert '@blp.route("/analyze-patterns")' in content
-        assert "class ApiSmartCalendarAnalyze" in content
-
-    def test_register_in_user_apis(self):
-        # Note: This API may not be registered yet - it exists as a standalone module
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "Blueprint" in content
-        assert "blp = Blueprint" in content
+MOD = "app.api.v1.user.ApiSmartCalendar"
 
 
-class TestApiSmartCalendarSchemas:
-    """Verify the request/response schema definitions."""
+class FakeCache:
+    def __init__(self):
+        self.data = {}
 
-    def test_suggest_times_schema_has_required_fields(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "class SuggestTimesSchema" in content
-        assert "attendee_uids" in content
-        assert "date_from" in content
-        assert "date_to" in content
-        assert "duration_minutes" in content
-        assert "preferred_hours" in content
+    def get(self, key, as_type=None):
+        return self.data.get(key)
 
-    def test_analyze_pattern_schema_has_fields(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "class AnalyzePatternSchema" in content
-        assert "attendee_uid" in content
-        assert "days_back" in content
-
-    def test_suggest_times_defaults(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "load_default=60" in content  # duration_minutes
-        assert "load_default=[9, 10, 11, 14, 15, 16]" in content  # preferred_hours
+    def set(self, key, value, ttl=None):
+        self.data[key] = value
 
 
-class TestSmartCalendarLogic:
-    """Verify key logic patterns in the implementation."""
+CACHE = FakeCache()
 
-    def test_suggest_times_handles_date_parsing(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "datetime.strptime" in content
-        assert "ValueError" in content
-        assert "invalid_date_format" in content
 
-    def test_suggest_times_weekdays_only(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "weekday()" in content
-        assert "< 5" in content
+@pytest.fixture(autouse=True)
+def _reset(monkeypatch):
+    CACHE.data.clear()
+    monkeypatch.setattr(f"{MOD}.sogo_cache", lambda: CACHE)
+    yield
 
-    def test_suggest_times_scores_slots(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert '"score"' in content
-        assert "conflicts" in content
-        assert "suggestions.sort" in content
 
-    def test_analyze_patterns_returns_typical(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert '"preferred_hours"' in content
-        assert '"busy_hours"' in content
-        assert '"meeting_length_preference"' in content
+@pytest.fixture
+def client():
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.register_blueprint(blp)
+    return app.test_client()
 
-    def test_cache_pattern_prefix(self):
-        content = (API_DIR / "ApiSmartCalendar.py").read_text(encoding="utf-8")
-        assert "_PATTERN_PREFIX" in content
-        assert "sched_pattern:" in content
+
+def _seed_pattern(uid, busy, preferred=None):
+    CACHE.data[f"sched_pattern:{uid}"] = json.dumps(
+        {"busy_hours": busy, "preferred_hours": preferred or []}
+    )
+
+
+class TestSuggestTimes:
+    def test_suggest_empty_no_patterns(self, client):
+        resp = client.post(
+            "/ai/smart-calendar/suggest-times",
+            json={
+                "attendee_uids": ["a@x.org"],
+                "date_from": "2026-06-01",
+                "date_to": "2026-06-01",
+                "duration_minutes": 60,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["attendees_analyzed"] == 0
+        assert data["total_candidates"] > 0
+        assert data["suggestions"], "expected non-empty suggestions"
+        # Weekday slot only, default preferred hours
+        assert data["suggestions"][0]["day"] in (
+            "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+        )
+
+    def test_suggest_respects_preferred_and_conflicts(self, client):
+        # a@x.org busy at 9 and 10, prefers nothing; b@x.org free everywhere
+        _seed_pattern("a@x.org", [9, 10])
+        _seed_pattern("b@x.org", [])
+        resp = client.post(
+            "/ai/smart-calendar/suggest-times",
+            json={
+                "attendee_uids": ["a@x.org", "b@x.org"],
+                "date_from": "2026-06-01",
+                "date_to": "2026-06-02",
+                "duration_minutes": 60,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["attendees_analyzed"] == 2
+        for sugg in data["suggestions"]:
+            # No 9/10 o'clock slots should carry a conflict with a@x.org
+            assert sugg["conflicts"] == [] or "a@x.org" not in sugg["conflicts"] or sugg["hour"] not in (9, 10)
+
+    def test_suggest_custom_preferred_hours(self, client):
+        resp = client.post(
+            "/ai/smart-calendar/suggest-times",
+            json={
+                "attendee_uids": [],
+                "date_from": "2026-06-01",
+                "date_to": "2026-06-01",
+                "duration_minutes": 30,
+                "preferred_hours": [20],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert all(s["hour"] == 20 for s in data["suggestions"] if s["day"] == "Monday")
+
+    def test_suggest_invalid_date(self, client):
+        resp = client.post(
+            "/ai/smart-calendar/suggest-times",
+            json={
+                "attendee_uids": [],
+                "date_from": "not-a-date",
+                "date_to": "2026-06-01",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json["data"]["error"] == "invalid_date_format"
+
+    def test_suggest_validation_error(self, client):
+        resp = client.post("/ai/smart-calendar/suggest-times", json={})
+        assert resp.status_code == 422
+
+
+class TestAnalyzePatterns:
+    def test_analyze_returns_patterns(self, client):
+        resp = client.post(
+            "/ai/smart-calendar/analyze-patterns",
+            json={"attendee_uid": "user-1", "days_back": 14},
+        )
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["preferred_hours"] == [9, 10, 14, 15]
+        assert data["busy_hours"] == [12, 13]
+
+    def test_analyze_validation_error(self, client):
+        resp = client.post("/ai/smart-calendar/analyze-patterns", json={})
+        assert resp.status_code == 422

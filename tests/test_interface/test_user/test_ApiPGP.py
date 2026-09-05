@@ -1,138 +1,156 @@
-"""Structural tests for the PGP Encryption API (0% coverage baseline)."""
-from pathlib import Path
+"""Functional tests for ApiPGP — key generate/get/delete + encrypt/decrypt,
+with PGPKeyManager mocked.
+"""
+from types import SimpleNamespace
+from unittest import mock
 
-API_DIR = Path(__file__).resolve().parents[3] / "app" / "api" / "v1" / "user"
-IFACE_DIR = Path(__file__).resolve().parents[3] / "app" / "svc" / "pgp"
+import pytest
+from flask import Flask, g
 
+from app.api.v1.user.ApiPGP import blp
+from app.utils import errors as err
 
-class TestApiPGPBlueprint:
-    """Verify the PGP Encryption API blueprint structure."""
+MOD = "app.api.v1.user.ApiPGP"
 
-    def test_api_file_exists(self):
-        assert (API_DIR / "ApiPGP.py").exists()
+USER = SimpleNamespace(uid="user-1")
 
-    def test_blueprint_url_prefix(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert 'url_prefix="/pgp"' in content
-
-    def test_key_generate_route(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert '@blp.route("/key/generate")' in content
-        assert "class ApiPGPGenerate" in content
-
-    def test_key_get_route(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert '@blp.route("/key")' in content
-        assert "class ApiPGPGetKey" in content
-        assert "def get(self)" in content
-
-    def test_key_delete_route(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        # There are two classes with the same route - delete method
-        assert "class ApiPGPDeleteKey" in content
-        assert "def delete(self)" in content
-
-    def test_encrypt_route(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert '@blp.route("/encrypt")' in content
-        assert "class ApiPGPEncrypt" in content
-
-    def test_decrypt_route(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert '@blp.route("/decrypt")' in content
-        assert "class ApiPGPDecrypt" in content
-
-    def test_register_in_user_apis(self):
-        # Note: This API may not be registered yet - it exists as a standalone module
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "Blueprint" in content
-        assert "blp = Blueprint" in content
+ARMORED_KEY = (
+    "-----BEGIN PGP PUBLIC KEY BLOCK-----\n"
+    "YWJjZA==\n"
+    "-----END PGP PUBLIC KEY BLOCK-----\n"
+)
 
 
-class TestApiPGPSchemas:
-    """Verify the request/response schema definitions."""
+@pytest.fixture
+def client():
+    app = Flask(__name__)
+    app.config["TESTING"] = True
 
-    def test_key_response_schema_has_fields(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "class PGPKeyResponseSchema" in content
-        assert "fingerprint" in content
-        assert "public_key" in content
+    @app.before_request
+    def _set_user():
+        g.user = USER
 
-    def test_key_generate_schema_has_passphrase(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "class PGPKeyGenerateSchema" in content
-        assert "passphrase" in content
+    app.register_blueprint(blp)
 
-    def test_encrypt_schema_has_message_and_recipient(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "class PGPEncryptSchema" in content
-        assert "message" in content
-        assert "recipient" in content
-        assert "required=True" in content
-
-    def test_decrypt_schema_has_armored_message(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "class PGPDecryptSchema" in content
-        assert "armored_message" in content
+    with mock.patch(f"{MOD}.PGPKeyManager") as mgr_cls:
+        mgr = mgr_cls.return_value
+        yield app.test_client(), mgr
 
 
-class TestPGPLogic:
-    """Verify key logic patterns in the implementation."""
+class TestGenerate:
+    def test_generate_ok(self, client):
+        c, mgr = client
+        mgr.has_keypair.return_value = False
+        mgr.generate_keypair.return_value = {"fingerprint": "A" * 40, "public_key": ARMORED_KEY}
+        resp = c.post("/pgp/key/generate", json={"passphrase": "secret"})
+        assert resp.status_code == 201
+        assert resp.json["data"]["fingerprint"] == "A" * 40
+        mgr.generate_keypair.assert_called_once_with("user-1", passphrase="secret")
 
-    def test_generate_checks_key_already_exists(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "has_keypair" in content
-        assert "ERROR_PGP_KEY_ALREADY_EXISTS" in content
+    def test_generate_default_passphrase(self, client):
+        c, mgr = client
+        mgr.has_keypair.return_value = False
+        mgr.generate_keypair.return_value = {"fingerprint": "B" * 40}
+        resp = c.post("/pgp/key/generate", json={})
+        assert resp.status_code == 201
+        mgr.generate_keypair.assert_called_once_with("user-1", passphrase="")
 
-    def test_generate_returns_201(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "code=201" in content
-
-    def test_get_key_returns_fingerprint(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "_generate_fingerprint" in content
-        assert "_dearmor" in content
-        assert '"fingerprint"' in content
-        assert '"public_key"' in content
-
-    def test_delete_key_uses_manager(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "delete_keypair" in content
-        assert '"status": "deleted"' in content
-
-    def test_encrypt_looks_up_recipient_key(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "get_public_key" in content
-        assert "ERROR_PGP_RECIPIENT_KEY_NOT_FOUND" in content
-        assert "encrypt_message" in content
-
-    def test_decrypt_uses_private_key(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "get_private_key" in content
-        assert "decrypt_message" in content
-        assert "ERROR_PGP_DECRYPT_FAILED" in content
-
-    def test_error_codes_defined(self):
-        content = (API_DIR / "ApiPGP.py").read_text(encoding="utf-8")
-        assert "ERROR_PGP_KEY_NOT_FOUND" in content
-        assert "ERROR_PGP_ENCRYPT_FAILED" in content
+    def test_generate_already_exists(self, client):
+        c, mgr = client
+        mgr.has_keypair.return_value = True
+        resp = c.post("/pgp/key/generate", json={})
+        assert resp.status_code == err.ERROR_PGP_KEY_ALREADY_EXISTS.h
+        assert resp.json["error_code"] == err.ERROR_PGP_KEY_ALREADY_EXISTS.c
+        mgr.generate_keypair.assert_not_called()
 
 
-class TestPGPKeyManager:
-    """Verify the PGPKeyManager service exists."""
+class TestGetKey:
+    def test_get_key_ok(self, client):
+        c, mgr = client
+        mgr.get_public_key.return_value = ARMORED_KEY
+        resp = c.get("/pgp/key")
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["public_key"] == ARMORED_KEY
+        # fingerprint derived from the armored key (sha256 hex, 40 chars upper)
+        assert len(data["fingerprint"]) == 40
 
-    def test_manager_file_exists(self):
-        assert (IFACE_DIR / "PGPKeyManager.py").exists()
+    def test_get_key_not_found(self, client):
+        c, mgr = client
+        mgr.get_public_key.return_value = None
+        resp = c.get("/pgp/key")
+        assert resp.status_code == err.ERROR_PGP_KEY_NOT_FOUND.h
+        assert resp.json["error_code"] == err.ERROR_PGP_KEY_NOT_FOUND.c
 
-    def test_manager_has_keypair_methods(self):
-        content = (IFACE_DIR / "PGPKeyManager.py").read_text(encoding="utf-8")
-        assert "def has_keypair" in content
-        assert "def generate_keypair" in content
-        assert "def get_public_key" in content
-        assert "def get_private_key" in content
-        assert "def delete_keypair" in content
+    def test_get_key_unarmorable(self, client):
+        c, mgr = client
+        mgr.get_public_key.return_value = "no armor here"
+        resp = c.get("/pgp/key")
+        assert resp.status_code == 200
+        assert resp.json["data"]["fingerprint"] == ""
 
-    def test_manager_has_encrypt_decrypt(self):
-        content = (IFACE_DIR / "PGPKeyManager.py").read_text(encoding="utf-8")
-        assert "def encrypt_message" in content
-        assert "def decrypt_message" in content
+
+class TestDeleteKey:
+    def test_delete_ok(self, client):
+        c, mgr = client
+        resp = c.delete("/pgp/key")
+        assert resp.status_code == 200
+        assert resp.json["data"] == {"status": "deleted"}
+        mgr.delete_keypair.assert_called_once_with("user-1")
+
+
+class TestEncrypt:
+    def test_encrypt_ok(self, client):
+        c, mgr = client
+        mgr.get_public_key.return_value = ARMORED_KEY
+        mgr.encrypt_message.return_value = "-----BEGIN PGP MESSAGE-----"
+        resp = c.post("/pgp/encrypt", json={"message": "hello", "recipient": "b@x.org"})
+        assert resp.status_code == 200
+        assert resp.json["data"]["encrypted"] == "-----BEGIN PGP MESSAGE-----"
+        mgr.encrypt_message.assert_called_once_with("hello", ARMORED_KEY)
+
+    def test_encrypt_recipient_no_key(self, client):
+        c, mgr = client
+        mgr.get_public_key.return_value = None
+        resp = c.post("/pgp/encrypt", json={"message": "hello", "recipient": "nobody@x.org"})
+        assert resp.status_code == err.ERROR_PGP_RECIPIENT_KEY_NOT_FOUND.h
+        assert resp.json["error_code"] == err.ERROR_PGP_RECIPIENT_KEY_NOT_FOUND.c
+
+    def test_encrypt_failure(self, client):
+        c, mgr = client
+        mgr.get_public_key.return_value = ARMORED_KEY
+        mgr.encrypt_message.side_effect = ValueError("boom")
+        resp = c.post("/pgp/encrypt", json={"message": "hello", "recipient": "b@x.org"})
+        assert resp.status_code == err.ERROR_PGP_ENCRYPT_FAILED.h
+        assert resp.json["error_code"] == err.ERROR_PGP_ENCRYPT_FAILED.c
+
+    def test_encrypt_validation(self, client):
+        c, _ = client
+        resp = c.post("/pgp/encrypt", json={})
+        assert resp.status_code == 422
+
+
+class TestDecrypt:
+    def test_decrypt_ok(self, client):
+        c, mgr = client
+        mgr.get_private_key.return_value = ARMORED_KEY
+        mgr.decrypt_message.return_value = "top secret"
+        resp = c.post("/pgp/decrypt", json={"armored_message": "MSG"})
+        assert resp.status_code == 200
+        assert resp.json["data"]["plaintext"] == "top secret"
+        mgr.decrypt_message.assert_called_once_with("MSG", ARMORED_KEY)
+
+    def test_decrypt_no_key(self, client):
+        c, mgr = client
+        mgr.get_private_key.return_value = None
+        resp = c.post("/pgp/decrypt", json={"armored_message": "MSG"})
+        assert resp.status_code == err.ERROR_PGP_KEY_NOT_FOUND.h
+        assert resp.json["error_code"] == err.ERROR_PGP_KEY_NOT_FOUND.c
+
+    def test_decrypt_failure(self, client):
+        c, mgr = client
+        mgr.get_private_key.return_value = ARMORED_KEY
+        mgr.decrypt_message.side_effect = ValueError("bad")
+        resp = c.post("/pgp/decrypt", json={"armored_message": "MSG"})
+        assert resp.status_code == err.ERROR_PGP_DECRYPT_FAILED.h
+        assert resp.json["error_code"] == err.ERROR_PGP_DECRYPT_FAILED.c

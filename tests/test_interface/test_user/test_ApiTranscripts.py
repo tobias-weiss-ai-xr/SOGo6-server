@@ -1,151 +1,191 @@
-"""Structural tests for the Meeting Transcripts API (0% coverage baseline)."""
-from pathlib import Path
+"""Functional tests for ApiTranscripts — list/create/detail/summary plus the
+pure summary/action-item extractors. sogo_cache is faked, g.user logged in.
+"""
+import json
+from types import SimpleNamespace
 
-API_DIR = Path(__file__).resolve().parents[3] / "app" / "api" / "v1" / "user"
+import pytest
+from flask import Flask, g
 
+from app.api.v1.user.ApiTranscripts import (
+    blp,
+    _extract_action_items,
+    _extract_summary,
+)
+from app.utils import errors as err
 
-class TestApiTranscriptsBlueprint:
-    """Verify the Meeting Transcripts API blueprint structure."""
+MOD = "app.api.v1.user.ApiTranscripts"
 
-    def test_api_file_exists(self):
-        assert (API_DIR / "ApiTranscripts.py").exists()
-
-    def test_blueprint_url_prefix(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert 'url_prefix="/ai/transcripts"' in content
-
-    def test_list_create_route(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert '@blp.route("")' in content
-        assert "class ApiTranscriptListCreate" in content
-        assert "def get(self)" in content
-        assert "def post(self" in content
-
-    def test_detail_route(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert '@blp.route("/<string:transcript_id>")' in content
-        assert "class ApiTranscriptDetail" in content
-        assert "def get(self, transcript_id" in content
-
-    def test_summary_route(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert '@blp.route("/<string:transcript_id>/summary")' in content
-        assert "class ApiTranscriptSummary" in content
-
-    def test_register_in_user_apis(self):
-        # Note: This API may not be registered yet - it exists as a standalone module
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "Blueprint" in content
-        assert "blp = Blueprint" in content
+USER = SimpleNamespace(uid="user-1")
 
 
-class TestApiTranscriptsSchemas:
-    """Verify the request/response schema definitions."""
+class FakeCache:
+    def __init__(self):
+        self.data = {}
 
-    def test_create_schema_has_required_fields(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "class TranscriptCreateSchema" in content
-        assert "event_id" in content
-        assert "title" in content
-        assert "text" in content
-        assert "language" in content
-        assert "duration_minutes" in content
-        assert "attendees" in content
-        assert "required=True" in content
+    def get(self, key, as_type=None):
+        return self.data.get(key)
 
-    def test_update_schema_has_text(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "class TranscriptUpdateSchema" in content
-        assert "text" in content
+    def set(self, key, value, ttl=None):
+        self.data[key] = value
 
 
-class TestTranscriptLogic:
-    """Verify key logic patterns in the implementation."""
-
-    def test_extract_summary_function(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "def _extract_summary" in content
-        assert "max_lines" in content
-        assert "sentences" in content
-        assert "re.split" in content
-
-    def test_extract_summary_scores_sentences(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "scored" in content
-        assert "action_keywords" in content
-        assert "question_keywords" in content
-        assert "score +=" in content
-
-    def test_extract_summary_sorts_and_limits(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "scored.sort(reverse=True)" in content
-        assert "[:max_lines]" in content
-        assert "text.index" in content
-
-    def test_extract_action_items_function(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "def _extract_action_items" in content
-        assert "action_triggers" in content
-        assert "re.search" in content
-
-    def test_action_triggers_patterns(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "should" in content
-        assert "need to" in content
-        assert "action item" in content
-        assert "next step" in content
-        assert "TODO" in content
-        assert "deadline" in content
-        assert "follow up" in content
-
-    def test_transcript_has_summary_and_action_items(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert '"summary"' in content
-        assert '"action_items"' in content
-        assert "_extract_summary" in content
-        assert "_extract_action_items" in content
+CACHE = FakeCache()
 
 
-class TestTranscriptStorage:
-    """Verify cache key patterns and storage."""
-
-    def test_prefix_defined(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "_PREFIX" in content
-        assert "transcript:" in content
-
-    def test_index_key_pattern(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert 'index:{user.uid}' in content
-
-    def test_ttl_90_days(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "86400 * 90" in content
-
-    def test_transcript_has_id(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "secrets.token_hex(12)" in content
-        assert '"id": transcript_id' in content
+@pytest.fixture(autouse=True)
+def _reset(monkeypatch):
+    CACHE.data.clear()
+    monkeypatch.setattr(f"{MOD}.sogo_cache", lambda: CACHE)
+    yield
 
 
-class TestTranscriptResponse:
-    """Verify response structures."""
+@pytest.fixture
+def client():
+    app = Flask(__name__)
+    app.config["TESTING"] = True
 
-    def test_list_returns_transcripts(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert '"transcripts": transcripts' in content
+    @app.before_request
+    def _set_user():
+        g.user = USER
 
-    def test_create_returns_201(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "code=201" in content
+    app.register_blueprint(blp)
+    return app.test_client()
 
-    def test_detail_returns_404_on_missing(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert "ERROR_NOT_FOUND" in content
 
-    def test_summary_returns_summary_and_action_items(self):
-        content = (API_DIR / "ApiTranscripts.py").read_text(encoding="utf-8")
-        assert '"summary"' in content
-        assert '"action_items"' in content
-        assert '"duration_minutes"' in content
-        assert '"attendee_count"' in content
+def _seed_transcript(tid="abc123", text="We need to ship it. What's the deadline? Follow up on the API."):
+    tr = {
+        "id": tid,
+        "event_id": "",
+        "title": "Planning",
+        "text": text,
+        "summary": "summary",
+        "action_items": [],
+        "language": "en",
+        "duration_minutes": 60,
+        "attendees": ["a@x.org", "b@x.org"],
+        "created_by": "user-1",
+        "created_at": 100,
+    }
+    CACHE.data[f"transcript:{tid}"] = json.dumps(tr)
+    return tr
+
+
+class TestExtractSummary:
+    def test_short_text_kept(self):
+        text = "One. Two. Three."
+        assert _extract_summary(text) == text
+
+    def test_long_text_scores_action_items_first(self):
+        text = (
+            "We should fix the bug next week. " * 3
+            + "Also, follow up on the invoice, then what about the logo? " * 3
+            + "Random filler sentence number one. " * 6
+        )
+        out = _extract_summary(text, max_lines=4)
+        assert len(out.split(". ")) <= 5
+        assert "fix the bug" in out or "follow up" in out
+
+
+class TestExtractActionItems:
+    def test_extracts_declarative_actions(self):
+        items = _extract_action_items(
+            "I should call the client tomorrow. We need to review the PR. TODO: write docs."
+        )
+        assert len(items) >= 2
+        assert all(i["type"] == "action_item" for i in items)
+
+    def test_no_action_items(self):
+        assert _extract_action_items("The weather is nice today. The sky is blue.") == []
+
+
+class TestList:
+    def test_list_empty(self, client):
+        resp = client.get("/ai/transcripts")
+        assert resp.status_code == 200
+        assert resp.json["data"]["transcripts"] == []
+
+    def test_list_returns_transcripts(self, client):
+        _seed_transcript("abc")
+        _seed_transcript("def")
+        CACHE.data["transcript:index:user-1"] = ["abc", "def"]
+        resp = client.get("/ai/transcripts")
+        assert resp.status_code == 200
+        assert [t["id"] for t in resp.json["data"]["transcripts"]] == ["abc", "def"]
+
+    def test_list_skips_corrupt(self, client):
+        CACHE.data["transcript:index:user-1"] = ["abc", "broken"]
+        _seed_transcript("abc")
+        CACHE.data["transcript:broken"] = "{oops"
+        resp = client.get("/ai/transcripts")
+        assert resp.status_code == 200
+        assert [t["id"] for t in resp.json["data"]["transcripts"]] == ["abc"]
+
+
+class TestCreate:
+    def test_create_ok(self, client):
+        resp = client.post(
+            "/ai/transcripts",
+            json={
+                "event_id": "evt-1",
+                "title": "Planning",
+                "text": "We should finalize the roadmap. What about the budget?",
+                "duration_minutes": 45,
+                "attendees": ["a@x.org"],
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json["data"]
+        assert data["title"] == "Planning"
+        assert data["created_by"] == "user-1"
+        assert data["duration_minutes"] == 45
+        assert data["attendees"] == ["a@x.org"]
+        assert data["summary"]
+        assert data["action_items"], "text contains action triggers"
+        assert f"transcript:{data['id']}" in CACHE.data
+        assert "transcript:index:user-1" in CACHE.data
+
+    def test_create_minimal_body(self, client):
+        resp = client.post("/ai/transcripts", json={"title": "T", "text": "Just notes."})
+        assert resp.status_code == 201
+        data = resp.json["data"]
+        assert data["language"] == "en"
+        assert data["duration_minutes"] == 60
+        assert data["attendees"] == []
+
+    def test_create_validation(self, client):
+        resp = client.post("/ai/transcripts", json={"title": "x"})
+        assert resp.status_code == 422
+
+
+class TestDetail:
+    def test_detail_ok(self, client):
+        _seed_transcript("abc")
+        resp = client.get("/ai/transcripts/abc")
+        assert resp.status_code == 200
+        assert resp.json["data"]["title"] == "Planning"
+
+    def test_detail_not_found(self, client):
+        resp = client.get("/ai/transcripts/nope")
+        assert resp.status_code == err.ERROR_NOT_FOUND.h
+        assert resp.json["error_code"] == err.ERROR_NOT_FOUND.c
+
+
+class TestSummary:
+    def test_summary_ok(self, client):
+        _seed_transcript(
+            "abc",
+            text="We should fix the bug. I will send the report tomorrow. Any questions?",
+        )
+        resp = client.get("/ai/transcripts/abc/summary")
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["transcript_id"] == "abc"
+        assert data["summary"]
+        assert data["attendee_count"] == 2
+        assert data["duration_minutes"] == 60
+
+    def test_summary_not_found(self, client):
+        resp = client.get("/ai/transcripts/nope/summary")
+        assert resp.status_code == err.ERROR_NOT_FOUND.h
+        assert resp.json["error_code"] == err.ERROR_NOT_FOUND.c

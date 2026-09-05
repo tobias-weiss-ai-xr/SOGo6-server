@@ -1,141 +1,168 @@
-"""Structural tests for the Spam Filter API (0% coverage baseline)."""
-from pathlib import Path
+"""Functional tests for ApiSpamFilter — /score, /report, /stats + the pure
+heuristic scorer itself. sogo_cache is faked.
+"""
+import json
 
-API_DIR = Path(__file__).resolve().parents[3] / "app" / "api" / "v1" / "user"
+import pytest
+from flask import Flask
 
+from app.api.v1.user.ApiSpamFilter import blp, _compute_spam_score
 
-class TestApiSpamFilterBlueprint:
-    """Verify the Spam Filter API blueprint structure."""
-
-    def test_api_file_exists(self):
-        assert (API_DIR / "ApiSpamFilter.py").exists()
-
-    def test_blueprint_url_prefix(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert 'url_prefix="/ai/spam"' in content
-
-    def test_score_route(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert '@blp.route("/score")' in content
-        assert "class ApiSpamScore" in content
-        assert "def post(self" in content
-
-    def test_report_route(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert '@blp.route("/report")' in content
-        assert "class ApiSpamReport" in content
-
-    def test_stats_route(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert '@blp.route("/stats")' in content
-        assert "class ApiSpamStats" in content
-        assert "def get(self)" in content
-
-    def test_register_in_user_apis(self):
-        # Note: This API may not be registered yet - it exists as a standalone module
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "Blueprint" in content
-        assert "blp = Blueprint" in content
+MOD = "app.api.v1.user.ApiSpamFilter"
 
 
-class TestApiSpamFilterSchemas:
-    """Verify the request/response schema definitions."""
+class FakeCache:
+    def __init__(self):
+        self.data = {}
 
-    def test_score_schema_has_required_fields(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "class SpamScoreSchema" in content
-        assert "subject" in content
-        assert "body" in content
-        assert "sender" in content
-        assert "has_attachments" in content
-        assert "required=True" in content
+    def get(self, key, as_type=None):
+        return self.data.get(key)
 
-    def test_report_schema_has_fields(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "class SpamReportSchema" in content
-        assert "message_id" in content
-        assert "is_spam" in content
-        assert "required=True" in content
+    def set(self, key, value, ttl=None):
+        self.data[key] = value
 
 
-class TestSpamFilterLogic:
-    """Verify key logic patterns in the implementation."""
-
-    def test_spam_patterns_defined(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "_SPAM_PATTERNS" in content
-        assert "urgent action required" in content
-        assert "click here" in content
-        assert "you (?:have won|won|been selected)" in content
-
-    def test_benign_patterns_defined(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "_BENIGN_PATTERNS" in content
-        assert "meeting" in content
-        assert "attachment" in content
-
-    def test_compute_spam_score_function(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "def _compute_spam_score" in content
-        assert "subject" in content
-        assert "body" in content
-        assert "sender" in content
-        assert "has_attachments" in content
-
-    def test_score_returns_normalized(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "max(0.0, min(10.0" in content
-        assert '"score"' in content
-        assert '"is_spam"' in content
-        assert '"is_suspicious"' in content
-        assert '"classification"' in content
-        assert '"signals"' in content
-
-    def test_classification_thresholds(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "normalized >= 5.0" in content  # is_spam
-        assert "normalized >= 3.5" in content  # is_suspicious
-
-    def test_report_updates_stats(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "spam:report:" in content
-        assert "spam:stats:" in content
-        assert "stats[" in content
-
-    def test_global_stats_defaults(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert '"total_scored"' in content
-        assert '"classified_spam"' in content
-        assert '"classified_ham"' in content
-        assert '"classified_suspicious"' in content
-
-    def test_sender_reputation_tracking(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "stats_key" in content
-        assert "stats[" in content
-        assert '"total"' in content
-        assert '"spam"' in content
+CACHE = FakeCache()
 
 
-class TestSpamPatterns:
-    """Verify specific spam pattern coverage."""
+@pytest.fixture(autouse=True)
+def _reset(monkeypatch):
+    CACHE.data.clear()
+    monkeypatch.setattr(f"{MOD}.sogo_cache", lambda: CACHE)
+    yield
 
-    def test_subject_spammy_words(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert '["!!!", "???", "free", "urgent", "winner"]' in content
 
-    def test_numeric_heavy_local_check(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "digits > len(local) * 0.5" in content
+@pytest.fixture
+def client():
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.register_blueprint(blp)
+    return app.test_client()
 
-    def test_suspicious_tlds(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert '("xyz", "top", "click", "stream", "download", "win")' in content
 
-    def test_caps_ratio_check(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "caps_ratio > 0.3" in content
+class TestScoreEndpoint:
+    def test_score_ham(self, client):
+        resp = client.post(
+            "/ai/spam/score",
+            json={
+                "subject": "Meeting tomorrow",
+                "body": "Hi, let's schedule the meeting. Regards, Bob",
+                "sender": "bob@company.com",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["classification"] == "ham"
+        assert data["is_spam"] is False
+        assert data["model"] == "heuristic"
 
-    def test_excessive_links_check(self):
-        content = (API_DIR / "ApiSpamFilter.py").read_text(encoding="utf-8")
-        assert "link_count > 5" in content
+    def test_score_spam(self, client):
+        resp = client.post(
+            "/ai/spam/score",
+            json={
+                "subject": "YOU HAVE WON!!!",
+                "body": "Click here now to claim your $10 MILLION prize. "
+                        "Get FREE viagra and casino bonus. Act now!",
+                "sender": "n0t1f1cat10n.s3rv1ce@x.xyz",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["is_spam"] is True
+        assert data["classification"] == "spam"
+        assert data["is_suspicious"] is False
+        assert data["signals"], "expected signals to be reported"
+
+    def test_score_validation(self, client):
+        resp = client.post("/ai/spam/score", json={})
+        assert resp.status_code == 422
+
+
+class TestSpamScoreHeuristic:
+    """Direct assertions on the pure scorer (fast + thorough)."""
+
+    def test_benign_discounts(self):
+        result = _compute_spam_score(
+            subject="Weekly standup",
+            body="Meeting notes attached, unsubscribe at any time. Thanks!",
+            sender="a@company.com",
+            has_attachments=True,
+        )
+        assert result["is_spam"] is False
+
+    def test_numeric_sender_and_suspicious_tld(self):
+        result = _compute_spam_score(
+            subject="hi", body="hello friend", sender="12345@telegram.top"
+        )
+        signals = {s["signal"] for s in result["signals"]}
+        assert "numeric_heavy_local" in signals
+        assert any(s.startswith("suspicious_tld_") for s in signals)
+
+    def test_high_caps_ratio(self):
+        result = _compute_spam_score(
+            subject="REMINDER", body="THIS IS A REMINDER THAT PAYMENT IS DUE NOW.", sender=""
+        )
+        assert any(s["signal"] == "high_caps_ratio" for s in result["signals"])
+
+    def test_excessive_links(self):
+        body = " ".join(["https://example.com/page" for _ in range(8)])
+        result = _compute_spam_score(subject="links", body=body, sender="")
+        assert any(s["signal"] == "excessive_links" for s in result["signals"])
+
+    def test_score_clamped_0_10(self):
+        result = _compute_spam_score(
+            subject="URGENT ACTION REQUIRED!! YOU WON $1 MILLION CASINO LOTTERY",
+            body="Click here immediately, act now, wire transfer $10 million. " * 5,
+            sender="",
+        )
+        assert 0.0 <= result["score"] <= 10.0
+
+
+class TestReport:
+    def test_report_with_sender(self, client):
+        resp = client.post(
+            "/ai/spam/report",
+            json={"message_id": "m1", "is_spam": True, "sender": "spam@x.xyz"},
+        )
+        assert resp.status_code == 200
+        assert resp.json["data"]["status"] == "recorded"
+        assert "spam:report:m1" in CACHE.data
+        stats = json.loads(CACHE.data["spam:stats:spam@x.xyz"])
+        assert stats == {"total": 1, "spam": 1}
+
+    def test_report_ham_updates_stats(self, client):
+        CACHE.data["spam:stats:a@x.org"] = json.dumps({"total": 5, "spam": 3})
+        resp = client.post(
+            "/ai/spam/report",
+            json={"message_id": "m2", "is_spam": False, "sender": "a@x.org"},
+        )
+        assert resp.status_code == 200
+        stats = json.loads(CACHE.data["spam:stats:a@x.org"])
+        assert stats == {"total": 6, "spam": 3}
+
+    def test_report_without_sender(self, client):
+        resp = client.post("/ai/spam/report", json={"message_id": "m3", "is_spam": False})
+        assert resp.status_code == 200
+        assert "spam:report:m3" in CACHE.data
+
+    def test_report_validation(self, client):
+        resp = client.post("/ai/spam/report", json={})
+        assert resp.status_code == 422
+
+
+class TestStats:
+    def test_stats_defaults(self, client):
+        resp = client.get("/ai/spam/stats")
+        assert resp.status_code == 200
+        data = resp.json["data"]
+        assert data["total_scored"] == 0
+        assert data["classified_spam"] == 0
+
+    def test_stats_stored(self, client):
+        CACHE.data["spam:global_stats"] = json.dumps(
+            {"total_scored": 42, "classified_spam": 10, "classified_ham": 30,
+             "classified_suspicious": 2, "false_positive_reports": 1}
+        )
+        resp = client.get("/ai/spam/stats")
+        assert resp.status_code == 200
+        assert resp.json["data"]["total_scored"] == 42
