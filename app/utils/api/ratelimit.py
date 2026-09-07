@@ -38,15 +38,33 @@ GLOBAL_EXCLUDED_PREFIXES = (
     '/health', '/system', '/metrics',
     '/.well-known', '/security.txt',
     '/docs', '/openapi', '/swagger',
+    '/api/user/v1/system', '/api/user/v1/health',
 )
+
+
+def _is_excluded_path(path: str) -> bool:
+    """Return True if *path* is excluded from the global rate limit."""
+    if not path:
+        return False
+    for prefix in GLOBAL_EXCLUDED_PREFIXES:
+        if path == prefix or path.startswith(prefix + '/') or path.startswith('/api/user/v1' + prefix):
+            return True
+    return False
 
 
 def check_global_rate_limit() -> None | Response:
     """Apply global per-IP rate limit to API requests.
 
     Returns a 429 Response if the limit is exceeded, else None (proceed).
+
+    Paths listed in ``GLOBAL_EXCLUDED_PREFIXES`` (health, system, metrics,
+    well-known, docs, etc.) are always allowed through and never count toward
+    the per-IP budget. This prevents the UI from being blocked while loading
+    its bootstrap configuration.
     """
     if not process_config.SOGO_P_REDIS_URL:
+        return None
+    if _is_excluded_path(request.path):
         return None
     count_key = f"ratelimit:global:{request.remote_addr}:count"
     try:
