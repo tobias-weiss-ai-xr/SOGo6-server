@@ -732,49 +732,6 @@ class ClientImap(ClientMailServer):
 
 
 
-    def ensure_default_folders(self) -> None:
-        """
-        Ensure that default mail folders (INBOX, Sent, Drafts, Trash, Junk) exist for the user.
-        
-        Stalwart Mail Server automatically creates INBOX on first access, but other folders
-        need to be created explicitly. This method checks if each default folder exists and
-        creates it if missing.
-        
-        This handles the folder initialization for Stalwart users on first mailbox access.
-        
-        :raises RequestException: If folder checking or creation fails.
-        :raises BugException: If not authenticated.
-        """
-        if self.connection is None or not self.authenticated:
-            raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehand")
-        
-        # Standard folders that should exist for every user
-        default_folders = [
-            cs.MAIL_FOLDER_INBOX,
-            cs.MAIL_FOLDER_SENT,
-            "Sent Items",  # Alternative name for Sent
-            cs.MAIL_FOLDER_DRAFT,
-            "Drafts",  # Alternative name for Draft
-            cs.MAIL_FOLDER_TRASH,
-            cs.MAIL_FOLDER_JUNK,
-            "Junk Mail",  # Alternative name for Junk
-        ]
-        
-        # Get the list of existing folders
-        existing_folders = set()
-        try:
-            for folder in self._imap_list_folders('"*"'):
-                existing_folders.add(folder.path.lower())
-        except RequestException as e:
-            logger_imap.warning("Could not list existing folders for default folder check: %s", e)
-            return
-        
-        # Create missing folders
-        for folder_name in default_folders:
-            # Check each variation of the folder name
-            if folder_name.lower() not in existing_folders:
-                try:
-                    # Use the mapped name if available, otherwise use the constant
                     mapped_name = self.folders_map_type_to_name.get(folder_name, folder_name)
                     if mapped_name.lower() not in existing_folders:
                         logger_imap.info("Creating missing default folder '%s' for user", mapped_name)
