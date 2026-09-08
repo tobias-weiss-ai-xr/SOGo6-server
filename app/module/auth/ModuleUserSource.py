@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from app.config.settings.DomainSettings import UserSourceSettingsObj, UserSourceSettings
 from app.utils import exceptions as exc
 from app.utils.module.importManager import import_and_instantiate_manager
-from app.utils.logger.logger import logger
+from app.utils.logger.logger import logger, logger_api
 from app.manager.ldap.ClientLdap import ldap_escape
 
 if TYPE_CHECKING:
