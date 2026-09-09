@@ -12,9 +12,9 @@ from .ApiUserProfile import blp as user_profile_blueprint
 from .ApiUserPreferences import blp as user_preferences_blueprint
 from .ApiUserCustomization import blp as user_customization_blueprint
 from .ApiGlobalSearch import blp as global_search_blueprint
+from .ApiOpenCloud import blp as opencloud_api
 from .ApiOAuthProvider import blp as oauth_api
 from .ApiPushNotifications import blp as push_api
-from .ApiOpenCloud import blp as opencloud_api
 
 
 def register_user_blueprints(api: Api):
@@ -40,7 +40,7 @@ user_profile_apis: list[Blueprint] = [
     user_preferences_blueprint,
     user_customization_blueprint,
     global_search_blueprint,
+    opencloud_api,
     oauth_api,
     push_api,
-    opencloud_api,
 ]

@@ -1019,6 +1019,31 @@ class ClientImap(ClientMailServer):
         return len(datas) if isinstance(datas, list) else 0
 
 
+    def uid_expunge(self, folder_path: str, mail_uids: str | list[str]) -> int:
+        """Expunge only the given UIDs from a mailbox (RFC 4315 UID EXPUNGE).
+
+        Precise counterpart to :meth:`expunge_folder`: removes exactly the
+        messages listed in ``mail_uids``. Used by the JMAP move path so the
+        source copy disappears while other messages that a client deliberately
+        flagged \\Deleted stay untouched.
+        """
+        logger_imap.debug("UID-expunging %s from mailbox '%s'", mail_uids, folder_path)
+        if self.connection is None or not self.authenticated:
+            raise BugException("Not authenticated meaning self.connect() and self.login() was not called beforehands")
+        if not folder_path.isascii():
+            raise RequestException(f"Mailbox name is not ascii: {folder_path}", err.ERROR_IMAP_NOT_ASCII)
+        uids = mail_uids if isinstance(mail_uids, list) else [mail_uids]
+        if not uids:
+            return 0
+        folder_path = quote(self._fix_folder_path(folder_path))
+        self.select_mailbox(folder_path)
+        uid_arg = ",".join(str(u) for u in uids)
+        success, datas = self._exec_imap4_method(self.connection.uid, "EXPUNGE", uid_arg)
+        if not success and not (isinstance(datas, list) and datas and isinstance(datas[0], str) and "Unknown" in datas[0]):
+            raise RequestException(f"Failed to UID-expunge {uid_arg} from {folder_path}: {datas}", err.ERROR_IMAP_FAILED)
+        return len(datas) if isinstance(datas, list) else 0
+
+
     def purge_folder(self, folder_path: str, before_date: str = "", do_children: bool = True, permanently: bool = False) -> int:
         """Mark all mails in a folder as deleted (optionally before a specific date).
 
@@ -1276,6 +1301,11 @@ class ClientImap(ClientMailServer):
         if self.connection is not None and self.authenticated:
             if not dest_mailbox.isascii():
                 raise RequestException(f"Mailbox name is not ascii: {dest_mailbox}", err.ERROR_IMAP_NOT_ASCII)
+            # A mailbox must be SELECTED before UID COPY (IMAP COPY is only
+            # legal in state SELECTED). Select the source folder explicitly so
+            # moves work even when the connection opened without a selection.
+            if source_folder is not None:
+                self.select_mailbox(quote(self._fix_folder_path(source_folder)))
             if isinstance(mail_uid, (Iterator, list)):
                 mail_uid = ','.join(mail_uid)
             dest_mailbox = quote(dest_mailbox)

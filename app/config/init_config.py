@@ -173,6 +173,7 @@ def init_upload_storage() -> None:
     logger.info("Upload storage directories initialized: %s and %s", upload_path, temp_path)
 
 
+
 def _check_admin_password_hardening() -> None:
     """CRA Art. 15 — refuse startup if admin password is default or empty."""
     pwd = process_config.SOGO_P_ADMIN_PWD

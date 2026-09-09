@@ -163,6 +163,7 @@ class InterfaceApiMailSend:
                     )
                 else:
                     # Schedule via Celery agent
+                    # Schedule via Celery agent
                     agent = sogo_agent()
                     request = ScheduleSendRequest(
                         account_id=account_id,
