@@ -124,6 +124,16 @@ def create_app(sogo_state: int) -> Flask:
     # with ``http://`` instead of ``https://``.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
+    # Backward-compat: rewrite /SOGo/dav/* → /caldav/* so SOGo5 DAV clients
+    # (Apple Calendar, Thunderbird, etc.) can use the legacy /SOGo/dav/ path.
+    _dav_orig = app.wsgi_app
+    def _dav_rewrite(environ, start_response):  # noqa: ANN001, ANN202
+        path = environ.get('PATH_INFO', '')
+        if path.startswith('/SOGo/dav/'):
+            environ['PATH_INFO'] = '/caldav/' + path[len('/SOGo/dav/'):]
+        return _dav_orig(environ, start_response)
+    app.wsgi_app = _dav_rewrite
+
     app.config.from_object(process_config)
     # Hard cap on HTTP request body size, applied at the WSGI layer (Werkzeug). Protects
     # the server from oversized uploads before any application code reads the body into
@@ -229,6 +239,10 @@ def create_app(sogo_state: int) -> Flask:
 
     @app.route("/.well-known/caldav")
     def well_known_caldav() -> Response:
+        return Response(status=301, headers={"Location": "/caldav/"})
+
+    @app.route("/.well-known/carddav")
+    def well_known_carddav() -> Response:
         return Response(status=301, headers={"Location": "/caldav/"})
 
     # --- API Playground routes (/docs, /docs/openapi.json) ---
