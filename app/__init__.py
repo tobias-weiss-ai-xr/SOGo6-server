@@ -237,11 +237,11 @@ def create_app(sogo_state: int) -> Flask:
     from app.api.v1.caldav.ApiCalDAV import blp as caldav_blueprint
     app.register_blueprint(caldav_blueprint)
 
-    @app.route("/.well-known/caldav")
+    @app.route("/.well-known/caldav", methods=["GET", "PROPFIND", "HEAD"])
     def well_known_caldav() -> Response:
         return Response(status=301, headers={"Location": "/caldav/"})
 
-    @app.route("/.well-known/carddav")
+    @app.route("/.well-known/carddav", methods=["GET", "PROPFIND", "HEAD"])
     def well_known_carddav() -> Response:
         return Response(status=301, headers={"Location": "/caldav/"})
 
