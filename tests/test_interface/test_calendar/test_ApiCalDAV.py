@@ -259,3 +259,26 @@ class TestCalDavModuleIntegration:
         )
         assert response.status_code == 207
         # sogo5 parity: calendar-home-set is not in principal props (removed to match sogo5)
+
+    def test_calendar_home_depth1_lists_children(self, client):
+        """PROPFIND Depth 1 on calendar_home lists calendars and freebusy.ifb."""
+        # register a user (auto-provisions Personal calendar)
+        response = client.open(
+            "/caldav/calendars/user@example.com/personal/",
+            method="MKCALENDAR",
+            data=b"<c:mkcalendar xmlns:c='urn:ietf:params:xml:ns:caldav'><d:set xmlns:d='DAV:'><d:prop><d:displayname>Work</d:displayname></d:prop></d:set></c:mkcalendar>",
+            headers={"Content-Type": "application/xml"},
+        )
+        assert response.status_code == 201
+
+        # PROPFIND Depth 1 on calendar home
+        response = client.open(
+            "/caldav/calendars/user@example.com/",
+            method="PROPFIND",
+            data=b"<d:propfind xmlns:d='DAV:'><d:prop><d:resourcetype/></d:prop></d:propfind>",
+            headers={"Depth": "1", "Content-Type": "application/xml"},
+        )
+        assert response.status_code == 207
+        assert b"multistatus" in response.data
+        # Should list both the calendar and freebusy.ifb
+        assert b"freebusy.ifb" in response.data

@@ -364,6 +364,21 @@ def _build_event_props(event, include_data: bool = False) -> list[ET.Element]:
     return props
 
 
+def _build_freebusy_props() -> list[ET.Element]:
+    """Properties for freebusy.ifb resource (text/calendar, non-collection)."""
+    return [
+        _prop("getlastmodified", text=_rfc1123(datetime.now(timezone.utc))),
+        _prop("getetag", text='"None"'),
+        _prop("getcontenttype", text="text/calendar"),
+        _prop("resourcetype"),
+        _prop("displayname", text="Free Busy"),
+        _prop("href"),
+        _prop("getcontentlength", text="0"),
+        _prop("supported-report-component-set", ns=CALDAV_NS,
+              children=[_prop("comp", text="VFREEBUSY")]),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # PROPFIND
 # ---------------------------------------------------------------------------
@@ -419,6 +434,11 @@ def _propfind_response(resource, depth: str, mode: str, props: list[str]) -> Res
                     f"/caldav/calendars/{resource.email}/{cal['name']}/"
                 )
                 _emit(child, _build_calendar_props(cal))
+            # freebusy.ifb resource (always listed as a child)
+            child = module.resolve(
+                f"/caldav/calendars/{resource.email}/freebusy.ifb"
+            )
+            _emit(child, _build_freebusy_props())
         elif resource.kind == "calendar":
             for event in module.list_events(
                 resource.email or "", resource.calendar_name or ""

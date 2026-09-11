@@ -75,7 +75,7 @@ class CalDavResource:
 
     __slots__ = ("kind", "email", "calendar_name", "uid", "path")
 
-    # kinds: root | principals | principal | calendar_home | calendar | event
+    # kinds: root | principals | principal | calendar_home | calendar | event | freebusy
     def __init__(
         self,
         kind: str,
@@ -107,6 +107,8 @@ class CalDavResource:
             return f"/caldav/calendars/{self.email}/" if self.email else "/caldav/calendars/"
         if self.kind == "calendar":
             return f"/caldav/calendars/{self.email}/{self.calendar_name}/"
+        if self.kind == "freebusy":
+            return f"/caldav/calendars/{self.email}/freebusy.ifb"
         return f"/caldav/calendars/{self.email}/{self.calendar_name}/{self.uid}.ics"
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
@@ -205,6 +207,8 @@ class ModuleCalDAV:
                 return CalDavResource("calendar_home", email=email, path=clean)
             name = segments[2]
             if len(segments) == 3:
+                if name == "freebusy.ifb":
+                    return CalDavResource("freebusy", email=email, path=clean)
                 return CalDavResource("calendar", email=email, calendar_name=name, path=clean)
             if len(segments) == 4:
                 uid = _UID_SUFFIX_RE.sub("", segments[3])
@@ -220,13 +224,23 @@ class ModuleCalDAV:
     # ------------------------------------------------------------------
 
     def register_user(self, email: str, display_name: str | None = None) -> dict[str, Any]:
-        """Register a CalDAV principal (the authenticated user)."""
+        """Register a CalDAV principal (the authenticated user).
+
+        Auto-provisions a default "Personal" calendar collection so
+        DAV clients immediately see a calendar home with children."""
         key = email.lower()
         principal = self.principals.setdefault(
             key, {"email": key, "display_name": display_name or key}
         )
         if display_name:
             principal["display_name"] = display_name
+        # Auto-provision default Personal calendar
+        email_key = email.lower()
+        has_calendar = any(
+            owner == email_key for (owner, _name) in self._calendars
+        )
+        if not has_calendar:
+            self.create_calendar(email, "Personal", "Personal")
         return principal
 
     def principal_exists(self, email: str) -> bool:
@@ -254,7 +268,6 @@ class ModuleCalDAV:
         key = (email, name)
         if key in self._calendars:
             raise RequestException(error=err.ERROR_CALDAV_CALENDAR_EXISTS)
-        self.register_user(email)
         now = self._now_utc()
         etag = self._etag(name, now)
         self._calendars[key] = {

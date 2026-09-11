@@ -322,3 +322,36 @@ class TestFreeBusy:
         start = datetime(2026, 1, 15, 0, 0, tzinfo=timezone.utc)
         end = datetime(2026, 1, 16, 0, 0, tzinfo=timezone.utc)
         assert module.free_busy_report("u@example.com", "personal", start, end) == []
+
+
+class TestCalendarHomeAutoProvision:
+    def test_register_user_auto_creates_default_calendar(self):
+        module = ModuleCalDAV()
+        module.register_user("u@example.com", "Test User")
+        assert module.calendar_exists("u@example.com", "Personal")
+        cal = module.get_calendar("u@example.com", "Personal")
+        assert cal["displayname"] == "Personal"
+
+    def test_register_user_does_not_override_existing_calendars(self):
+        module = ModuleCalDAV()
+        module.register_user("u@example.com", "Test User")
+        module.create_calendar("u@example.com", "Work", "Work Calendar")
+        cal = module.get_calendar("u@example.com", "Work")
+        assert cal["displayname"] == "Work Calendar"
+
+
+class TestFreebusyResolve:
+    def test_resolve_freebusy_ifb(self):
+        module = ModuleCalDAV()
+        module.register_user("u@example.com", "Test User")
+        res = module.resolve("/calendars/u@example.com/freebusy.ifb")
+        assert res.kind == "freebusy"
+        assert res.href == "/caldav/calendars/u@example.com/freebusy.ifb"
+        assert not res.is_collection
+
+    def test_resolve_freebusy_not_collection(self):
+        module = ModuleCalDAV()
+        module.register_user("u@example.com")
+        res = module.resolve("/calendars/u@example.com/freebusy.ifb")
+        assert res.kind == "freebusy"
+        assert not res.is_collection
