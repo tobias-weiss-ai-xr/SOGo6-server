@@ -104,7 +104,7 @@ class CalDavResource:
         if self.kind == "principal":
             return f"/caldav/principals/user/{self.email}/"
         if self.kind == "calendar_home":
-            return f"/caldav/calendars/{self.email}/"
+            return f"/caldav/calendars/{self.email}/" if self.email else "/caldav/calendars/"
         if self.kind == "calendar":
             return f"/caldav/calendars/{self.email}/{self.calendar_name}/"
         return f"/caldav/calendars/{self.email}/{self.calendar_name}/{self.uid}.ics"
