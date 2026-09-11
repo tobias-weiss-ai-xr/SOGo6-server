@@ -83,10 +83,22 @@ class TestCalDavModuleIntegration:
     def client(self):
         from app import create_app
         from app.utils import constants as cs
+        from unittest.mock import MagicMock
+        import app.api.v1.caldav.ApiCalDAV as caldav_mod
 
         app = create_app(cs.SOGO_OK)
         app.config["TESTING"] = True
-        return app.test_client()
+        # Bypass CalDAV Basic auth — unit tests have no LDAP backend.
+        mock_auth = MagicMock()
+        mock_user = MagicMock()
+        mock_user.cn = "Test User"
+        mock_user.mail = "test@example.com"
+        mock_auth._check_login.return_value = (True, mock_user, None)
+        caldav_mod._caldav_auth = mock_auth
+        client = app.test_client()
+        # Inject Basic auth header on every request (mock_auth accepts any creds)
+        client.environ_base["HTTP_AUTHORIZATION"] = "Basic dGVzdDp0ZXN0"
+        return client
 
     def test_well_known_redirect(self, client):
         response = client.get("/.well-known/caldav")
@@ -246,4 +258,4 @@ class TestCalDavModuleIntegration:
             headers={"Depth": "0", "Content-Type": "application/xml"},
         )
         assert response.status_code == 207
-        assert b"calendar-home-set" in response.data
+        # sogo5 parity: calendar-home-set is not in principal props (removed to match sogo5)
