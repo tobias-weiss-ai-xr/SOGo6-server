@@ -3,6 +3,7 @@ from typing import cast
 
 import os
 import logging
+import gzip
 from json import loads, dumps
 from json.decoder import JSONDecodeError
 import time
@@ -254,14 +255,24 @@ def create_app(sogo_state: int) -> Flask:
     # /SOGo/dav/ (tracked via dav_orig_path set by the WSGI middleware).
     @app.after_request
     def _rewrite_dav_hrefs(response: Response) -> Response:
-        if request.environ.get('dav_orig_path', '').startswith('/SOGo/dav/'):
+        # Rewrite /caldav/ → /SOGo/dav/ in DAV XML responses so SOGo5 clients
+        # see the legacy path. Flask-Compress gzip-encodes the body in its own
+        # after_request (registered later → runs first), so we may need to
+        # decompress before rewriting.
+        orig = request.environ.get('dav_orig_path', '')
+        if orig.startswith('/SOGo/dav/'):
             if response.mimetype and 'xml' in response.mimetype:
                 body = response.get_data()
+                is_gzip = response.headers.get('Content-Encoding') == 'gzip'
+                if is_gzip:
+                    body = gzip.decompress(body)
                 if b'/caldav/' in body:
                     # /caldav/principals/user/$EMAIL/ → /SOGo/dav/$EMAIL/
                     body = body.replace(b'/caldav/principals/user/', b'/SOGo/dav/')
                     # remaining /caldav/ → /SOGo/dav/
                     body = body.replace(b'/caldav/', b'/SOGo/dav/')
+                    if is_gzip:
+                        body = gzip.compress(body)
                     response.set_data(body)
             loc = response.headers.get('Location')
             if loc and '/caldav/' in loc:
