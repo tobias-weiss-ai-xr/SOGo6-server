@@ -126,11 +126,23 @@ def create_app(sogo_state: int) -> Flask:
 
     # Backward-compat: rewrite /SOGo/dav/* → /caldav/* so SOGo5 DAV clients
     # (Apple Calendar, Thunderbird, etc.) can use the legacy /SOGo/dav/ path.
+    # Also maps /SOGo/dav/$USER/ → /caldav/principals/user/$USER/ (SOGo5 puts
+    # user principals at /SOGo/dav/$USER/, sogo6 separates principals/calendars).
     _dav_orig = app.wsgi_app
     def _dav_rewrite(environ, start_response):  # noqa: ANN001, ANN202
         path = environ.get('PATH_INFO', '')
         if path.startswith('/SOGo/dav/'):
-            environ['PATH_INFO'] = '/caldav/' + path[len('/SOGo/dav/'):]
+            environ['dav_orig_path'] = path  # for response href rewrite
+            rest = path[len('/SOGo/dav/'):]
+            if not rest:
+                environ['PATH_INFO'] = '/caldav/'
+            else:
+                first_seg = rest.split('/', 1)[0]
+                if first_seg in ('principals', 'calendars'):
+                    environ['PATH_INFO'] = '/caldav/' + rest
+                else:
+                    # SOGo5-style /SOGo/dav/$USER/ → /caldav/principals/user/$USER/
+                    environ['PATH_INFO'] = '/caldav/principals/user/' + rest
         return _dav_orig(environ, start_response)
     app.wsgi_app = _dav_rewrite
 
@@ -236,6 +248,25 @@ def create_app(sogo_state: int) -> Flask:
     # required by CalDAV client discovery (RFC 6764).
     from app.api.v1.caldav.ApiCalDAV import blp as caldav_blueprint
     app.register_blueprint(caldav_blueprint)
+
+    # Rewrite /caldav/ → /SOGo/dav/ in DAV XML responses so SOGo5 clients see
+    # the legacy path in hrefs. Only applies when the original request was to
+    # /SOGo/dav/ (tracked via dav_orig_path set by the WSGI middleware).
+    @app.after_request
+    def _rewrite_dav_hrefs(response: Response) -> Response:
+        if request.environ.get('dav_orig_path', '').startswith('/SOGo/dav/'):
+            if response.mimetype and 'xml' in response.mimetype:
+                body = response.get_data()
+                if b'/caldav/' in body:
+                    # /caldav/principals/user/$EMAIL/ → /SOGo/dav/$EMAIL/
+                    body = body.replace(b'/caldav/principals/user/', b'/SOGo/dav/')
+                    # remaining /caldav/ → /SOGo/dav/
+                    body = body.replace(b'/caldav/', b'/SOGo/dav/')
+                    response.set_data(body)
+            loc = response.headers.get('Location')
+            if loc and '/caldav/' in loc:
+                response.headers['Location'] = loc.replace('/caldav/', '/SOGo/dav/')
+        return response
 
     @app.route("/.well-known/caldav", methods=["GET", "PROPFIND", "HEAD"])
     def well_known_caldav() -> Response:

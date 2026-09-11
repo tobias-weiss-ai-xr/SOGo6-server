@@ -28,11 +28,11 @@ not constrained by the JSON content-type middleware.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import xml.etree.ElementTree as ET
-from flask import Blueprint, Response, current_app, request
+from flask import Blueprint, Response, current_app, g, request
 from werkzeug.exceptions import HTTPException
 
 from app.module.caldav.ModuleCalDAV import (
@@ -44,6 +44,9 @@ from app.module.caldav.ModuleCalDAV import (
 )
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
+
+# Apache DAV properties namespace (ap:executable etc.) — used by SOGo5
+APACHE_DAV_PROPS_NS = "http://apache.org/dav/props/"
 
 blp = Blueprint("CalDAV", __name__, url_prefix="/caldav")
 
@@ -77,6 +80,65 @@ def _module() -> ModuleCalDAV:
 
 
 # ---------------------------------------------------------------------------
+# Auth — Basic auth via the same LDAP infrastructure as the REST API
+# ---------------------------------------------------------------------------
+
+# Cached InterfaceAuthUser instance (lazy, per-process)
+_caldav_auth = None
+
+
+@blp.before_request
+def _caldav_require_auth() -> Response | None:
+    """Require Basic auth on all CalDAV endpoints (parity with SOGo5).
+
+    OPTIONS is allowed without auth (CORS pre-flight).  All other methods
+    must present valid Basic credentials validated against the configured
+    user source (LDAP).  On success the authenticated ``User`` is stored on
+    ``g.caldav_user`` so downstream handlers can use ``user.cn`` for
+    displaynames.
+    """
+    if request.method == "OPTIONS":
+        return None
+    auth = request.authorization
+    if not auth or auth.type != "basic":
+        return Response(
+            "Authentication required\n",
+            401,
+            {"WWW-Authenticate": 'Basic realm="SOGo CalDAV"'},
+        )
+    # Lazily build the auth interface (cached on the app for the process)
+    global _caldav_auth
+    if _caldav_auth is None:
+        try:
+            from app.config.settings.ProcessSetting import process_config
+            from app.config.init_config import init_get_system_and_default_domain_settings
+            from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
+            system, default_domain = init_get_system_and_default_domain_settings()
+            _caldav_auth = InterfaceAuthUser(process_config, system, default_domain)
+        except Exception:  # noqa: BLE001 — config not ready → 401
+            return Response(
+                "Authentication required\n",
+                401,
+                {"WWW-Authenticate": 'Basic realm="SOGo CalDAV"'},
+            )
+    try:
+        success, user, _ = _caldav_auth._check_login(auth.username, auth.password)
+    except Exception:  # noqa: BLE001 — LDAP error → 401 (not 500)
+        success = False
+        user = None
+    if not success or user is None:
+        return Response(
+            "Invalid credentials\n",
+            401,
+            {"WWW-Authenticate": 'Basic realm="SOGo CalDAV"'},
+        )
+    g.caldav_user = user
+    # Ensure the authenticated user is registered as a CalDAV principal
+    _module().register_user(user.mail or auth.username, user.cn or auth.username)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -88,12 +150,24 @@ def _xml(tag: str, ns: str = DAV_NS, attrib: dict | None = None, text: str | Non
 
 
 def _multistatus() -> ET.Element:
-    """<d:multistatus> root with CalDAV + calendarserver namespaces."""
+    """<D:multistatus> root with DAV + Apache DAV + CalDAV + calendarserver namespaces.
+
+    Uses ``D:`` prefix (matching SOGo5) instead of ``d:``.
+    """
     root = ET.Element(f"{{{DAV_NS}}}multistatus")
-    ET.register_namespace("d", DAV_NS)
+    ET.register_namespace("D", DAV_NS)
+    ET.register_namespace("ap", APACHE_DAV_PROPS_NS)
     ET.register_namespace("c", CALDAV_NS)
     ET.register_namespace("cs", CALENDAR_SERVER_NS)
     return root
+
+
+def _serialize_xml(root: ET.Element) -> bytes:
+    """Serialize XML matching SOGo5 format: double quotes in declaration, no space before />."""
+    body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    body = body.replace(b"<?xml version='1.0' encoding='utf-8'?>", b'<?xml version="1.0" encoding="utf-8"?>')
+    body = body.replace(b" />", b"/>")
+    return body
 
 
 def _response_block(parent: ET.Element, href: str) -> ET.Element:
@@ -105,11 +179,12 @@ def _response_block(parent: ET.Element, href: str) -> ET.Element:
 
 def _propstat(resp: ET.Element, props: list[ET.Element], status: str = "HTTP/1.1 200 OK") -> None:
     propstat = _xml("propstat")
+    # SOGo5 puts <D:status> BEFORE <D:prop> — match that order for parity.
+    propstat.append(_xml("status", text=status))
     prop = _xml("prop")
     for p in props:
         prop.append(p)
     propstat.append(prop)
-    propstat.append(_xml("status", text=status))
     resp.append(propstat)
 
 
@@ -140,9 +215,9 @@ def _rfc1123(dt: datetime) -> str:
 
 def _http_error_response(exc: RequestException) -> Response:
     return Response(
-        f'<?xml version="1.0"?>\n<d:error xmlns:d="DAV:"><d:response>'
-        f"<d:status>HTTP/1.1 {exc.http_status} {exc.error.m}</d:status>"
-        f"</d:response></d:error>",
+        f'<?xml version="1.0"?>\n<D:error xmlns:D="DAV:"><D:response>'
+        f"<D:status>HTTP/1.1 {exc.http_status} {exc.error.m}</D:status>"
+        f"</D:response></D:error>",
         status=exc.http_status,
         mimetype="application/xml",
     )
@@ -176,11 +251,17 @@ def _propfind_props(root: ET.Element) -> tuple[str, list[str]]:
     return "allprop", []
 
 
-def _build_root_props() -> list[ET.Element]:
+def _build_root_props(resource) -> list[ET.Element]:
+    """Root collection properties — matches SOGo5's DAV root response."""
     return [
+        _prop("getlastmodified", text=_rfc1123(datetime.now(timezone.utc))),
         _prop("resourcetype", children=[_prop("collection")]),
-        _prop("displayname", text="SOGo 6 CalDAV"),
-        _prop("current-user-principal", children=[_prop("href", text="/caldav/principals/user/")]),
+        _prop("getcontenttype", text="text/html"),
+        _prop("displayname", text="SOGo"),
+        # SOGo5 includes a duplicate <D:href> inside <D:prop> (non-standard but
+        # required for byte-level parity).
+        _prop("href", text=resource.href),
+        _prop("executable", ns=APACHE_DAV_PROPS_NS, text="0"),
     ]
 
 
@@ -196,26 +277,43 @@ def _build_principals_props(emails: list[str]) -> list[ET.Element]:
     return props
 
 
-def _build_principal_props(email: str) -> list[ET.Element]:
+def _build_principal_props(email: str, resource=None) -> list[ET.Element]:
+    """User principal properties — matches SOGo5's principal response.
+
+    SOGo5 includes: getlastmodified, getetag, resourcetype (collection+principal),
+    getcontenttype, displayname (LDAP CN), duplicate href, ap:executable.
+    Does NOT include principal-URL, calendar-home-set, calendar-user-address-set,
+    or calendar-user-type (those are sogo6 extensions, not in SOGo5).
+    """
+    displayname = email
+    try:
+        if hasattr(g, "caldav_user") and g.caldav_user and g.caldav_user.cn:
+            displayname = g.caldav_user.cn
+    except RuntimeError:
+        pass  # outside request context
+    href = resource.href if resource else f"/caldav/principals/user/{email}/"
     return [
-        _prop("resourcetype", children=[_prop("principal")]),
-        _prop("displayname", text=email),
-        _prop("principal-URL", children=[_prop("href", text=f"/caldav/principals/user/{email}/")]),
-        _prop(
-            "calendar-home-set",
-            ns=CALDAV_NS,
-            children=[_prop("href", text=f"/caldav/calendars/{email}/")],
-        ),
-        _prop(
-            "calendar-user-address-set",
-            ns=CALDAV_NS,
-            children=[_prop("href", text=f"mailto:{email}")],
-        ),
-        _prop(
-            "calendar-user-type",
-            ns=CALDAV_NS,
-            children=[_prop("value", text="INDIVIDUAL")],
-        ),
+        _prop("getlastmodified", text=_rfc1123(datetime.now(timezone.utc))),
+        _prop("getetag", text='"None"'),
+        _prop("resourcetype", children=[_prop("collection"), _prop("principal")]),
+        _prop("getcontenttype", text="httpd/unix-directory"),
+        _prop("displayname", text=displayname),
+        _prop("href", text=href),
+        _prop("executable", ns=APACHE_DAV_PROPS_NS, text="0"),
+    ]
+
+
+def _build_collection_props(resource) -> list[ET.Element]:
+    """Properties for a sub-collection (principals/, calendars/) listed on Depth 1."""
+    displayname = "Principals" if resource.kind == "principals" else "Calendars"
+    return [
+        _prop("getlastmodified", text=_rfc1123(datetime.now(timezone.utc))),
+        _prop("getetag", text='"None"'),
+        _prop("resourcetype", children=[_prop("collection")]),
+        _prop("getcontenttype", text="httpd/unix-directory"),
+        _prop("displayname", text=displayname),
+        _prop("href", text=resource.href),
+        _prop("executable", ns=APACHE_DAV_PROPS_NS, text="0"),
     ]
 
 
@@ -280,11 +378,11 @@ def _propfind_response(resource, depth: str, mode: str, props: list[str]) -> Res
 
     # always answer the requested resource itself (Depth 0 / default)
     if resource.kind == "root":
-        _emit(resource, _build_root_props())
+        _emit(resource, _build_root_props(resource))
     elif resource.kind == "principals":
         _emit(resource, _build_principals_props(module.list_principal_emails()))
     elif resource.kind == "principal":
-        _emit(resource, _build_principal_props(resource.email))
+        _emit(resource, _build_principal_props(resource.email, resource))
     elif resource.kind == "calendar_home":
         _emit(resource, _build_calendar_home_props(module.list_calendars(resource.email)))
     elif resource.kind == "calendar":
@@ -305,10 +403,16 @@ def _propfind_response(resource, depth: str, mode: str, props: list[str]) -> Res
 
     # Depth: 1 — enumerate children of collections
     if depth in ("1", "infinity") and resource.is_collection:
-        if resource.kind == "principals":
+        if resource.kind == "root":
+            # List principals/ and calendars/ subcollections (SOGo5 lists user
+            # collections; sogo6 separates principals/calendars).
+            for child_path in ("/caldav/principals/", "/caldav/calendars/"):
+                child = module.resolve(child_path)
+                _emit(child, _build_collection_props(child))
+        elif resource.kind == "principals":
             for email in module.list_principal_emails():
                 child = module.resolve(f"/caldav/principals/user/{email}/")
-                _emit(child, _build_principal_props(email))
+                _emit(child, _build_principal_props(email, child))
         elif resource.kind == "calendar_home":
             for cal in module.list_calendars(resource.email):
                 child = module.resolve(
@@ -324,7 +428,7 @@ def _propfind_response(resource, depth: str, mode: str, props: list[str]) -> Res
                 )
                 _emit(child, _build_event_props(event, include_data=True))
 
-    body = ET.tostring(ms, encoding="utf-8", xml_declaration=True)
+    body = _serialize_xml(ms)
     return Response(body, status=207, mimetype="application/xml; charset=utf-8")
 
 
@@ -371,7 +475,7 @@ def _proppatch_response(resource, changes: dict[str, str]) -> Response:
         propstat.append(prop_el)
         propstat.append(_xml("status", text=f"HTTP/1.1 {status_text}"))
         resp.append(propstat)
-    body = ET.tostring(ms, encoding="utf-8", xml_declaration=True)
+    body = _serialize_xml(ms)
     return Response(body, status=207, mimetype="application/xml; charset=utf-8")
 
 
@@ -460,7 +564,7 @@ def _report_sync_collection(resource, root: ET.Element) -> Response:
         )
         _propstat(resp, _build_event_props(event, include_data=include_data))
 
-    body = ET.tostring(ms, encoding="utf-8", xml_declaration=True)
+    body = _serialize_xml(ms)
     return Response(body, status=207, mimetype="application/xml; charset=utf-8")
 
 
@@ -494,7 +598,7 @@ def _report_calendar_query(resource, root: ET.Element) -> Response:
             f"/caldav/calendars/{resource.email}/{resource.calendar_name}/{event.uid}.ics",
         )
         _propstat(resp, _build_event_props(event, include_data=include_data))
-    body = ET.tostring(ms, encoding="utf-8", xml_declaration=True)
+    body = _serialize_xml(ms)
     return Response(body, status=207, mimetype="application/xml; charset=utf-8")
 
 
@@ -516,7 +620,7 @@ def _report_calendar_multiget(resource, root: ET.Element) -> Response:
         except RequestException:
             resp = _response_block(ms, href)
             _propstat(resp, [], status="HTTP/1.1 404 Not Found")
-    body = ET.tostring(ms, encoding="utf-8", xml_declaration=True)
+    body = _serialize_xml(ms)
     return Response(body, status=207, mimetype="application/xml; charset=utf-8")
 
 
