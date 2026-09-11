@@ -125,10 +125,11 @@ def create_app(sogo_state: int) -> Flask:
     # with ``http://`` instead of ``https://``.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-    # Backward-compat: rewrite /SOGo/dav/* → /caldav/* so SOGo5 DAV clients
+    # Backward-compat: rewrite /SOGo/dav/* → /caldav/* or /carddav/* so SOGo5 DAV clients
     # (Apple Calendar, Thunderbird, etc.) can use the legacy /SOGo/dav/ path.
     # Also maps /SOGo/dav/$USER/ → /caldav/principals/user/$USER/ (SOGo5 puts
     # user principals at /SOGo/dav/$USER/, sogo6 separates principals/calendars).
+    # CardDAV: /SOGo/dav/$USER/Contacts/ → /carddav/addressbooks/$USER/
     _dav_orig = app.wsgi_app
     def _dav_rewrite(environ, start_response):  # noqa: ANN001, ANN202
         path = environ.get('PATH_INFO', '')
@@ -141,9 +142,16 @@ def create_app(sogo_state: int) -> Flask:
                 first_seg = rest.split('/', 1)[0]
                 if first_seg in ('principals', 'calendars'):
                     environ['PATH_INFO'] = '/caldav/' + rest
+                elif first_seg == 'addressbooks':
+                    environ['PATH_INFO'] = '/carddav/' + rest
                 else:
                     # SOGo5-style /SOGo/dav/$USER/ → /caldav/principals/user/$USER/
-                    environ['PATH_INFO'] = '/caldav/principals/user/' + rest
+                    # CardDAV: /SOGo/dav/$USER/Contacts/ → /carddav/addressbooks/$USER/
+                    parts = rest.split('/')
+                    if len(parts) >= 2 and parts[1] == 'Contacts':
+                        environ['PATH_INFO'] = f'/carddav/addressbooks/{parts[0]}/'
+                    else:
+                        environ['PATH_INFO'] = '/caldav/principals/user/' + rest
         return _dav_orig(environ, start_response)
     app.wsgi_app = _dav_rewrite
 
@@ -250,12 +258,19 @@ def create_app(sogo_state: int) -> Flask:
     from app.api.v1.caldav.ApiCalDAV import blp as caldav_blueprint
     app.register_blueprint(caldav_blueprint)
 
+    # --- CardDAV protocol server (RFC 6352 / RFC 4918) ---
+    # Registered directly on the app (outside the smorest /api tree) so the
+    # WebDAV methods and vCard media types are not constrained by the JSON
+    # content-type middleware. Includes the .well-known/carddav redirect.
+    from app.api.v1.carddav.ApiCardDAV import blp as carddav_blueprint
+    app.register_blueprint(carddav_blueprint)
+
     # Rewrite /caldav/ → /SOGo/dav/ in DAV XML responses so SOGo5 clients see
     # the legacy path in hrefs. Only applies when the original request was to
     # /SOGo/dav/ (tracked via dav_orig_path set by the WSGI middleware).
     @app.after_request
     def _rewrite_dav_hrefs(response: Response) -> Response:
-        # Rewrite /caldav/ → /SOGo/dav/ in DAV XML responses so SOGo5 clients
+        # Rewrite /caldav/ or /carddav/ → /SOGo/dav/ in DAV XML responses so SOGo5 clients
         # see the legacy path. Flask-Compress gzip-encodes the body in its own
         # after_request (registered later → runs first), so we may need to
         # decompress before rewriting.
@@ -271,12 +286,19 @@ def create_app(sogo_state: int) -> Flask:
                     body = body.replace(b'/caldav/principals/user/', b'/SOGo/dav/')
                     # remaining /caldav/ → /SOGo/dav/
                     body = body.replace(b'/caldav/', b'/SOGo/dav/')
-                    if is_gzip:
-                        body = gzip.compress(body)
-                    response.set_data(body)
+                if b'/carddav/' in body:
+                    # /carddav/addressbooks/$EMAIL/ → /SOGo/dav/$EMAIL/Contacts/
+                    body = body.replace(b'/carddav/addressbooks/', b'/SOGo/dav/')
+                    # remaining /carddav/ → /SOGo/dav/
+                    body = body.replace(b'/carddav/', b'/SOGo/dav/')
+                if is_gzip:
+                    body = gzip.compress(body)
+                response.set_data(body)
             loc = response.headers.get('Location')
             if loc and '/caldav/' in loc:
                 response.headers['Location'] = loc.replace('/caldav/', '/SOGo/dav/')
+            if loc and '/carddav/' in loc:
+                response.headers['Location'] = loc.replace('/carddav/', '/SOGo/dav/')
         return response
 
     @app.route("/.well-known/caldav", methods=["GET", "PROPFIND", "HEAD"])
@@ -285,7 +307,7 @@ def create_app(sogo_state: int) -> Flask:
 
     @app.route("/.well-known/carddav", methods=["GET", "PROPFIND", "HEAD"])
     def well_known_carddav() -> Response:
-        return Response(status=301, headers={"Location": "/caldav/"})
+        return Response(status=301, headers={"Location": "/carddav/"})
 
     # --- API Playground routes (/docs, /docs/openapi.json) ---
     @app.route("/docs")
