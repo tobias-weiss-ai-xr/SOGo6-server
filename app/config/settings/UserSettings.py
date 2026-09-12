@@ -46,6 +46,8 @@ class UserGeneralSettings(SogoSchema):
     SOGO_U_EXT_AVATAR_ENABLED  = fields.Boolean(load_default=False, dump_default=False) #Download external avatar (gravatar, libravatar) to display on mail list
     SOGO_U_PROFILE_PICTURE  = fields.String(load_default="default", dump_default="default",
                                         validate=validate.OneOf(('default', 'gravatar', 'libravatar', 'usersource'))) #Source of the profile picture: default sogo avatar, gravatar, libravatar, usersource (set by admin)
+    SOGO_U_THEME = fields.String(load_default="default", dump_default="default",
+                                 validate=validate.OneOf(('default', 'sogo5-classic'))) #UI theme: default (SOGo 6) or sogo5-classic (recognizable SOGo 5 look)
 
 
 class UserGeneralSettingsObj(SettingsObj):
@@ -64,6 +66,7 @@ class UserGeneralSettingsObj(SettingsObj):
     SOGO_U_BROWSER_NOTIF: bool = False
     SOGO_U_EXT_AVATAR_ENABLED: bool = False
     SOGO_U_PROFILE_PICTURE: str = "default"
+    SOGO_U_THEME: str = "default"
 
 
 class UserSecuritySettings(SogoSchema):
