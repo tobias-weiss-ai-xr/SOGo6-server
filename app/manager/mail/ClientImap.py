@@ -732,16 +732,6 @@ class ClientImap(ClientMailServer):
 
 
 
-                    mapped_name = self.folders_map_type_to_name.get(folder_name, folder_name)
-                    if mapped_name.lower() not in existing_folders:
-                        logger_imap.info("Creating missing default folder '%s' for user", mapped_name)
-                        self._imap_create_folder(mapped_name, auto_sub=True, no_error_if_exist=True)
-                except RequestException as e:
-                    logger_imap.warning("Failed to create folder '%s': %s", folder_name, e)
-                except Exception as e:
-                    logger_imap.error("Unexpected error creating folder '%s': %s", folder_name, e)
-
-
     def _fix_folder_path(self, folder_path: str) -> str:
         """
         Some check for folder_path:
