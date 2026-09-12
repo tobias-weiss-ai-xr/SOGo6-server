@@ -28,7 +28,7 @@ not constrained by the JSON content-type middleware.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import xml.etree.ElementTree as ET
@@ -644,6 +644,32 @@ def _report_calendar_multiget(resource, root: ET.Element) -> Response:
     return Response(body, status=207, mimetype="application/xml; charset=utf-8")
 
 
+def _ical_utc(iso: str) -> str:
+    """'2026-09-13T09:00:00+00:00' → '20260913T090000Z' (Z-swap must run first)."""
+    return iso.replace("+00:00", "Z").replace("-", "").replace(":", "")
+
+
+def _render_vfreebusy(
+    email: str, start: datetime, end: datetime, periods: list[dict[str, Any]]
+) -> Response:
+    """Render a VFREEBUSY iCalendar body (shared by REPORT and freebusy.ifb GET)."""
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//SOGo//SOGo 6//EN",
+        "BEGIN:VFREEBUSY",
+        f"ATTENDEE:mailto:{email}",
+        f"DTSTAMP:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        f"DTSTART:{start.strftime('%Y%m%dT%H%M%SZ')}",
+        f"DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}",
+    ]
+    for period in periods:
+        lines.append(f"FREEBUSY;FBTYPE=BUSY:{_ical_utc(period['start'])}/{_ical_utc(period['end'])}")
+    lines.append("END:VFREEBUSY")
+    lines.append("END:VCALENDAR")
+    return Response("\r\n".join(lines) + "\r\n", status=200, mimetype="text/calendar; charset=utf-8")
+
+
 def _report_free_busy(resource, root: ET.Element) -> Response:
     """free-busy-query REPORT (RFC 4791 §7.10) → iCalendar VFREEBUSY."""
     module = _module()
@@ -662,21 +688,23 @@ def _report_free_busy(resource, root: ET.Element) -> Response:
         raise RequestException(error=err.ERROR_CALENDAR_FREEBUSY_INVALID_REQUEST)
 
     periods = module.free_busy_report(resource.email or "", resource.calendar_name or "", start, end)
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//SOGo//SOGo 6//EN",
-        "BEGIN:VFREEBUSY",
-        f"DTSTART:{start.strftime('%Y%m%dT%H%M%SZ')}",
-        f"DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}",
-    ]
-    for period in periods:
-        lines.append(
-            f"FREEBUSY;FBTYPE=BUSY:{period['start'].replace('-', '').replace(':', '').replace('+00:00', 'Z')}/{period['end'].replace('-', '').replace(':', '').replace('+00:00', 'Z')}"
-        )
-    lines.append("END:VFREEBUSY")
-    lines.append("END:VCALENDAR")
-    return Response("\r\n".join(lines) + "\r\n", status=200, mimetype="text/calendar; charset=utf-8")
+    return _render_vfreebusy(resource.email or "", start, end, periods)
+
+
+def _get_freebusy_ifb(resource, module) -> Response:
+    """GET freebusy.ifb — the user's busy periods over a ±7-day window,
+    aggregated across all their calendar collections (SOGo5-compat shape)."""
+    email = resource.email or ""
+    now = datetime.now(timezone.utc)
+    start, end = now - timedelta(days=7), now + timedelta(days=7)
+    periods: list[dict[str, Any]] = []
+    for cal in module.list_calendars(email):
+        try:
+            periods.extend(module.free_busy_report(email, cal["name"], start, end))
+        except RequestException:
+            continue
+    periods.sort(key=lambda p: p["start"])
+    return _render_vfreebusy(email, start, end, periods)
 
 
 # ---------------------------------------------------------------------------
@@ -705,8 +733,14 @@ def caldav_dispatch(resource_path: str = "") -> Response:
         response.headers["Content-Length"] = "0"
         return response
 
-    # HEAD / GET — event retrieval
+    # HEAD / GET — event retrieval (freebusy.ifb → VFREEBUSY document)
     if method in ("GET", "HEAD"):
+        if resource.kind == "freebusy":
+            fb = _get_freebusy_ifb(resource, module)
+            if method == "HEAD":
+                fb.headers["Content-Length"] = str(len(fb.get_data()))
+                fb.set_data(b"")
+            return fb
         if resource.kind != "event":
             # collection GET → 200 (empty body, or redirect to web UI)
             response = Response(status=200)
