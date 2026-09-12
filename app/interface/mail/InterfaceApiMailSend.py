@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 
 from app.config.settings.DomainSettings import (
@@ -104,8 +105,20 @@ class InterfaceApiMailSend:
             try:
                 self.mail_module.validate_tmp_draft_key(key)
             except RequestException as ex:
-                logger_api.error("Invalid tmp_draft key %s for user %s: %s", key, self.user.uid, str(ex))
-                return create_api_base_response(None, ex.error)
+                # ponytail: auto-save (PUT /save) and send (POST /send) race on the
+                # tmp_draft lock. validate_tmp_draft_key raises 409 immediately without
+                # waiting. Retry once after a short delay to let auto-save release the lock.
+                if ex.error is err.ERROR_TMP_DRAFT_LOCKED:
+                    logger_api.info("tmp_draft %s locked during send, retrying after 0.5s", key)
+                    time.sleep(0.5)
+                    try:
+                        self.mail_module.validate_tmp_draft_key(key)
+                    except RequestException as ex2:
+                        logger_api.error("tmp_draft %s still locked after retry: %s", key, str(ex2))
+                        return create_api_base_response(None, ex2.error)
+                else:
+                    logger_api.error("Invalid tmp_draft key %s for user %s: %s", key, self.user.uid, str(ex))
+                    return create_api_base_response(None, ex.error)
 
             # Retrieve threading headers stored in the tmp_draft row
             extra_headers: dict = {}

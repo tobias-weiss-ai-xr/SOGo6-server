@@ -23,6 +23,9 @@ sogo_state, cache, agent_client = init_sogo()
 set_cache(cache)
 set_agent(agent_client)
 app = create_app(sogo_state)
+# ponytail: Flask strict_slashes=True causes 404 on /mails/ (trailing slash)
+# that the sogo6-ui frontend sends. Disable it so both /mails and /mails/ match.
+app.url_map.strict_slashes = False
 app.config["SOGO_START_TIME"] = time()
 
 

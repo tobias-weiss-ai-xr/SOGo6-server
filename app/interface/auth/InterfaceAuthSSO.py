@@ -423,6 +423,11 @@ class InterfaceAuthSSO:
             else:
                 # User not found in user source — create user profile directly
                 logger_api.info("SSO user %s not found in user source, creating profile", email)
+                # Assign the first user source so InterfaceUserProfile can
+                # resolve domain_sub[self.user.source_id] without KeyError.
+                if default_us:
+                    user.source_id = next(iter(default_us))
+                    logger_api.info("SSO user %s assigned source_id=%s", email, user.source_id)
                 user_profile_module = ModuleUserProfile(self._process, default_domain_settings)
                 if not user_profile_module.is_user_profile_present(email):
                     user_profile_module.create_user_profile(user)
@@ -438,6 +443,11 @@ class InterfaceAuthSSO:
                     logger_api.info("SSO user %s onboarded (calendar + addressbook)", email)
         except Exception as exc:  # pylint: disable=broad-except
             logger_api.warning("SSO user source check failed for %s: %s", email, exc)
+            # Assign the first user source so InterfaceUserProfile can
+            # resolve domain_sub[self.user.source_id] without KeyError.
+            if default_us:
+                user.source_id = next(iter(default_us))
+                logger_api.info("SSO user %s assigned source_id=%s (fallback after error)", email, user.source_id)
 
         # Generate voucher
         voucher_service = VoucherUserService(self._process)
