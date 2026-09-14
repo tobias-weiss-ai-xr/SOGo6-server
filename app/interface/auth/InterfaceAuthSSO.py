@@ -143,7 +143,12 @@ class InterfaceAuthSSO:
                 # Continue anyway — file picker will fail but auth succeeds
 
             # Authenticate the user in the local user source
-            result = self._authenticate_sso_user(domain, email, "oidc")
+            # Pass the OIDC access_token so it can be used as the IMAP/SMTP
+            # XOAUTH2 Bearer token (stored as user.password).
+            result = self._authenticate_sso_user(
+                domain, email, "oidc",
+                access_token=token_data.get("access_token", ""),
+            )
 
             # Add the OIDC subject for reference
             result["oidc_sub"] = oidc.get_subject(id_claims)
@@ -354,6 +359,7 @@ class InterfaceAuthSSO:
         auth_type: str,
         display_name: str = "",
         eppn: str = "",
+        access_token: str = "",
     ) -> dict[str, Any]:
         """Authenticate / create an SSO user and generate a JWT voucher.
 
@@ -399,9 +405,16 @@ class InterfaceAuthSSO:
         _ = ModuleAuth(self._process, system_obj, default_auth, default_us)
 
         # Prepare user
-        user = User(email, password="")  # password is empty — we use SSO
+        # For OIDC, use the access token as the password so IMAP/SMTP
+        # xoauth2 auth works. For SAML2, password stays empty.
+        user = User(email, password=access_token)
         user.domain = domain
         user.mail = email
+        # Set login_mail_server to the email so IMAP/SMTP xoauth2 uses the
+        # correct username. Without this, login_mail_server stays "" when
+        # LDAP check_login fails (SSO users can't bind to LDAP with an OAuth
+        # token as password), and IMAP auth sends an empty username.
+        user.login_mail_server = email
         # Mark the session as SSO-established so per-request "credential" checks
         # (which would try to re-validate the empty password against a user
         # source) can be skipped: the IdP already authenticated this user and
