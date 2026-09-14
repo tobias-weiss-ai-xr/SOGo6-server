@@ -265,6 +265,12 @@ def create_app(sogo_state: int) -> Flask:
     from app.api.v1.carddav.ApiCardDAV import blp as carddav_blueprint
     app.register_blueprint(carddav_blueprint)
 
+    # --- Live Updates (Server-Sent Events) ---
+    # Registered directly on the app so the SSE endpoint is at /api/sse
+    # (not nested under /api/user/v1). Self-authenticating via SSE-1.
+    from app.api.v1.user.ApiLiveUpdates import blp as live_updates_blueprint
+    app.register_blueprint(live_updates_blueprint)
+
     # Rewrite /caldav/ → /SOGo/dav/ in DAV XML responses so SOGo5 clients see
     # the legacy path in hrefs. Only applies when the original request was to
     # /SOGo/dav/ (tracked via dav_orig_path set by the WSGI middleware).
