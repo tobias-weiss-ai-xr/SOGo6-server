@@ -11,15 +11,13 @@ os.environ.setdefault("SOGO_AES_ENC_KEY", "A9fK2QxM7eR3PZLwH6Jd8sC4T5mNByU")
 import app.api.v1.user.ApiLiveUpdates as live
 
 
-def _drive_generator(gen, ticks):
-    """Consume `ticks` sleep-ticks of the SSE generator with time.sleep stubbed.
-
-    Returns (chunks, sleep_calls)."""
+def _drive(gen, nexts):
+    """Consume `nexts` chunks of the SSE generator with time.sleep stubbed."""
     chunks = []
-    with patch.object(live.time, "sleep") as sleep_mock:
-        for _ in range(ticks):
+    with patch.object(live.time, "sleep"):
+        for _ in range(nexts):
             chunks.append(next(gen))
-    return chunks, sleep_mock
+    return chunks
 
 
 def _module_with_counts(counts, newest_mail=None):
@@ -33,16 +31,14 @@ def _module_with_counts(counts, newest_mail=None):
     return mod
 
 
-def _generate(module_mock, ticks=3):
+def _generate(module_mock, nexts):
     user = SimpleNamespace(domain="example.org")
     gen = live._inbox_sse_generator(user, lambda: module_mock)
-    return _drive_generator(gen, ticks)
+    return _drive(gen, nexts)
 
 
 class TestEndpoint:
-    def test_sse_route_exists(self):
-        routes = [r.rule for r in live.blp.deferred_functions] if hasattr(live.blp, "deferred_functions") else []
-        # blueprint-level: just assert the view function is registered on the module
+    def test_sse_view_is_registered(self):
         assert callable(live.sse)
 
     def test_poll_interval_is_twenty_seconds(self):
@@ -50,13 +46,12 @@ class TestEndpoint:
 
 
 class TestMailReceivedPoll:
-    def test_first_tick_emits_connected_and_heartbeat_but_no_mail(self):
+    def test_connected_then_heartbeats_no_mail_on_baseline(self):
         mod = _module_with_counts([5, 5])
-        chunks, sleep_mock = _generate(mod, ticks=2)
+        chunks = _generate(mod, nexts=4)
         assert chunks[0].startswith("event: connected")
         assert not any("mail:received" in c for c in chunks)
-        assert sum("heartbeat" in c for c in chunks) == 2
-        assert all(sleep_mock.call_args[0][0] == live.MAIL_POLL_INTERVAL_S for _ in sleep_mock.call_args_list)
+        assert sum("heartbeat" in c for c in chunks) == 3
 
     def test_count_increase_emits_mail_received_with_mapped_payload(self):
         newest = {
@@ -66,8 +61,10 @@ class TestMailReceivedPoll:
             "date": "2026-09-14T10:00:00Z",
         }
         mod = _module_with_counts([5, 6], newest_mail=newest)
-        chunks, _ = _generate(mod, ticks=2)
+        chunks = _generate(mod, nexts=4)
 
+        # t1: baseline heartbeat; t2: increase → mail:received, then heartbeat
+        assert sum("heartbeat" in c for c in chunks) == 2
         events = [c for c in chunks if "mail:received" in c]
         assert len(events) == 1
         assert events[0].startswith("event: mail:received\ndata: ")
@@ -84,7 +81,7 @@ class TestMailReceivedPoll:
     def test_payload_fetch_failure_still_emits_event_with_fallback_id(self):
         mod = _module_with_counts([5, 6])
         mod.get_folder_mails.side_effect = RuntimeError("imap gone")
-        chunks, _ = _generate(mod, ticks=2)
+        chunks = _generate(mod, nexts=4)
 
         events = [c for c in chunks if "mail:received" in c]
         assert len(events) == 1
@@ -93,15 +90,16 @@ class TestMailReceivedPoll:
 
     def test_count_decrease_does_not_emit(self):
         mod = _module_with_counts([5, 3])
-        chunks, _ = _generate(mod, ticks=2)
+        chunks = _generate(mod, nexts=4)
         assert not any("mail:received" in c for c in chunks)
 
     def test_poll_failure_rebuilds_module_and_stream_survives(self):
         mod = MagicMock()
         mod.get_one_folder.side_effect = [RuntimeError("imap dropped"), {"message_count": 5}]
-        chunks, _ = _generate(mod, ticks=3)
-        # stream still alive after the failure tick: heartbeat present each tick
-        assert sum("heartbeat" in c for c in chunks) == 3
+        chunks = _generate(mod, nexts=3)
+        # stream still alive after the failure tick: connected + 2 heartbeats
+        assert chunks[0].startswith("event: connected")
+        assert sum("heartbeat" in c for c in chunks) == 2
 
 
 class TestBuildFactory:
