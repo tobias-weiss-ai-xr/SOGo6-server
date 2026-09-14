@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
     from app.auth.User import User
 
-blp = Blueprint("Mail Folder", __name__, url_prefix="/mailboxes/<string:account_id>/folders", strict_slashes=False)
+blp = Blueprint("Mail Folder", __name__, url_prefix="/mailboxes/<string:account_id>/folders")
 
 class EmptySchema(Schema):
     """Empty schema for requests without body"""

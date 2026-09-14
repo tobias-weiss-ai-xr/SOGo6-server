@@ -52,7 +52,7 @@ def init_mail_config() -> None:
     g.inter = interface_api
 
 
-@blp.route("")
+@blp.route("", strict_slashes=False)
 class ApiMailFolderIdMail(MethodView):
     """
     API to list mails in a specific mail folder
