@@ -24,9 +24,13 @@ from collections.abc import Callable
 from flask import Blueprint, Response, request
 from flask.typing import ResponseReturnValue
 
-from app.config.init_config import init_get_user_domain_settings
+from app.config.init_config import (
+    init_get_system_and_default_domain_settings,
+    init_get_user_domain_settings,
+)
 from app.config.settings.DomainSettings import MailSettings, MailSettingsObj
 from app.config.settings.ProcessSetting import process_config
+from app.interface.auth.InterfaceAuthUser import InterfaceAuthUser
 from app.module.mail.ModuleMail import ModuleMail
 from app.auth.service.VoucherUserService import VoucherUserService
 from app.utils.api.ApiBaseResponse import create_api_base_response
@@ -135,6 +139,23 @@ def sse() -> ResponseReturnValue:
     try:
         user = VoucherUserService(process_config).generate_user_from_voucher(token)
     except Exception:
+        return create_api_base_response(
+            error=err.ERROR_AUTHENTICATED_ROUTE,
+            status_code=401
+        )
+
+    # Fill the user profile (IMAP credentials etc.) exactly like the
+    # request-time auth layer does — the raw voucher user carries no
+    # mail-server password, so mail polling would fail to login.
+    try:
+        system_settings, _ = init_get_system_and_default_domain_settings()
+        user_domain_settings = init_get_user_domain_settings(user)
+        auth_inter = InterfaceAuthUser(process_config, system_settings, user_domain_settings)
+        creds_ok, user = auth_inter.check_user_and_fill_info(user)
+    except Exception:
+        logger.exception("SSE user profile fill failed")
+        creds_ok = False
+    if not creds_ok:
         return create_api_base_response(
             error=err.ERROR_AUTHENTICATED_ROUTE,
             status_code=401
