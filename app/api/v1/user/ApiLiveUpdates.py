@@ -6,21 +6,111 @@ for live updates (new mail, calendar changes, etc.).
 Authentication is self-contained: the token is read from the Authorization Bearer
 header OR from the ?token=<jwt> query parameter (browser EventSource cannot send
 headers).
+
+New-mail detection: each connection polls its INBOX message count once per tick
+(alongside the heartbeat). When the count grows, the newest mail is fetched and
+pushed as a `mail:received` event.
+
+# ponytail: per-connection 20s IMAP STATUS poll — fine for homelab scale;
+# upgrade path is a shared IMAP IDLE worker or Stalwart JMAP push → Redis.
 """
 from __future__ import annotations
 
 import json
+import logging
 import time
+from collections.abc import Callable
 
 from flask import Blueprint, Response, request
 from flask.typing import ResponseReturnValue
 
-from app.auth.service.VoucherUserService import VoucherUserService
+from app.config.init_config import init_get_user_domain_settings
+from app.config.settings.DomainSettings import MailSettings, MailSettingsObj
 from app.config.settings.ProcessSetting import process_config
+from app.module.mail.ModuleMail import ModuleMail
+from app.auth.service.VoucherUserService import VoucherUserService
 from app.utils.api.ApiBaseResponse import create_api_base_response
+from app.utils.api.paginate_sort_filter import CollectionPaginateArgs
 import app.utils.errors as err
 
+logger = logging.getLogger(__name__)
+
+MAIL_POLL_INTERVAL_S = 20
+
 blp = Blueprint("Live Updates", __name__, url_prefix="/api")
+
+
+def _build_mail_module_factory(user) -> Callable[[], ModuleMail]:
+    """Return a factory building a ModuleMail for the SSE connection's user."""
+
+    def factory() -> ModuleMail:
+        user_domain_settings = init_get_user_domain_settings(user)
+        mail_settings = MailSettingsObj(user_domain_settings[MailSettings.subparent])
+        return ModuleMail(user, mail_settings, process_config)
+
+    return factory
+
+
+def _inbox_sse_generator(user, module_factory: Callable[[], ModuleMail]):
+    """Heartbeat + INBOX new-mail poll for one SSE connection.
+
+    Emits:
+    - `event: connected` once,
+    - unnamed heartbeat data events every MAIL_POLL_INTERVAL_S,
+    - `event: mail:received` whenever the INBOX message count grows.
+    """
+    module: ModuleMail | None = None
+    last_count: int | None = None
+
+    try:
+        yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
+
+        while True:
+            time.sleep(MAIL_POLL_INTERVAL_S)
+
+            # New-mail poll (best-effort; must never kill the stream)
+            try:
+                if module is None:
+                    module = module_factory()
+                folder = module.get_one_folder("0", "INBOX")
+                count = folder.get("message_count")
+                if last_count is not None and count is not None and count > last_count:
+                    try:
+                        # page=count with page_size=1 → IMAP sequence number
+                        # `count` = the newest mail in the mailbox
+                        mails, _ = module.get_folder_mails(
+                            "0",
+                            "INBOX",
+                            CollectionPaginateArgs(
+                                page=int(count), page_size=1,
+                                fields="contents", fields_action="exclude",
+                            ),
+                        )
+                        m = mails[0] if mails else {}
+                        payload = {
+                            "id": str(m.get("uid", "")),
+                            "subject": m.get("subject", ""),
+                            "from": m.get("from") or {},
+                            "receivedAt": m.get("date"),
+                            "preview": "",
+                        }
+                    except Exception:
+                        logger.exception("SSE mail:received payload fetch failed")
+                        payload = {"id": f"inbox-{int(time.time())}"}
+                    yield f"event: mail:received\ndata: {json.dumps(payload)}\n\n"
+                if count is not None:
+                    last_count = count
+            except Exception:
+                # IMAP/DB hiccup: drop the module so the next tick rebuilds it
+                logger.exception("SSE inbox poll failed, will retry next tick")
+                module = None
+
+            epoch_time = int(time.time())
+            yield f"data: {json.dumps({'type': 'heartbeat', 'time': epoch_time})}\n\n"
+
+    except GeneratorExit:
+        # Client disconnected cleanly
+        pass
 
 
 @blp.route("/sse")
@@ -43,30 +133,15 @@ def sse() -> ResponseReturnValue:
         )
 
     try:
-        VoucherUserService(process_config).generate_user_from_voucher(token)
+        user = VoucherUserService(process_config).generate_user_from_voucher(token)
     except Exception:
         return create_api_base_response(
             error=err.ERROR_AUTHENTICATED_ROUTE,
             status_code=401
         )
 
-    def generate():
-        try:
-            # Send initial connection event
-            yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
-
-            while True:
-                # Heartbeat every 20 seconds as unnamed event
-                time.sleep(20)
-                epoch_time = int(time.time())
-                yield f"data: {json.dumps({'type': 'heartbeat', 'time': epoch_time})}\n\n"
-
-        except GeneratorExit:
-            # Client disconnected cleanly
-            pass
-
     return Response(
-        generate(),
+        _inbox_sse_generator(user, _build_mail_module_factory(user)),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
