@@ -1149,15 +1149,21 @@ class ModuleMail:
         tmp_draft_mngr.insert_locked(new_key)
         tmp_draft_mngr.release(new_key, new_mail_server_uid)
 
-        # delete the original mail from its source folder
-        try:
-            client.delete_mails_by_uid(folder_name, mail_uid, move_to_trash=False, permanently=True)
-        except RequestException:
-            # Log the error but do not fail the whole operation, since the draft has been created successfully
-            logger_mail_server.warning(
-                "open_mail_for_edit: could not delete original mail uid=%s from folder '%s' after draft creation",
-                mail_uid, folder_name,
-            )
+        # Only consume the source when it is a real draft continuation (the
+        # mail lives in the account's Drafts folder). For any other folder —
+        # e.g. forwarding a received INBOX mail — the original must stay where
+        # it is: deleting it caused permanent data loss on every forward.
+        draft_folder = client.folders_map_type_to_name.get(cs.MAIL_FOLDER_DRAFT)
+        if folder_name == draft_folder:
+            # delete the original mail from its source folder
+            try:
+                client.delete_mails_by_uid(folder_name, mail_uid, move_to_trash=False, permanently=True)
+            except RequestException:
+                # Log the error but do not fail the whole operation, since the draft has been created successfully
+                logger_mail_server.warning(
+                    "open_mail_for_edit: could not delete original mail uid=%s from folder '%s' after draft creation",
+                    mail_uid, folder_name,
+                )
 
         parsed = self._parse_mail(raw_draft)
         parsed["key"] = new_key

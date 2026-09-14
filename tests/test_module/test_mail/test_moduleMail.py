@@ -5,6 +5,7 @@ Ces tests utilisent un fake ClientMailServer pour tester la logique mtier du mod
 import pytest
 from unittest.mock import MagicMock
 from app.module.mail.ModuleMail import ModuleMail
+from app.utils import constants as cs
 from app.utils.exceptions import RequestException
 from app.utils.api.paginate_sort_filter import CollectionPaginateArgs
 
@@ -96,6 +97,9 @@ class FakeClientMailServer:
 
     def fetch_mail_raw(self, folder_name, mail_uid):
         return self.fetch_mail_raw_result
+
+    def save_draft(self, message, uid=None):
+        return getattr(self, 'save_draft_result', {'uid': '77'})
 
     def delete_mails_by_uid(self, folder_path, mail_uids, move_to_trash=True, permanently=True):
         self.delete_mails_by_uid_calls.append((folder_path, mail_uids))
@@ -650,3 +654,55 @@ def test_perform_mail_action_invalid_action(monkeypatch):
     action_data = {"action": "invalid_action"}
     with pytest.raises(RequestException, match="Invalid action: invalid_action"):
         module.perform_mail_action(ACCOUNT_ID, "INBOX", "42", action_data)
+
+
+# ========== Tests for open_mail_for_edit source-consumption guard ==========
+
+class _FakeTmpDraftManager:
+    """Stand-in so open_mail_for_edit can run without a DB."""
+
+    def __init__(self, db, uid):
+        pass
+
+    def generate_key(self):
+        return "draft-key-1"
+
+    def insert_locked(self, key):
+        pass
+
+    def release(self, key, uid):
+        pass
+
+
+def _make_edit_module(monkeypatch):
+    """ModuleMail wired for open_mail_for_edit: fake client knows the Drafts folder."""
+    fake_client = FakeClientMailServer()
+    fake_client.folders_map_type_to_name = {cs.MAIL_FOLDER_DRAFT: 'Drafts'}
+    fake_client.save_draft_result = {'uid': '77', 'subject': 'Test'}
+    module, fake_client = _make_module(monkeypatch, fake_client)
+    monkeypatch.setattr('app.module.mail.ModuleMail.TmpDraftManager', _FakeTmpDraftManager)
+    monkeypatch.setattr(module, '_parse_mail', lambda mail_dict: dict(mail_dict))
+    return module, fake_client
+
+
+def test_open_mail_for_edit_keeps_source_outside_drafts(monkeypatch):
+    """Editing/forwarding a mail from a non-Drafts folder must NOT delete it.
+
+    Regression: forward on an INBOX mail consumed (permanently deleted) the
+    original — replying/forwarding destroyed received mail.
+    """
+    module, fake_client = _make_edit_module(monkeypatch)
+
+    result = module.open_mail_for_edit(ACCOUNT_ID, 'INBOX', '36')
+
+    assert fake_client.delete_mails_by_uid_calls == []
+    assert result['uid'] == '77'
+
+
+def test_open_mail_for_edit_consumes_draft_source(monkeypatch):
+    """A real draft continuation (source in Drafts) is consumed as before."""
+    module, fake_client = _make_edit_module(monkeypatch)
+
+    module.open_mail_for_edit(ACCOUNT_ID, 'Drafts', '36')
+
+    assert fake_client.delete_mails_by_uid_calls == [('Drafts', '36')]
