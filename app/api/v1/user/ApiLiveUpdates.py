@@ -80,13 +80,13 @@ def _inbox_sse_generator(user, module_factory: Callable[[], ModuleMail]):
                 count = folder.get("message_count")
                 if last_count is not None and count is not None and count > last_count:
                     try:
-                        # page=count with page_size=1 → IMAP sequence number
-                        # `count` = the newest mail in the mailbox
+                        # page=1, page_size=1: the folder fetch yields newest-first,
+                        # so the first item of page 1 is the newest mail
                         mails, _ = module.get_folder_mails(
                             "0",
                             "INBOX",
                             CollectionPaginateArgs(
-                                page=int(count), page_size=1,
+                                page=1, page_size=1,
                                 fields="contents", fields_action="exclude",
                             ),
                         )

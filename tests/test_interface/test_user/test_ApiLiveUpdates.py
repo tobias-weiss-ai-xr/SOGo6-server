@@ -74,9 +74,9 @@ class TestMailReceivedPoll:
         assert payload["from"]["email"] == "alice@example.org"
         assert payload["receivedAt"] == "2026-09-14T10:00:00Z"
 
-        # newest mail fetched at IMAP sequence `count` (page=count, page_size=1)
+        # page=1, page_size=1 → the fetch yields newest-first: mails[0] is newest
         args = mod.get_folder_mails.call_args[0][2]
-        assert (args.page, args.page_size) == (6, 1)
+        assert (args.page, args.page_size) == (1, 1)
 
     def test_payload_fetch_failure_still_emits_event_with_fallback_id(self):
         mod = _module_with_counts([5, 6])
