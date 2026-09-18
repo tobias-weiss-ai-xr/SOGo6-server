@@ -18,10 +18,26 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # The test suite expects a reachable Redis (conftest defaults to
+    # redis://sogo6-redis for the compose stack; CI overrides it to the
+    # service container below). Previously SOGO_P_REDIS_URL pointed at a
+    # repo secret that was never set — the empty value errored at import:
+    # "Redis URL must specify one of the following schemes".
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       SOGO_P_VOUCHER_SECRET: ${{ secrets.SOGO_P_VOUCHER_SECRET }}
       SOGO_AES_ENC_KEY: ${{ secrets.SOGO_AES_ENC_KEY }}
-      SOGO_P_REDIS_URL: ${{ secrets.SOGO_P_REDIS_URL }}
+      SOGO_P_REDIS_URL: redis://redis:6379/0
 
     steps:
     - uses: actions/checkout@v4

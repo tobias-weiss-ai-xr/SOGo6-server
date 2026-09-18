@@ -21,8 +21,11 @@ def mail_iface():
     """
     iface = make_mail_iface(undo_seconds=0)
 
-    with patch("app.interface.mail.InterfaceApiMailSend.ClientAgent") as mock_agent_cls:
+    # InterfaceApiMailSend calls sogo_agent() (module-imported) for the
+    # schedule/undo paths — NOT a ClientAgent attribute (stale patch target;
+    # the class lives in app.manager.agent and is only referenced there).
+    with patch("app.interface.mail.InterfaceApiMailSend.sogo_agent") as mock_agent_fn:
         mock_agent = MagicMock()
         mock_agent.enqueue.return_value = "job-uuid-fuzz"
-        mock_agent_cls.return_value = mock_agent
+        mock_agent_fn.return_value = mock_agent
         yield iface
