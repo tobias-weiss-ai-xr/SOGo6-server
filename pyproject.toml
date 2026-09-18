@@ -52,11 +52,11 @@ packages = [
 ]
 exclude = ["tests"]
 
-[dependency-groups]
-dev = [
-    "hypothesis>=6.167.1",
-]
-
+# Single dev-group definition (classic tool.poetry metadata). The empty PEP 735
+# [dependency-groups] table that previously sat here SHADOWED this section in
+# Poetry 2.4.x and made `poetry lock` drop every dev dependency (pytest et al.
+# vanished from the lock) — that lock mismatch is what killed CI
+# ("pyproject.toml changed significantly since poetry.lock was last generated").
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.0"
 pytest-cov = "^7.0.0"
