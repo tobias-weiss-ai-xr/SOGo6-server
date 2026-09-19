@@ -123,7 +123,7 @@ class TestResourceBookingAdmin:
 
     def test_list_resources(self, client, auth_headers):
         """Test listing all resources (admin)."""
-        resp = client.get(self.BASE, headers=auth_headers)
+        resp = client.get(self.BASE + "/", headers=auth_headers)
         assert resp.status_code == 200
 
     def test_create_resource(self, client, auth_headers):
@@ -136,7 +136,7 @@ class TestResourceBookingAdmin:
             "description": "Test room for integration tests",
             "booking_policy": "open"
         }
-        resp = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
+        resp = client.post(self.BASE + "/", data=json.dumps(data), content_type="application/json", headers=auth_headers)
         # Note: May fail if resource already exists in test DB
         assert resp.status_code in [200, 201, 409]  # 409 if duplicate
 
@@ -148,9 +148,9 @@ class TestResourceBookingAdmin:
             "resource_type": "room"
         }
         # First creation should succeed
-        resp1 = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
+        resp1 = client.post(self.BASE + "/", data=json.dumps(data), content_type="application/json", headers=auth_headers)
         # Second creation with same email should fail
-        resp2 = client.post(self.BASE, data=json.dumps(data), content_type="application/json", headers=auth_headers)
+        resp2 = client.post(self.BASE + "/", data=json.dumps(data), content_type="application/json", headers=auth_headers)
         assert resp2.status_code == 409
 
     def test_check_resource_availability(self, client, auth_headers):
@@ -177,7 +177,7 @@ class TestResourceBookingUser:
 
     def test_list_resources_user(self, client, user_auth_headers):
         """Test listing resources (user)."""
-        resp = client.get(self.BASE, headers=user_auth_headers)
+        resp = client.get(self.BASE + "/", headers=user_auth_headers)
         assert resp.status_code == 200
 
     def test_check_resource_availability(self, client, user_auth_headers):

@@ -33,6 +33,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      mariadb:
+        image: mariadb:11
+        ports:
+          - 3306:3306
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: sogo
+        options: >-
+          --health-cmd "mariadb-admin ping -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       # Voucher JWT signing + AES key must be 32 chars or auth raises
@@ -45,6 +57,19 @@ jobs:
       # Service containers publish to the runner host (job has no
       # `container:`), so the alias `redis` does NOT resolve — use localhost.
       SOGO_P_REDIS_URL: redis://localhost:6379/0
+      # App auto-bootstraps: init_sogo() creates all tables on an empty DB,
+      # then seeds settings from the scripts/init JSONs (admin auth itself is
+      # env-based: SOGO_P_ADMIN/SOGO_P_ADMIN_PWD). Integration tests log in
+      # as admin only (user_token fixture is unused).
+      SOGO_P_DB_HOST: localhost
+      SOGO_P_DB_PORT: 3306
+      SOGO_P_DB_USER: root
+      SOGO_P_DB_PASS: root
+      SOGO_P_DB_NAME: sogo
+      SOGO_P_ADMIN: admin
+      SOGO_P_ADMIN_PWD: ci-admin-pw-3f9d2b7c
+      SOGO_INIT_SYSTEM_SETTINGS_PATH: ${{ github.workspace }}/scripts/init/system_settings.json
+      SOGO_INIT_DOMAIN_SETTINGS_PATH: ${{ github.workspace }}/scripts/init/domain_settings.json
 
     steps:
     - uses: actions/checkout@v4
@@ -67,11 +92,7 @@ jobs:
 
     - name: Test with pytest
       run: |
-        # tests/test_integration needs a BOOTSTRAPPED database (seeded
-        # system settings + admin account, cf. sogo6/scripts/init-sogo6.sh),
-        # not just a listening one. Live-stack coverage: SOGo6-testsuite
-        # legacy + parity suites. Revisit if CI-level bootstrap lands.
-        poetry run pytest --doctest-modules --ignore=tests/test_integration --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
+        poetry run pytest --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
 
     - name: Pytest coverage comment
       uses: MishaKav/pytest-coverage-comment@main
