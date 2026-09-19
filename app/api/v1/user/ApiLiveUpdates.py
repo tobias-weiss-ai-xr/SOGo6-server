@@ -23,6 +23,7 @@ from collections.abc import Callable
 
 from flask import Blueprint, Response, request
 from flask.typing import ResponseReturnValue
+from flask.views import MethodView
 
 from app.config.init_config import (
     init_get_system_and_default_domain_settings,
@@ -117,55 +118,64 @@ def _inbox_sse_generator(user, module_factory: Callable[[], ModuleMail]):
         pass
 
 
-@blp.route("/sse")
-def sse() -> ResponseReturnValue:
-    """Server-Sent Events endpoint for real-time updates."""
+class SSEView(MethodView):
+    """Server-Sent Events endpoint for real-time updates.
 
-    # Extract token from Authorization header or query parameter
-    token = None
-    auth_header = request.authorization
-    if auth_header and auth_header.type == "bearer":
-        token = auth_header.token
-    if not token:
-        token = request.args.get("token")
+    MethodView (not a bare function) so the route keeps a view_class for
+    auth middleware introspection (tests/test_api/test_route_map.py).
+    Does its own bearer/query-token validation: EventSource cannot set
+    Authorization headers.
+    """
 
-    # Validate the token
-    if not token:
-        return create_api_base_response(
-            error=err.ERROR_AUTHENTICATED_ROUTE,
-            status_code=401
+    def get(self) -> ResponseReturnValue:
+        # Extract token from Authorization header or query parameter
+        token = None
+        auth_header = request.authorization
+        if auth_header and auth_header.type == "bearer":
+            token = auth_header.token
+        if not token:
+            token = request.args.get("token")
+
+        # Validate the token
+        if not token:
+            return create_api_base_response(
+                error=err.ERROR_AUTHENTICATED_ROUTE,
+                status_code=401
+            )
+
+        try:
+            user = VoucherUserService(process_config).generate_user_from_voucher(token)
+        except Exception:
+            return create_api_base_response(
+                error=err.ERROR_AUTHENTICATED_ROUTE,
+                status_code=401
+            )
+
+        # Fill the user profile (IMAP credentials etc.) exactly like the
+        # request-time auth layer does — the raw voucher user carries no
+        # mail-server password, so mail polling would fail to login.
+        try:
+            system_settings, _ = init_get_system_and_default_domain_settings()
+            user_domain_settings = init_get_user_domain_settings(user)
+            auth_inter = InterfaceAuthUser(process_config, system_settings, user_domain_settings)
+            creds_ok, user = auth_inter.check_user_and_fill_info(user)
+        except Exception:
+            logger.exception("SSE user profile fill failed")
+            creds_ok = False
+        if not creds_ok:
+            return create_api_base_response(
+                error=err.ERROR_AUTHENTICATED_ROUTE,
+                status_code=401
+            )
+
+        return Response(
+            _inbox_sse_generator(user, _build_mail_module_factory(user)),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
 
-    try:
-        user = VoucherUserService(process_config).generate_user_from_voucher(token)
-    except Exception:
-        return create_api_base_response(
-            error=err.ERROR_AUTHENTICATED_ROUTE,
-            status_code=401
-        )
 
-    # Fill the user profile (IMAP credentials etc.) exactly like the
-    # request-time auth layer does — the raw voucher user carries no
-    # mail-server password, so mail polling would fail to login.
-    try:
-        system_settings, _ = init_get_system_and_default_domain_settings()
-        user_domain_settings = init_get_user_domain_settings(user)
-        auth_inter = InterfaceAuthUser(process_config, system_settings, user_domain_settings)
-        creds_ok, user = auth_inter.check_user_and_fill_info(user)
-    except Exception:
-        logger.exception("SSE user profile fill failed")
-        creds_ok = False
-    if not creds_ok:
-        return create_api_base_response(
-            error=err.ERROR_AUTHENTICATED_ROUTE,
-            status_code=401
-        )
-
-    return Response(
-        _inbox_sse_generator(user, _build_mail_module_factory(user)),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+blp.add_url_rule("/sse", view_func=SSEView.as_view("sse"))
