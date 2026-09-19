@@ -68,8 +68,6 @@ jobs:
       SOGO_P_DB_NAME: sogo
       SOGO_P_ADMIN: admin
       SOGO_P_ADMIN_PWD: ci-admin-pw-3f9d2b7c
-      SOGO_UPLOAD_PATH: /tmp/sogo6-uploads
-      SOGO_UPLOAD_TEMP_PATH: /tmp/sogo6-uploads/tmp
       SOGO_INIT_SYSTEM_SETTINGS_PATH: ${{ github.workspace }}/scripts/init/system_settings.json
       SOGO_INIT_DOMAIN_SETTINGS_PATH: ${{ github.workspace }}/scripts/init/domain_settings.json
 
@@ -91,6 +89,11 @@ jobs:
 
     - name: Install python dependencies
       run: poetry install
+
+    - name: Prepare upload storage dir
+      # init_sogo() mkdirs SOGO_UPLOAD_PATH at import (test_integration conftest);
+      # runner user cannot create /var/lib/sogo6 without sudo
+      run: sudo mkdir -p /var/lib/sogo6/uploads/tmp && sudo chmod -R 777 /var/lib/sogo6
 
     - name: Test with pytest
       run: |
