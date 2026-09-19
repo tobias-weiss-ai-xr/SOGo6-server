@@ -39,7 +39,7 @@ def _generate(module_mock, nexts):
 
 class TestEndpoint:
     def test_sse_view_is_registered(self):
-        assert callable(live.sse)
+        assert callable(live.SSEView)  # was: bare sse() before MethodView
 
     def test_poll_interval_is_twenty_seconds(self):
         assert live.MAIL_POLL_INTERVAL_S == 20
