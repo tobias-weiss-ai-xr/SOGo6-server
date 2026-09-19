@@ -42,7 +42,9 @@ jobs:
       # secrets override it when set.
       SOGO_P_VOUCHER_SECRET: ${{ secrets.SOGO_P_VOUCHER_SECRET || '0123456789abcdef0123456789abcdef' }}
       SOGO_AES_ENC_KEY: ${{ secrets.SOGO_AES_ENC_KEY || 'abcdef0123456789abcdef0123456789' }}
-      SOGO_P_REDIS_URL: redis://redis:6379/0
+      # Service containers publish to the runner host (job has no
+      # `container:`), so the alias `redis` does NOT resolve — use localhost.
+      SOGO_P_REDIS_URL: redis://localhost:6379/0
 
     steps:
     - uses: actions/checkout@v4

@@ -251,7 +251,7 @@ class TestOidcCallback:
         assert status == 200
         assert body["data"]["jwt_token"] == "tok"
         assert body["data"]["oidc_sub"] == "sub1"
-        auth_m.assert_called_once_with("example.org", "u@example.org", "oidc")
+        auth_m.assert_called_once_with("example.org", "u@example.org", "oidc", access_token="at")
         stored = cache.store.get("user_oidc_session:u@example.org")
         assert stored["access_token"] == "at"
         assert stored["refresh_token"] == "rt"

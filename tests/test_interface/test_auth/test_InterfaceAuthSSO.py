@@ -142,7 +142,7 @@ class TestOidcCallback:
         assert status == 200
         assert body["data"]["jwt_token"] == "tok"
         assert body["data"]["oidc_sub"] == "sub123"
-        auth_m.assert_called_once_with("example.org", "u@example.org", "oidc")
+        auth_m.assert_called_once_with("example.org", "u@example.org", "oidc", access_token="at")
         # OIDC tokens stored in redis
         assert "user_oidc_session:u@example.org" in cache.store
         assert cache.closed is True

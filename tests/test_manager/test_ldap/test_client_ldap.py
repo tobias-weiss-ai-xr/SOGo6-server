@@ -173,8 +173,17 @@ class TestInit:
 class TestConnect:
     @patch("app.manager.ldap.ClientLdap.ldap")
     def test_plain_connect(self, l):
-        c = make_client(ldap_enc="None")
-        c.connect()
+        import logging
+
+        from app.manager.ldap.ClientLdap import logger_ldap
+
+        old = logger_ldap.level
+        logger_ldap.setLevel(logging.WARNING)  # trace_level depends on logger level
+        try:
+            c = make_client(ldap_enc="None")
+            c.connect()
+        finally:
+            logger_ldap.setLevel(old)
         l.initialize.assert_called_once_with("ldap://ldap.example.org:389", trace_level=0)
         assert c.connected is True
         assert c.ldap_conn is not None
@@ -182,8 +191,17 @@ class TestConnect:
 
     @patch("app.manager.ldap.ClientLdap.ldap")
     def test_implicit_tls_uri(self, l):
-        c = make_client(ldap_enc="SSL/TLS")
-        c.connect()
+        import logging
+
+        from app.manager.ldap.ClientLdap import logger_ldap
+
+        old = logger_ldap.level
+        logger_ldap.setLevel(logging.WARNING)
+        try:
+            c = make_client(ldap_enc="SSL/TLS")
+            c.connect()
+        finally:
+            logger_ldap.setLevel(old)
         l.initialize.assert_called_once_with("ldaps://ldap.example.org:389", trace_level=0)
         # TLS cert option set
         l.initialize.return_value.set_option.assert_called()
