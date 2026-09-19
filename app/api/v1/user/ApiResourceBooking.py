@@ -16,14 +16,13 @@ Endpoints:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from flask import g
 from flask.views import MethodView
 from flask_smorest import Blueprint, abort
 from marshmallow import Schema, fields, validate
-from pytz import UTC
 
 from app.module.calendar.ModuleResourceBooking import ModuleResourceBooking
 from app.utils import errors as err
@@ -293,7 +292,7 @@ def _parse_datetime(dt_str: str, timezone: str = "UTC") -> datetime:
     
     dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
+        dt = dt.replace(tzinfo=timezone.utc)
     
     # Convert to specified timezone
     if timezone and timezone.upper() != "UTC":
