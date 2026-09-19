@@ -35,8 +35,13 @@ jobs:
           --health-retries 5
 
     env:
-      SOGO_P_VOUCHER_SECRET: ${{ secrets.SOGO_P_VOUCHER_SECRET }}
-      SOGO_AES_ENC_KEY: ${{ secrets.SOGO_AES_ENC_KEY }}
+      # Voucher JWT signing + AES key must be 32 chars or auth raises
+      # S999999 ("SOGO_P_VOUCHER_SECRET is not 32 char long"), failing every
+      # login-gated integration test. In CI the JWT is minted + consumed by
+      # the same process, so a fixed 32-char test value is fine; deploy-time
+      # secrets override it when set.
+      SOGO_P_VOUCHER_SECRET: ${{ secrets.SOGO_P_VOUCHER_SECRET || '0123456789abcdef0123456789abcdef' }}
+      SOGO_AES_ENC_KEY: ${{ secrets.SOGO_AES_ENC_KEY || 'abcdef0123456789abcdef0123456789' }}
       SOGO_P_REDIS_URL: redis://redis:6379/0
 
     steps:
