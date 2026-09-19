@@ -18,13 +18,16 @@ class TestUploadStorageConfig:
 
     def test_upload_storage_path_default(self):
         """Test that UPLOAD_STORAGE_PATH has a sensible default."""
+        # class-level default, not the env-baked singleton value
         assert hasattr(process_config, 'SOGO_UPLOAD_PATH')
-        assert process_config.SOGO_UPLOAD_PATH == '/var/lib/sogo6/uploads'
+        from app.config.settings.ProcessSetting import ProcessSetting
+        assert ProcessSetting.model_fields['SOGO_UPLOAD_PATH'].default == '/var/lib/sogo6/uploads'
 
     def test_upload_temp_path_default(self):
         """Test that UPLOAD_TEMP_PATH has a sensible default."""
         assert hasattr(process_config, 'SOGO_UPLOAD_TEMP_PATH')
-        assert process_config.SOGO_UPLOAD_TEMP_PATH == '/var/lib/sogo6/uploads/tmp'
+        from app.config.settings.ProcessSetting import ProcessSetting
+        assert ProcessSetting.model_fields['SOGO_UPLOAD_TEMP_PATH'].default == '/var/lib/sogo6/uploads/tmp'
 
     def test_max_attachment_size_default(self):
         """Test that MAX_ATTACHMENT_SIZE has a sensible default."""
