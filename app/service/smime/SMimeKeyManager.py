@@ -14,7 +14,7 @@ passphrase for the bundle and for the extracted key).
 from __future__ import annotations
 
 import base64
-from typing import Any
+from typing import Any, Callable
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -144,19 +144,51 @@ class SMimeKeyManager:
         self.cache.delete(f"{_SMIME_CERT_PREFIX}{user_uid}")
         self.cache.delete(f"{_SMIME_KEY_PREFIX}{user_uid}")
 
-    def get_public_cert_for_recipient(self, address: str) -> Certificate | None:
+    def get_public_cert_for_recipient(
+        self, address: str, directory_lookup: Callable[[str], bytes | None] | None = None
+    ) -> Certificate | None:
         """Resolve a recipient address ('a@b' or 'Name <a@b>') to their public
         cert. The app is its own S/MIME directory: a recipient is encryptable
-        once their cert is in the store."""
+        once their cert is in the store. When *directory_lookup* is given
+        (e.g. an LDAP ``userCertificate`` lookup) it is consulted on an index
+        miss and a hit is cached into the store for future sends."""
         from email.utils import parseaddr
 
         _, addr = parseaddr(address)
         if not addr:
             return None
         uid = self.cache.get(f"{_SMIME_MAIL_INDEX_PREFIX}{addr.lower()}", str)
-        if not uid:
+        if uid:
+            return self.get_cert(uid)
+        if directory_lookup is None:
             return None
-        return self.get_cert(uid)
+        try:
+            der = directory_lookup(addr)
+        except Exception:
+            return None
+        if not der:
+            return None
+        try:
+            cert = x509.load_der_x509_certificate(der)
+        except ValueError:
+            try:
+                cert = x509.load_pem_x509_certificate(der)
+            except ValueError:
+                return None
+        synthetic_uid = f"ldap-{addr.lower()}"
+        self.store_public(synthetic_uid, cert)
+        return cert
+
+    def store_public(self, user_uid: str, cert: Certificate) -> None:
+        """Store a public cert WITHOUT a private key (directory-sourced, e.g.
+        LDAP ``userCertificate``) and index its email(s) for recipient lookup."""
+        self.cache.set(
+            f"{_SMIME_CERT_PREFIX}{user_uid}",
+            _serialize_cert(cert),
+            ttl=_TTL_SECONDS,
+        )
+        for email in _cert_emails(cert):
+            self.cache.set(f"{_SMIME_MAIL_INDEX_PREFIX}{email}", user_uid, ttl=_TTL_SECONDS)
 
     def summary(self, user_uid: str) -> dict[str, Any] | None:
         cert = self.get_cert(user_uid)
@@ -246,3 +278,49 @@ class SMimeKeyManager:
         )
         self.store(user_uid, cert, key)
         return cert, key
+
+
+def fetch_ldap_user_certificate(address: str) -> bytes | None:
+    """Look up a recipient's ``userCertificate`` in the default domain LDAP
+    user source. Returns raw DER (or PEM) cert bytes, or None.
+
+    Used as the ``directory_lookup`` hook for recipient-cert resolution; any
+    failure (no LDAP source, unreachable server, no attribute) yields None —
+    the caller then reports the recipient as 'no certificate'.
+    """
+    try:
+        from app.config.init_config import init_get_system_and_default_domain_settings
+        from app.config.settings.DomainSettings import UserSourceSettingsObj
+        from app.manager.ldap.ClientLdap import ClientLdap
+
+        _, domain_settings = init_get_system_and_default_domain_settings()
+        ldap_cfg = None
+        for source_cfg in (domain_settings.get("USER_SOURCE") or {}).values():
+            if source_cfg.get("US_TYPE") == "ldap":
+                ldap_cfg = UserSourceSettingsObj(source_cfg)
+                break
+        if ldap_cfg is None:
+            return None
+        us_config = ldap_cfg.get_user_source_settings("ldap")
+        client: ClientLdap = ClientLdap(**us_config)
+        client.connect()
+        try:
+            client._bind(
+                ldap_cfg.US_LDAP_BIND_DN, ldap_cfg.US_LDAP_BIND_DN_PWD, use_admin=True
+            )
+            # ';binary' option makes python-ldap return the raw DER bytes
+            entries = client._search(
+                client.base_dn,
+                f"(mail={address})",
+                attributes=["userCertificate;binary", "userCertificate"],
+            )
+        finally:
+            client.close()
+        for _, attrs in entries:
+            for attr in ("userCertificate;binary", "userCertificate"):
+                values = attrs.get(attr) or attrs.get(attr.lower()) or []
+                if values:
+                    return values[0]
+        return None
+    except Exception:
+        return None

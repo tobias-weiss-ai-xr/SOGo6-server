@@ -21,6 +21,9 @@ from app.utils import errors as err
 from app.utils.exceptions import RequestException, BugException
 from app.utils.maths.crypto_utils import decrypt_password
 from app.utils.module.importManager import import_and_instantiate_manager
+from cryptography.hazmat.primitives import serialization
+from app.service.smime.SMimeCrypto import decrypt_enveloped_message, verify_signed_message
+from app.service.smime.SMimeKeyManager import SMimeKeyManager, cert_summary
 from app.utils.logger.logger import logger_mail_server, logger_api
 from app.utils.strings import get_imap_config_from_url, get_domain_from_mail, get_domain_from_contact
 from app.utils.constants import DELETE_MAIL_BEHAVIOR_MAP
@@ -470,6 +473,41 @@ class ModuleMail:
 #MAILS SERVER#
 ##############
 
+    def _smime_maybe_decrypt(self, message: Message) -> tuple[Message, bool]:
+        """Decrypt an S/MIME enveloped-data message with the user's key.
+
+        Returns ``(message, encrypted)`` — the (possibly decrypted inner)
+        message and whether an encrypted envelope was present. A missing key
+        or failed decryption never raises; the caller then shows the opaque
+        envelope (encrypted=True, no contents).
+        """
+        if message.get_content_type() not in (
+            "application/pkcs7-mime",
+            "application/x-pkcs7-mime",
+        ):
+            return message, False
+        try:
+            key = SMimeKeyManager().get_private_key(self.user.uid)
+        except Exception as e:  # noqa: BLE001 — cache down must not kill the inbox
+            logger_mail_server.warning("S/MIME key lookup failed for %s: %s", self.user.uid, e)
+            return message, True
+        if key is None:
+            return message, True
+        try:
+            key_pem = key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger_mail_server.warning("S/MIME key serialization failed: %s", e)
+            return message, True
+        inner = decrypt_enveloped_message(message, key_pem)
+        if inner is None:
+            logger_mail_server.warning("S/MIME decryption failed for mail of user %s", self.user.uid)
+            return message, True
+        return inner, True
+
     def _parse_mail(self, mail_dict: dict) -> dict:
         """
         Parse a mail and return a dict with all the infos
@@ -534,6 +572,21 @@ class ModuleMail:
         flags_dict: dict = mail_dict["flags"]
         size = mail_dict["size"]
 
+        # S/MIME pre-parse: decrypt enveloped-data when the user has a key,
+        # verify detached signatures on multipart/signed.
+        is_encrypted = False
+        signature_valid: bool | None = None
+        is_signed = False
+        certificates: list[dict[str, Any]] = []
+        email_msg, is_encrypted = self._smime_maybe_decrypt(email_msg)
+        signed = verify_signed_message(email_msg)
+        if signed is not None:
+            is_signed = True
+            signature_valid = signed["valid"]
+            cert = signed.get("certificate")
+            if cert is not None:
+                certificates = [cert_summary(cert)]
+
         # Parse threading headers
         message_id: str = email_msg.get("Message-ID", "").strip()
         in_reply_to: str = email_msg.get("In-Reply-To", "").strip()
@@ -581,8 +634,6 @@ class ModuleMail:
         # Parse content, attachments, and encryption info
         contents = []
         attachments = []
-        is_signed = False
-        certificates: list[dict[str, Any]] = []
         mail_type = []
         mail_type_data: list[dict[str, Any]] = []
         has_walked = False
@@ -601,8 +652,9 @@ class ModuleMail:
                 is_signed = True
                 continue
 
-            # Check for encrypted content
-            if content_type in ("application/pkcs7-mime", "application/x-pkcs7-mime") and "smime-type=enveloped-data" in str(part):
+            # Check for encrypted content that could not be decrypted
+            if content_type in ("application/pkcs7-mime", "application/x-pkcs7-mime") and "enveloped-data" in str(part.get("Content-Type", "")):
+                is_encrypted = True
                 continue
 
             # Check for attachments
@@ -707,6 +759,8 @@ class ModuleMail:
             "has_attachment": has_attachment,
             "attachments": attachments,
             "is_signed": is_signed,
+            "is_encrypted": is_encrypted,
+            "signature_valid": signature_valid,
             "certificates": certificates,
             "priority": priority,
             "should_ask_receipt": should_ask_receipt,

@@ -24,6 +24,7 @@ from app.service.smime.SMimeKeyManager import (
     SMimeKeyError,
     SMimeKeyManager,
     cert_summary,
+    fetch_ldap_user_certificate,
 )
 from app.utils import errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response
@@ -135,7 +136,9 @@ class ApiSMimeRecipient(MethodView):
     def get(self, address: str) -> ResponseReturnValue:
         user: User = g.user
         manager = SMimeKeyManager()
-        cert = manager.get_public_cert_for_recipient(address)
+        cert = manager.get_public_cert_for_recipient(
+            address, directory_lookup=fetch_ldap_user_certificate
+        )
         return create_api_base_response(
             {"certificate": cert_summary(cert) if cert else None}
         )

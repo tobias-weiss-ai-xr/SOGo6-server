@@ -272,6 +272,36 @@ def decrypt_message(payload: bytes, private_key_pem: bytes) -> bytes:
     return proc.stdout
 
 
+def decrypt_enveloped_message(
+    message: Message, private_key_pem: bytes
+) -> Message | None:
+    """Decrypt a single-part ``application/pkcs7-mime`` enveloped-data message.
+
+    Returns the decrypted inner :class:`~email.message.Message`, or None when
+    the message isn't enveloped-data or decryption fails.
+    """
+    if message.get_content_type() not in (
+        "application/pkcs7-mime",
+        "application/x-pkcs7-mime",
+    ):
+        return None
+    # 'enveloped-data' may appear quoted after a parse round-trip
+    # (smime-type="enveloped-data"), so match the value only.
+    if "enveloped-data" not in str(message.get("Content-Type", "")):
+        return None
+    payload = message.get_payload(decode=True)
+    if not payload:
+        return None
+    try:
+        inner = decrypt_message(payload, private_key_pem)
+    except SMimeError:
+        return None
+    try:
+        return message_from_bytes(inner, policy=SMTP)
+    except Exception:
+        return None
+
+
 def verify_detached_signature(sig_der: bytes, content: bytes) -> bool:
     """Verify a detached PKCS7 signature over *content* using the OpenSSL CLI.
 
@@ -310,3 +340,57 @@ def verify_detached_signature(sig_der: bytes, content: bytes) -> bool:
 
         os.unlink(sig_path)
         os.unlink(content_path)
+
+
+def verify_signed_message(message: Message) -> dict[str, Any] | None:
+    """Verify a ``multipart/signed`` message's detached PKCS7 signature.
+
+    Returns ``None`` when *message* is not a ``multipart/signed``; otherwise a
+    dict with ``valid`` (signature cryptographically verifies), and when the
+    signature embeds the signer certificate, ``signer_cn`` / ``signer_email``
+    / ``certificate`` (a :class:`Certificate`). Trust anchoring is NOT checked
+    (like every S/MIME client that reports a signature as "ok but untrusted").
+    """
+    if message.get_content_type() != "multipart/signed":
+        return None
+    try:
+        parts = message.get_payload()
+    except (AttributeError, TypeError):
+        return None
+    if not isinstance(parts, list) or len(parts) < 2:
+        return None
+    content_part, sig_part = parts[0], parts[1]
+    if sig_part.get_content_type() not in (
+        "application/pkcs7-signature",
+        "application/x-pkcs7-signature",
+        "application/pgp-signature",
+    ):
+        return None
+    if "pkcs7" not in sig_part.get_content_type():
+        return None
+
+    # The signature covers the canonical (CRLF, no trailing whitespace) form
+    # of the content entity — exactly the bytes ``policy.SMTP`` emits.
+    content = canonical_bytes(content_part)
+    sig_der = sig_part.get_payload(decode=True)
+    if not sig_der:
+        return None
+
+    valid = verify_detached_signature(sig_der, content)
+    result: dict[str, Any] = {"valid": valid}
+    try:
+        from cryptography.hazmat.primitives.serialization import pkcs7 as _pkcs7
+
+        signer_certs = _pkcs7.load_der_pkcs7_certificates(sig_der)
+        if signer_certs:
+            cert = signer_certs[0]
+            from cryptography.x509 import NameOID
+
+            cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+            result["signer_cn"] = cn[0].value if cn else None
+            eml = cert.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)
+            result["signer_email"] = eml[0].value if eml else None
+            result["certificate"] = cert
+    except Exception:
+        pass  # signer-cert metadata is best-effort; validity already computed
+    return result

@@ -136,6 +136,8 @@ class MailDetailResponseSchema(ApiBaseResponse):
                     }
                 ],
                 "is_signed": True,
+                "is_encrypted": False,
+                "signature_valid": True,
                 "certificates": [],
                 "priority": 1,
                 "should_ask_receipt": False,
@@ -210,6 +212,8 @@ class MailListResponseSchema(ApiBaseResponse):
                         }
                     ],
                     "is_signed": True,
+                    "is_encrypted": False,
+                    "signature_valid": True,
                     "certificates": [],
                     "priority": 3,
                     "should_ask_receipt": False,
