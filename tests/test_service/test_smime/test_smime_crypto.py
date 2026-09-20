@@ -128,6 +128,16 @@ class TestEncryption:
         with pytest.raises(Exception):
             build_encrypted_message(msg, [])
 
+    def test_envelope_carries_addressing_headers(self):
+        cert, _ = make_cert("Recipient", "recipient@example.org")
+        msg = build_sample_message()
+        enc = build_encrypted_message(msg, [cert])
+        # outer envelope keeps addressing headers (SMTP envelope + RFC 8551 3.6)
+        assert enc["From"] == msg["From"]
+        assert enc["To"] == msg["To"]
+        assert enc["Subject"] == msg["Subject"]
+        assert enc["Bcc"] is None  # never leaked to the outer envelope
+
 
 class TestKeyManager:
     def test_pem_import_roundtrip(self, mocker):

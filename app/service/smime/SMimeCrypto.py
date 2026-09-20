@@ -197,7 +197,16 @@ def build_encrypted_message(
         + b64
         + "\r\n"
     )
-    return message_from_bytes(raw.encode("ascii"), policy=SMTP)
+    outer = message_from_bytes(raw.encode("ascii"), policy=SMTP)
+    # RFC 8551 §3.6: addressing headers stay on the outer envelope (the
+    # encrypted entity keeps its own copy). Without From the SMTP client
+    # cannot derive the envelope sender and relays refuse the MAIL FROM.
+    # Bcc is deliberately NOT copied (must not leak to other recipients).
+    for header in ("From", "To", "Cc", "Subject", "Reply-To", "Message-ID", "Date"):
+        value = message.get(header)
+        if value is not None:
+            outer[header] = str(value)
+    return outer
 
 
 def _openssl_encrypt(inner: bytes, cert_pems: list[bytes]) -> bytes:
