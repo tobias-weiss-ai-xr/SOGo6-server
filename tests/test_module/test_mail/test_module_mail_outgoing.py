@@ -444,3 +444,145 @@ def test_send_mime_message_default_account_is_main(monkeypatch):
     make_module().send_mime_message("t@example.org", "s", "Subject: x\n\nb")
     # send_raw_message called with the default identity
     client.send_mail.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _apply_smime — sign / encrypt wrapping
+# ---------------------------------------------------------------------------
+
+class FakeSMimeManager:
+    """In-process S/MIME store: real crypto, no Redis."""
+
+    def __init__(self, with_pair=True, recipient_has_cert=True):
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
+        from cryptography.x509 import (
+            CertificateBuilder, Name, NameAttribute, NameOID, random_serial_number,
+        )
+
+        def mk(cn, email):
+            key = generate_private_key(public_exponent=65537, key_size=2048)
+            subj = Name([NameAttribute(NameOID.COMMON_NAME, cn)])
+            cert = (
+                CertificateBuilder()
+                .subject_name(subj).issuer_name(subj)
+                .public_key(key.public_key())
+                .serial_number(random_serial_number())
+                .not_valid_before(now - timedelta(minutes=5))
+                .not_valid_after(now + timedelta(days=30))
+                .sign(key, hashes.SHA256())
+            )
+            return cert, key
+
+        self.with_pair = with_pair
+        self._cert, self._key = mk("Sender", "user@example.org")
+        self._rcert, _ = mk("Recipient", "a@example.org")
+        self.recipient_has_cert = recipient_has_cert
+
+    def get_cert(self, uid):
+        return self._cert if self.with_pair else None
+
+    def get_private_key(self, uid):
+        return self._key if self.with_pair else None
+
+    def get_public_cert_for_recipient(self, addr):
+        if addr in ("a@example.org", "b@example.org") and self.recipient_has_cert:
+            return self._rcert
+        if addr == "user@example.org":
+            return self._cert
+        return None
+
+
+def test_apply_smime_noop_without_flags():
+    module = make_module()
+    msg = EmailMessage()
+    msg["Subject"] = "x"
+    out = module._apply_smime({"to": []}, msg)
+    assert out is msg
+
+
+def test_apply_smime_sign_creates_multipart_signed(monkeypatch):
+    module = make_module()
+    manager = FakeSMimeManager()
+    monkeypatch.setattr(
+        "app.module.mail.ModuleMailOutgoing.SMimeKeyManager",
+        lambda: manager,
+    )
+    msg = EmailMessage()
+    msg["From"] = "user@example.org"
+    msg["To"] = "a@example.org"
+    msg["Subject"] = "hello"
+    msg.set_content("body")
+    out = module._apply_smime({"sign": True, "to": ["a@example.org"]}, msg)
+    assert out.get_content_type() == "multipart/signed"
+    assert out["Content-Type"].startswith("multipart/signed")
+    assert "protocol=\"application/pkcs7-signature\"" in out["Content-Type"]
+    parts = list(out.iter_parts())
+    assert parts[1]["Content-Type"].startswith("application/pkcs7-signature")
+
+
+def test_apply_smime_sign_without_cert_raises(monkeypatch):
+    module = make_module()
+    manager = FakeSMimeManager(with_pair=False)
+    monkeypatch.setattr(
+        "app.module.mail.ModuleMailOutgoing.SMimeKeyManager",
+        lambda: manager,
+    )
+    msg = EmailMessage()
+    with pytest.raises(RequestException) as exc:
+        module._apply_smime({"sign": True, "to": ["a@example.org"]}, msg)
+    assert exc.value.error == err.ERROR_MAIL_SMIME_NO_CERT
+
+
+def test_apply_smime_encrypt_requires_recipient_certs(monkeypatch):
+    module = make_module()
+    manager = FakeSMimeManager(recipient_has_cert=False)
+    monkeypatch.setattr(
+        "app.module.mail.ModuleMailOutgoing.SMimeKeyManager",
+        lambda: manager,
+    )
+    msg = EmailMessage()
+    with pytest.raises(RequestException) as exc:
+        module._apply_smime({"encrypt": True, "to": ["a@example.org"]}, msg)
+    assert exc.value.error == err.ERROR_MAIL_SMIME_MISSING_RECIPIENT_CERT
+
+
+def test_apply_smime_sign_then_encrypt_when_both():
+    from app.service.smime.SMimeCrypto import decrypt_message
+    from cryptography.hazmat.primitives import serialization
+
+    module = make_module()
+    manager = FakeSMimeManager()
+    module._smime_manager = None  # not used
+    dummy = module
+    # monkeypatch the manager inside module via attribute
+    import app.module.mail.ModuleMailOutgoing as mod
+
+    orig = mod.SMimeKeyManager
+    mod.SMimeKeyManager = lambda: manager
+    try:
+        msg = EmailMessage()
+        msg["From"] = "user@example.org"
+        msg["To"] = "a@example.org"
+        msg["Subject"] = "both"
+        msg.set_content("secret body")
+        out = module._apply_smime({"sign": True, "encrypt": True, "to": ["a@example.org"]}, msg)
+        assert out.get_content_type() == "application/pkcs7-mime"
+        # decrypt the envelope with the sender's key → signed multipart inside
+        from email import message_from_bytes
+        import base64
+
+        der = base64.b64decode(out.get_payload())
+        key_pem = manager._key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        inner = decrypt_message(der, key_pem)
+        inner_msg = message_from_bytes(inner)
+        assert inner_msg.get_content_type() == "multipart/signed"
+    finally:
+        mod.SMimeKeyManager = orig

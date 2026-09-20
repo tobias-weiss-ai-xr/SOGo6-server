@@ -6,6 +6,12 @@ from email.message import EmailMessage, Message
 from email.utils import make_msgid, formatdate, parseaddr
 
 from app.manager.outgoing.ClientOutgoing import ClientOutgoing
+from app.service.smime.SMimeCrypto import (
+    SMimeError,
+    build_encrypted_message,
+    build_signed_message,
+)
+from app.service.smime.SMimeKeyManager import SMimeKeyManager
 from app.utils import constants as cs
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
@@ -254,7 +260,71 @@ class ModuleMailOutgoing:
                     error=err.ERROR_MISSING_ACTION_DATA,
                 ) from exc
 
+        message = self._apply_smime(mail_data, message)
+
         self.send_raw_message(account_id, message)
+        return message
+
+    def _apply_smime(self, mail_data: dict, message: EmailMessage) -> EmailMessage:
+        """Wrap the outgoing message for S/MIME sign / encrypt.
+
+        Signing needs only the sender's own pair. Encryption encrypts to every
+        recipient (To/Cc/Bcc) whose cert is in the SMIME store, plus the sender
+        (so the Sent copy stays readable). If a recipient has no cert, sending
+        is refused: silently downgrading to plaintext would be a security lie.
+        """
+        sign = bool(mail_data.get("sign"))
+        encrypt = bool(mail_data.get("encrypt"))
+        if not (sign or encrypt):
+            return message
+
+        manager = SMimeKeyManager()
+        cert = manager.get_cert(self.user.uid)
+        private_key = manager.get_private_key(self.user.uid)
+        if (sign or encrypt) and (cert is None or private_key is None):
+            raise RequestException(
+                "No S/MIME certificate configured for this account.",
+                error=err.ERROR_MAIL_SMIME_NO_CERT,
+            )
+
+        try:
+            if sign:
+                message = build_signed_message(message, cert, private_key)
+            if encrypt:
+                recipients: list[str] = list(mail_data.get("to") or [])
+                recipients += list(mail_data.get("cc") or [])
+                recipients += list(mail_data.get("bcc") or [])
+                addresses = [str(r) for r in recipients]
+                if not addresses:
+                    raise RequestException(
+                        "S/MIME encryption needs at least one recipient.",
+                        error=err.ERROR_MAIL_SMIME_NO_RECIPIENT,
+                    )
+                recipient_certs = [
+                    manager.get_public_cert_for_recipient(a) for a in addresses
+                ]
+                # Self-include the sender so the Sent copy is decryptable.
+                sender_cert = cert
+                missing = [
+                    addr
+                    for addr, c in zip(addresses, recipient_certs)
+                    if c is None
+                ]
+                if missing:
+                    raise RequestException(
+                        "S/MIME encryption unavailable: no certificate for "
+                        + ", ".join(missing),
+                        error=err.ERROR_MAIL_SMIME_MISSING_RECIPIENT_CERT,
+                    )
+                # encrypt the (already signed, if requested) message
+                message = build_encrypted_message(
+                    message, [sender_cert, *recipient_certs]
+                )
+        except SMimeError as exc:
+            raise RequestException(
+                f"S/MIME processing failed: {exc}",
+                error=err.ERROR_MAIL_SMIME_FAILED,
+            ) from exc
         return message
 
     def send_mime_message(
