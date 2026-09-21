@@ -57,7 +57,7 @@ class SogoSchema(Schema):
         if errors:
             raise ValidationError(errors)
 
-def check_data_for_sogo_schemas(data: dict, get_all_schemas: Callable[[], list[Type[SogoSchema]]]) -> dict:
+def check_data_for_sogo_schemas(data: dict, get_all_schemas: Callable[[], list[Type[SogoSchema]]], inject_defaults: bool = True) -> dict:
     """
     Check data that is a dict that represent several sogo schema.
     Meaning the primary key are the subaprents name of each sogo schema.
@@ -66,6 +66,11 @@ def check_data_for_sogo_schemas(data: dict, get_all_schemas: Callable[[], list[T
     get_all_schemas must be a function that will return the list of all the sogo schemas involved
 
     The function will check that each sogo schema is respected
+
+    inject_defaults=False keeps the result SPARSE: keys absent from the input are
+    NOT filled with the schema load_default values (used by update/PATCH paths so
+    a partial update cannot stomp stored settings). inject_defaults=True (the
+    default) preserves the creation-path behavior of filling defaults.
 
     :raises: ValidationError()
     """
@@ -76,11 +81,11 @@ def check_data_for_sogo_schemas(data: dict, get_all_schemas: Callable[[], list[T
             updated_data_dict: dict = {}
             data_dict: dict[str, dict] = data.get(check_schema.subparent, {})
             for data_uid, data_values in data_dict.items():
-                updated_value = check_schema.load(data_values, unknown=EXCLUDE)
+                updated_value = check_schema.load(data_values, unknown=EXCLUDE, partial=not inject_defaults)
                 updated_data_dict[data_uid]=updated_value
             updated_data[check_schema.subparent] = updated_data_dict
         else:
             data_values = data.get(check_schema.subparent, {})
-            updated_value = check_schema.load(data_values, unknown=EXCLUDE)
+            updated_value = check_schema.load(data_values, unknown=EXCLUDE, partial=not inject_defaults)
             updated_data[check_schema.subparent] = updated_value
     return updated_data

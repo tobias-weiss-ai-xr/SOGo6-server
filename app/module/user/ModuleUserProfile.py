@@ -646,7 +646,9 @@ class ModuleUserProfile:
 
         merge_patch(patch, current_data)
 
-        new_data = check_data_for_sogo_schemas(current_data, get_all_user_settings_schema)
+        # Sparse update: a partial PATCH must not fill absent keys with schema
+        # defaults (that used to reset e.g. SOGO_U_THEME on old/re-provisioned records)
+        new_data = check_data_for_sogo_schemas(current_data, get_all_user_settings_schema, inject_defaults=False)
 
         self._update_user_column(uid, tbl.COL_USER_DEFAULTS.name, new_data)
 
