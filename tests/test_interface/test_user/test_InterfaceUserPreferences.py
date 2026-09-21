@@ -32,7 +32,8 @@ class TestGetAll:
         mp.return_value.get_user_preferences.return_value = {"USER_GENERAL": {}}
         resp, code = iface.get_all_preferences()
         assert code == 200
-        assert resp["data"] == {"USER_GENERAL": {}}
+        # THEME-1: sparse records get the deployment default theme at read time
+        assert resp["data"] == {"USER_GENERAL": {"SOGO_U_THEME": "default"}}
         mp.return_value.get_user_preferences.assert_called_once_with("user@example.org")
 
     def test_request_exception(self):
