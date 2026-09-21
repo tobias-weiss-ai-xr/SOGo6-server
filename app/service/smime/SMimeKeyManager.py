@@ -196,6 +196,39 @@ class SMimeKeyManager:
             return None
         return cert_summary(cert)
 
+    def get_all_certificates(self) -> list[dict[str, Any]]:
+        """Return a list of all certificates with their metadata for admin inventory.
+        
+        Each entry includes: user_uid, emails, not_before, not_after, has_private_key.
+        """
+        # Get all user_uids that have certificates by scanning the Redis keys
+        # Use scan instead of keys to avoid blocking the server
+        prefix = _SMIME_CERT_PREFIX
+        result = []
+        redis_client = self.cache.redis
+        
+        # Use scan to iterate through all matching keys
+        cursor = 0
+        while True:
+            cursor, keys = redis_client.scan(cursor, match=f"{prefix}*", count=100)
+            for key in keys:
+                user_uid = key.decode().replace(prefix, "")
+                cert = self.get_cert(user_uid)
+                if cert is not None:
+                    # Check if private key exists using the redis client directly
+                    has_private_key = bool(redis_client.exists(f"{_SMIME_KEY_PREFIX}{user_uid}"))
+                    emails = _cert_emails(cert)
+                    result.append({
+                        "user_uid": user_uid,
+                        "emails": emails,
+                        "not_before": cert.not_valid_before_utc.isoformat(),
+                        "not_after": cert.not_valid_after_utc.isoformat(),
+                        "has_private_key": has_private_key,
+                    })
+            if cursor == 0:
+                break
+        return result
+
     # --- import / generate ------------------------------------------------
 
     @staticmethod

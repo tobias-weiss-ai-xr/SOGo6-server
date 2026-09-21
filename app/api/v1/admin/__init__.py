@@ -8,6 +8,7 @@ from .ApiEmailAuth import blp as admin_email_auth_api_blueprint
 from .ApiSharedMailbox import blp as admin_shared_mailbox_api_blueprint
 from .ApiAdminCalendar import blp as admin_calendar_api_blueprint
 from .ApiResourceBooking import blp as admin_resource_booking_api_blueprint
+from .ApiSmimeCerts import blp as smime_certs_api
 
 from .ApiAuditLog import blp as audit_log_api
 from .ApiDomainBranding import blp as domain_branding_api
@@ -68,6 +69,7 @@ admin_apis : list[Blueprint] = [
     admin_shared_mailbox_api_blueprint,
     admin_calendar_api_blueprint,
     admin_resource_booking_api_blueprint,
+    smime_certs_api,
 
     # Tier 6
     scim_provisioning_api,
