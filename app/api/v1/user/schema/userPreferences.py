@@ -71,7 +71,7 @@ class UserPreferencesPatch(Schema):
 
     Expected JSON Merge Patch data
     """
-    settings  = fields.Dict(required=True, keys=fields.String(), values=fields.Raw())
+    settings  = fields.Dict(required=True, keys=fields.String(), values=fields.Dict())
 
     @classmethod
     def example(cls) -> dict:
