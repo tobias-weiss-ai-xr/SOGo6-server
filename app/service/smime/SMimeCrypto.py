@@ -29,6 +29,7 @@ without Redis or a database.
 from __future__ import annotations
 
 import base64
+import os
 import subprocess
 import uuid
 from email import message_from_bytes
@@ -311,12 +312,16 @@ def decrypt_enveloped_message(
         return None
 
 
-def verify_detached_signature(sig_der: bytes, content: bytes) -> bool:
+def verify_detached_signature(
+    sig_der: bytes, content: bytes, trust_bundle_path: str | None = None
+) -> tuple[bool, bool]:
     """Verify a detached PKCS7 signature over *content* using the OpenSSL CLI.
 
-    Returns True when the signature is cryptographically valid (the signer's
-    *certificate identity* is NOT checked here — trust anchoring is a separate
-    concern, like every S/MIME client that shows "certificate not trusted").
+    Returns a tuple (valid, trusted) where:
+    - valid: True when the signature is cryptographically valid
+    - trusted: True only if valid AND the signer cert chains to trust_bundle_path
+              False if valid but cert doesn't chain to bundle
+              When trust_bundle_path is None, trusted is always True
     """
     import tempfile
 
@@ -327,6 +332,7 @@ def verify_detached_signature(sig_der: bytes, content: bytes) -> bool:
         content_fh.write(content)
         content_path = content_fh.name
     try:
+        # First verify the signature is cryptographically valid
         proc = subprocess.run(
             [
                 "openssl",
@@ -343,10 +349,37 @@ def verify_detached_signature(sig_der: bytes, content: bytes) -> bool:
             capture_output=True,
             check=False,
         )
-        return proc.returncode == 0
+        valid = proc.returncode == 0
+        
+        # If no trust bundle specified, return legacy behavior
+        if trust_bundle_path is None:
+            return valid, True
+        
+        # If signature is invalid, trusted is False
+        if not valid:
+            return valid, False
+        
+        # Verify the chain against the trust bundle
+        proc2 = subprocess.run(
+            [
+                "openssl",
+                "smime",
+                "-verify",
+                "-inform",
+                "DER",
+                "-in",
+                sig_path,
+                "-content",
+                content_path,
+                "-CAfile",
+                trust_bundle_path,
+            ],
+            capture_output=True,
+            check=False,
+        )
+        trusted = proc2.returncode == 0
+        return valid, trusted
     finally:
-        import os
-
         os.unlink(sig_path)
         os.unlink(content_path)
 
@@ -355,10 +388,11 @@ def verify_signed_message(message: Message) -> dict[str, Any] | None:
     """Verify a ``multipart/signed`` message's detached PKCS7 signature.
 
     Returns ``None`` when *message* is not a ``multipart/signed``; otherwise a
-    dict with ``valid`` (signature cryptographically verifies), and when the
-    signature embeds the signer certificate, ``signer_cn`` / ``signer_email``
-    / ``certificate`` (a :class:`Certificate`). Trust anchoring is NOT checked
-    (like every S/MIME client that reports a signature as "ok but untrusted").
+    dict with ``valid`` (signature cryptographically verifies), ``trusted``
+    (True only if valid AND signer cert chains to SOGO_SMIME_TRUST_BUNDLE,
+    False if valid but cert doesn't chain, None if SOGO_SMIME_TRUST_BUNDLE is
+    not set), and when the signature embeds the signer certificate,
+    ``signer_cn`` / ``signer_email`` / ``certificate`` (a :class:`Certificate`).
     """
     if message.get_content_type() != "multipart/signed":
         return None
@@ -385,8 +419,19 @@ def verify_signed_message(message: Message) -> dict[str, Any] | None:
     if not sig_der:
         return None
 
-    valid = verify_detached_signature(sig_der, content)
-    result: dict[str, Any] = {"valid": valid}
+    # Get trust bundle path from environment variable, if set
+    trust_bundle_path = os.environ.get("SOGO_SMIME_TRUST_BUNDLE")
+    
+    # Verify signature (and optionally chain trust)
+    if trust_bundle_path:
+        # Path is set, verify both signature validity and trust chain
+        valid, trusted = verify_detached_signature(sig_der, content, trust_bundle_path)
+    else:
+        # No trust bundle configured, use legacy behavior
+        valid, _ = verify_detached_signature(sig_der, content)
+        trusted = None
+    
+    result: dict[str, Any] = {"valid": valid, "trusted": trusted}
     try:
         from cryptography.hazmat.primitives.serialization import pkcs7 as _pkcs7
 

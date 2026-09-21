@@ -88,7 +88,8 @@ class TestSigning:
         msg = build_sample_message()
         content = canonical_bytes(msg)
         sig = build_detached_pkcs7(content, cert, key)
-        assert verify_detached_signature(sig, content) is True
+        valid, _ = verify_detached_signature(sig, content)
+        assert valid is True
 
     def test_openssl_rejects_tampered_content(self):
         cert, key = make_cert("Sender", "sender@example.org")
@@ -96,7 +97,8 @@ class TestSigning:
         content = canonical_bytes(msg)
         sig = build_detached_pkcs7(content, cert, key)
         tampered = content.replace(b"Line two.", b"Line TWO!!")
-        assert verify_detached_signature(sig, tampered) is False
+        valid, _ = verify_detached_signature(sig, tampered)
+        assert valid is False
 
 
 class TestEncryption:
