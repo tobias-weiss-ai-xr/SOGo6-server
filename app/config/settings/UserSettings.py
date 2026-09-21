@@ -4,6 +4,8 @@
 Defines all users parameters
 """
 from typing import Type
+import os
+
 from app.config.settings.SogoSchema import SogoSchema
 from app.utils.config.generateObjFromSchema import SettingsObj
 from app.utils import constants as cs
@@ -13,6 +15,14 @@ import zoneinfo
 from marshmallow import Schema, fields, validate
 
 TIMEZONES = zoneinfo.available_timezones()
+
+
+def default_user_theme() -> str:
+    """Deployment-configurable theme for fresh/re-provisioned preference records.
+
+    Read at call time (not import time) so tests and runtime config changes work.
+    """
+    return os.environ.get("SOGO_DEFAULT_THEME", "default")
 
 
 class UserGeneralSettings(SogoSchema):

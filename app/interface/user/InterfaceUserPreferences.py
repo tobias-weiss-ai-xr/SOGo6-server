@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from marshmallow import ValidationError
 
+from app.config.settings.UserSettings import default_user_theme
 from app.module.user.ModuleUserProfile import ModuleUserProfile
 from app.utils.api.ApiBaseResponse import create_api_base_response
 from app.utils.exceptions import RequestException
@@ -37,6 +38,13 @@ class InterfaceUserPreferences:
             data = self.module_user_profile.get_user_preferences(self.user.uid)
         except RequestException as e:
             return create_api_base_response(error=e.error)
+        # Read-time fallback: since the update path is sparse (bdd0263), fresh or
+        # re-provisioned records legitimately lack SOGO_U_THEME; serve the
+        # deployment default instead of letting the client guess.
+        if isinstance(data, dict):
+            general = data.get("USER_GENERAL")
+            if isinstance(general, dict) and "SOGO_U_THEME" not in general:
+                general["SOGO_U_THEME"] = default_user_theme()
         return create_api_base_response(data)
 
 
