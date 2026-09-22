@@ -176,8 +176,8 @@ class TestResourceBookingUser:
     BASE = "/api/user/v1/resources"
 
     def test_list_resources_user(self, client, user_auth_headers):
-        """Test listing resources (user)."""
-        resp = client.get(self.BASE + "/", headers=user_auth_headers)
+        """Test listing resources (user). Route is @blp.route("") → no trailing slash."""
+        resp = client.get(self.BASE, headers=user_auth_headers)
         assert resp.status_code == 200
 
     def test_check_resource_availability(self, client, user_auth_headers):
