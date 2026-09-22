@@ -70,11 +70,15 @@ def auth_headers(admin_token):
 def _user_token(_app):
     """Obtain a real user JWT. The seeded user source is LDAP — skip
     gracefully where no LDAP with the test user exists (CI service set is
-    mariadb+redis only; the live stack has it)."""
+    mariadb+redis only; the superproject test-stack boots LDAP with the
+    seed defaults below). Live stacks override SOGO_TEST_USER/
+    SOGO_TEST_PASSWORD (e.g. prod DN on 42.20)."""
+    username = os.environ.get("SOGO_TEST_USER", "maxmustermann@example.org")
+    password = os.environ.get("SOGO_TEST_PASSWORD", "UniMarburg2026!")
     with _app.test_client() as c:
         resp = c.post(
             "/api/user/v1/auth/login",
-            data=json.dumps({"username": "maxmustermann@example.org", "password": "UniMarburg2026!"}),
+            data=json.dumps({"username": username, "password": password}),
             content_type="application/json",
         )
         data = resp.get_json()
