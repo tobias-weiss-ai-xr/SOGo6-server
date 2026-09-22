@@ -761,6 +761,7 @@ class ModuleMail:
             "is_signed": is_signed,
             "is_encrypted": is_encrypted,
             "signature_valid": signature_valid,
+            "signature_trusted": (signed.get("trusted") if signed else None),
             "certificates": certificates,
             "priority": priority,
             "should_ask_receipt": should_ask_receipt,

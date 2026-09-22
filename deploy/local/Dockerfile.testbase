@@ -1,0 +1,18 @@
+FROM python:3.14-slim
+
+# Test base for sogo6-server pytest gates (offline CI-style env).
+# Rebuild: docker build -t sogo6-test-base:latest -f deploy/local/Dockerfile.testbase .
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev libldap2-dev libsasl2-dev libxml2-dev libxmlsec1-dev git \
+    openssl ca-certificates curl && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml README.md* ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+      flask flask-compress flask-cors flask-smorest gunicorn celery \
+      prometheus-client authlib pyotp "qrcode[pil]" webauthn \
+      marshmallow icalendar defusedxml psycopg[binary] mysql-connector-python \
+      python-ldap redis cryptography pyjwt pydantic pydantic-settings bcrypt \
+      sievelib yarl pysaml2 pytest pytest-mock pytest-cov || \
+    echo "WARN: some packages failed - will install at gate time"
+CMD ["bash"]

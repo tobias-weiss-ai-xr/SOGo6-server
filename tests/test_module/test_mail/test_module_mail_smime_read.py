@@ -58,6 +58,8 @@ def test_parse_signed_mail_verifies_signature(monkeypatch):
 
     assert parsed["is_signed"] is True
     assert parsed["signature_valid"] is True
+    # trusted is None when no SOGO_SMIME_TRUST_BUNDLE is configured (legacy)
+    assert parsed["signature_trusted"] is None
     assert parsed["certificates"] and parsed["certificates"][0]["subject_cn"] == "Alice Sender"
     assert parsed["contents"], "signed content must still be parsed"
 
