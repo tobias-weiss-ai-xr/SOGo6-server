@@ -188,7 +188,10 @@ class WebhookService:
             hook["last_status"] = 200
         else:
             hook["last_status"] = 0
-        # persist stats (best-effort; the registered list stays authoritative)
+        # persist stats (best-effort; the registered list stays authoritative).
+        # Only write back when the hook still exists — an unconditional save
+        # races with concurrent registrations and resurrects a stale list
+        # (wiped freshly-created hooks when a delivery ran in parallel).
         try:
             hooks = self.list_webhooks()
             for stored in hooks:
@@ -196,8 +199,8 @@ class WebhookService:
                     stored.update({k: hook[k] for k in (
                         "delivery_count", "success_count", "last_status", "last_attempted_at",
                     ) if k in hook})
+                    self.save_webhooks(hooks)
                     break
-            self.save_webhooks(hooks)
         except Exception as exc:  # pragma: no cover - stats must never break delivery
             logger_api.debug("Webhook stat persistence failed: %s", exc)
         return ok
