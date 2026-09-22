@@ -167,6 +167,42 @@ class TestKeyManager:
         assert s["not_before"]
         assert s["fingerprint_sha256"]
 
+    def test_summary_reports_expiry(self, mocker):
+        from datetime import datetime, timedelta, timezone
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography import x509 as _x509
+
+        def cert_with_expiry(days: int):
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            name = _x509.Name([_x509.NameAttribute(NameOID.COMMON_NAME, "Expiry")])
+            now = datetime.now(timezone.utc)
+            not_after = now + timedelta(days=days)
+            return (
+                (
+                    _x509.CertificateBuilder()
+                    .subject_name(name)
+                    .issuer_name(name)
+                    .public_key(key.public_key())
+                    .serial_number(_x509.random_serial_number())
+                    .not_valid_before(min(now - timedelta(days=1), not_after - timedelta(days=1)))
+                    .not_valid_after(not_after)
+                )
+                .sign(key, hashes.SHA256())
+            )
+
+        from app.service.smime.SMimeKeyManager import cert_summary as cs
+
+        s = cs(cert_with_expiry(3))
+        assert s["days_until_expiry"] == 3
+        assert s["expired"] is False
+
+        s = cs(cert_with_expiry(-2))
+        assert s["days_until_expiry"] <= -2
+        assert s["expired"] is True
+
 
 class DictCache:
     """Minimal dict-backed stand-in for the Redis cache client."""

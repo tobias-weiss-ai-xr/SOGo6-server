@@ -14,6 +14,8 @@ passphrase for the bundle and for the extracted key).
 from __future__ import annotations
 
 import base64
+import math
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from cryptography import x509
@@ -69,6 +71,11 @@ def cert_summary(cert: Certificate) -> dict[str, Any]:
         else None,
         "not_before": cert.not_valid_before_utc.isoformat(),
         "not_after": cert.not_valid_after_utc.isoformat(),
+        "days_until_expiry": math.ceil(
+            (cert.not_valid_after_utc - datetime.now(timezone.utc)).total_seconds()
+            / 86400
+        ),
+        "expired": cert.not_valid_after_utc <= datetime.now(timezone.utc),
         "serial": str(cert.serial_number),
         "fingerprint_sha256": cert.fingerprint(
             __import__(
