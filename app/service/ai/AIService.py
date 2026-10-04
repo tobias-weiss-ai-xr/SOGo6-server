@@ -8,20 +8,41 @@ Supports:
 - Anomaly detection in sending patterns
 
 Uses a pluggable model backend — defaults to a rule-based fallback
-so features work out of the box. Connect local ONNX/LLM models for
-production use.
+so features work out of the box. Set SOGO_AI_OLLAMA_URL to use a local
+Ollama server for real LLM-powered features.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from typing import Callable
 
+import requests
+
 from app.service import sogo_cache
+from app.utils.logger.logger import logger_api
 
 # Cache prefix for AI results
 _AI_CACHE_PREFIX: str = "ai:cache:"
+
+# Ollama configuration (env-driven, hot-reloadable)
+_OLLAMA_URL: str | None = None
+_OLLAMA_MODEL: str = "qwen2.5:1.5b"
+
+
+def _get_ollama_config() -> tuple[str | None, str]:
+    """Read Ollama config from env. Cached at module level but re-reads if env changes."""
+    global _OLLAMA_URL, _OLLAMA_MODEL
+    url = os.getenv("SOGO_AI_OLLAMA_URL", "")
+    model = os.getenv("SOGO_AI_OLLAMA_MODEL", "qwen2.5:1.5b")
+    if url:
+        _OLLAMA_URL = url.rstrip("/")
+    else:
+        _OLLAMA_URL = None
+    _OLLAMA_MODEL = model
+    return _OLLAMA_URL, _OLLAMA_MODEL
 
 
 class AIModelBackend:
@@ -229,15 +250,133 @@ class AIModelBackend:
         }
 
 
+class OllamaBackend(AIModelBackend):
+    """LLM-powered backend using a local Ollama server.
+
+    Falls back to the rule-based parent for methods that don't benefit
+    from LLM (classify_attachment, detect_anomaly, nl_to_search) or
+    when the Ollama server is unreachable.
+    """
+
+    def __init__(self, url: str, model: str):
+        super().__init__()
+        self._url = url.rstrip("/")
+        self._model = model
+        self._timeout = int(os.getenv("SOGO_AI_OLLAMA_TIMEOUT", "30"))
+
+    def load(self) -> bool:
+        """Check Ollama server is reachable."""
+        try:
+            resp = requests.get(f"{self._url}/api/tags", timeout=5)
+            self._loaded = resp.status_code == 200
+        except Exception:
+            self._loaded = False
+        if self._loaded:
+            logger_api.info("Ollama backend loaded: %s (model: %s)", self._url, self._model)
+        else:
+            logger_api.warning("Ollama backend unavailable at %s — falling back to rules", self._url)
+        return self._loaded
+
+    def _chat(self, system: str, user: str, temperature: float = 0.3) -> str:
+        """Call Ollama /api/chat and return the assistant content."""
+        try:
+            resp = requests.post(
+                f"{self._url}/api/chat",
+                json={
+                    "model": self._model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "stream": False,
+                    "options": {"temperature": temperature},
+                },
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()["message"]["content"].strip()
+        except Exception as exc:
+            logger_api.warning("Ollama chat failed: %s — falling back to rules", exc)
+            return ""
+
+    # ── LLM-powered overrides ─────────────────────────────────────────────
+
+    def summarize(self, text: str, max_sentences: int = 3) -> str:
+        system = (
+            "You are an email summarizer. Summarize the following email "
+            f"in {max_sentences} sentences. Reply with only the summary, no preamble."
+        )
+        result = self._chat(system, text[:8000])
+        return result if result else super().summarize(text, max_sentences)
+
+    def classify(self, text: str, subject: str = "", sender: str = "") -> list[dict]:
+        system = (
+            "You are an email classifier. Classify the email into one or more "
+            "of: newsletter, invoice, notification, social, personal, other. "
+            'Reply as JSON: [{"label": "...", "confidence": 0.0-1.0}, ...]. '
+            "No preamble."
+        )
+        payload = f"Subject: {subject}\nFrom: {sender}\nBody: {text[:4000]}"
+        result = self._chat(system, payload)
+        if result:
+            try:
+                parsed = json.loads(result)
+                if isinstance(parsed, list) and parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return super().classify(text, subject, sender)
+
+    def suggest_reply(self, email_text: str, tone: str = "professional") -> str:
+        system = (
+            f"You are an email assistant. Write a {tone} reply to the email below. "
+            "Reply with only the email body, no subject line, no preamble."
+        )
+        result = self._chat(system, email_text[:8000], temperature=0.5)
+        return result if result else super().suggest_reply(email_text, tone)
+
+    def extract_contact_info(self, text: str) -> dict:
+        system = (
+            "You are a contact information extractor. Extract phone, title, "
+            "company, and location from the text below. "
+            'Reply as JSON: {"phone": "...", "title": "...", '
+            '"company": "...", "location": "..."}. Missing fields = null. No preamble.'
+        )
+        result = self._chat(system, text[:4000])
+        if result:
+            try:
+                parsed = json.loads(result)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return super().extract_contact_info(text)
+
+
 # Singleton
 _model_backend: AIModelBackend | None = None
 
 
 def get_model_backend() -> AIModelBackend:
+    """Return the AI model backend.
+
+    If SOGO_AI_OLLAMA_URL is set and the server is reachable, returns
+    an OllamaBackend (LLM-powered). Otherwise returns the rule-based
+    AIModelBackend fallback.
+    """
     global _model_backend
     if _model_backend is None:
-        _model_backend = AIModelBackend()
-        _model_backend.load()
+        url, model = _get_ollama_config()
+        if url:
+            backend = OllamaBackend(url, model)
+            if backend.load():
+                _model_backend = backend
+            else:
+                _model_backend = AIModelBackend()
+                _model_backend.load()
+        else:
+            _model_backend = AIModelBackend()
+            _model_backend.load()
     return _model_backend
 
 

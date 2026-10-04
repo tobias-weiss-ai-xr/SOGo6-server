@@ -17,6 +17,10 @@ from .ApiOAuthProvider import blp as oauth_api
 from .ApiPushNotifications import blp as push_api
 from .ApiSMIME import blp as smime_api
 from .ApiApiTokens import blp as api_tokens_api
+from .ApiAI import blp as ai_api
+from .ApiSpamFilter import blp as spam_filter_api
+from .ApiSmartCalendar import blp as smart_calendar_api
+from .ApiTranscripts import blp as transcripts_api
 
 
 def register_user_blueprints(api: Api):
@@ -47,4 +51,8 @@ user_profile_apis: list[Blueprint] = [
     push_api,
     smime_api,
     api_tokens_api,
+    ai_api,
+    spam_filter_api,
+    smart_calendar_api,
+    transcripts_api,
 ]
