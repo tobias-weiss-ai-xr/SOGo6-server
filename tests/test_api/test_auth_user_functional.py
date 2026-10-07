@@ -126,6 +126,26 @@ class TestCallbackGet:
         params = sso.handle_callback.call_args.args[2]
         assert params == {"code": "abc", "state": "xyz"}
 
+    def test_get_redirects_on_jwt(self, client, sso, init_ret):
+        c, iface = client
+        sso.handle_callback.return_value = ({"data": {"jwt_token": "tok123"}, "error_code": ""}, 200)
+        resp = c.get("/auth/callback/example.org")
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == "http://localhost:3000/auth/callback#token=tok123"
+
+    def test_get_string_data_no_crash(self, client, sso, init_ret):
+        # create_api_base_response packs str payloads — body["data"] can be a
+        # str (e.g. OIDC error path); the jwt-redirect guard must not crash
+        # with AttributeError: 'str' object has no attribute 'get' (sogo6-RED).
+        c, iface = client
+        sso.handle_callback.return_value = (
+            {"data": "Missing authorization code", "error_code": "E_OIDC_TOKEN_EXCHANGE_FAILED", "error_msg": "oidc failed"},
+            400,
+        )
+        resp = c.get("/auth/callback/example.org?code=BAD&state=x")
+        assert resp.status_code == 400
+        assert b"Missing authorization code" in resp.data
+
     def test_get_domain_without_db_result_uses_default(self, client, sso, init_ret):
         c, iface = client
         sso.handle_callback.return_value = ({"data": {}, "error_code": ""}, 200)
@@ -139,13 +159,6 @@ class TestCallbackGet:
         assert resp.status_code == 200
         domain_auth = sso.handle_callback.call_args.args[1]
         assert domain_auth.SOGO_D_AUTH_TYPE == "plain"
-
-    def test_get_redirects_on_jwt(self, client, sso, init_ret):
-        c, iface = client
-        sso.handle_callback.return_value = ({"data": {"jwt_token": "tok123"}, "error_code": ""}, 200)
-        resp = c.get("/auth/callback/example.org")
-        assert resp.status_code == 302
-        assert resp.headers["Location"] == "http://localhost:3000/auth/callback#token=tok123"
 
     def test_get_loads_domain_settings(self, client, sso, init_ret):
         c, iface = client

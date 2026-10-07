@@ -152,16 +152,20 @@ class ApiAuthUserCallback(MethodView):
 
         # If the callback produced a JWT token, redirect the user to the
         # frontend with the token as a hash fragment (best practice).
-        if isinstance(body, dict) and body.get("data", {}).get("jwt_token"):
-            token = body["data"]["jwt_token"]
+        # NB: create_api_base_response packs str payloads — body["data"] can
+        # be a str (e.g. OIDC error path); guard before .get() (sogo6-RED).
+        data = body.get("data") if isinstance(body, dict) else None
+        if isinstance(data, dict) and data.get("jwt_token"):
+            token = data["jwt_token"]
             frontend_url = process_config.SOGO_P_PUBLIC_BASE_URL or "http://localhost:3000"
             redirect_url = f"{frontend_url.rstrip('/')}/auth/callback#token={token}"
             from flask import redirect as flask_redirect
             return flask_redirect(redirect_url)
 
-        # Otherwise return the API response directly
+        # Otherwise return the API response directly (status carried through —
+        # handle_callback's tuple status was previously dropped → 200 on errors)
         from app.utils.api.ApiBaseResponse import create_api_base_response
-        return create_api_base_response(body.get("data", body), error_code=body.get("error_code", ""))
+        return create_api_base_response(body.get("data", body), error_code=body.get("error_code", ""), status_code=status)
 
     @blp.response(200)
     def post(self, domain: str) -> ResponseReturnValue:
