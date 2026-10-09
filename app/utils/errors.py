@@ -465,3 +465,7 @@ ERROR_MAIL_SMIME_FAILED           = E("S001328", "S/MIME processing failed", HTT
 ERROR_SMIME_INVALID_BUNDLE        = E("S001329", "S/MIME: invalid certificate bundle", HTTPStatus.BAD_REQUEST)
 ERROR_SMIME_KEY_MISMATCH          = E("S001330", "S/MIME: certificate and private key do not match", HTTPStatus.BAD_REQUEST)
 ERROR_SMIME_INVALID_PARSE         = E("S001331", "S/MIME: could not parse the certificate/key", HTTPStatus.BAD_REQUEST)
+
+# ── ACL / Sharing (S00134x) ──────────────────────────────────────────────────
+ERROR_SHARE_CANNOT_SHARE_WITH_SELF = E("S001340", "Cannot share a resource with yourself", HTTPStatus.BAD_REQUEST)
+ERROR_SHARE_NOT_FOUND               = E("S001341", "Share entry not found", HTTPStatus.NOT_FOUND)

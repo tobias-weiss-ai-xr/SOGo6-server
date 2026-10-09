@@ -607,6 +607,48 @@ IDX_DRAFT_OWNER = Index(name="idx_draft_owner", columns=(COL_DRAFT_OWNER.name,))
 TABLE_DRAFT_STATE = Table(name=process_config.SOGO_P_TABLE_TMP_DRAFTS, columns=ALL_DRAFT_COL, primary_keys=(COL_ID.name, COL_DRAFT_KEY.name),
                           indexes=[IDX_DRAFT_OWNER])
 
+##############################
+# Table sogo6_acl           #
+##############################
+"""
+Unified ACL table for all shareable resources (calendars, address books, mail folders).
+Each row grants a specific user (to_user) a set of rights on a specific resource.
+
+The resource is identified by (type, key) where type is the resource type discriminant
+(see Share.resource_type class attribute in app.factory.share.share) and key is an opaque
+string unique within that type.
+
+Rights are stored as a JSON dict whose interpretation depends on the resource type:
+- calendar: {public: str, confidential: str, private: str, can_create_objects: bool, can_erase_objects: bool}
+- addressbook: {can_view: bool, can_create_objects: bool, can_edit_objects: bool, can_erase_objects: bool}
+- folder (mail): rights live in the IMAP server's ACL (RFC 4314); this table is not used.
+"""
+# type: resource type discriminant (e.g. 'calendar', 'addressbook')
+# key: opaque resource identifier (e.g. calendar key, address book key)
+# owner: uid of the resource owner
+# to_user: uid of the user receiving the rights
+# rights: JSON object storing granular permissions per resource type
+COL_ACL_TYPE      = Column(name="type",      data_type="str",   extra_args={"max_len": 16})
+COL_ACL_KEY       = Column(name="key",       data_type="str",   extra_args={"max_len": 64})
+COL_ACL_OWNER     = Column(name="owner",     data_type="str",   extra_args={"max_len": 512})
+COL_ACL_TO_USER   = Column(name="to_user",   data_type="str",   extra_args={"max_len": 512})
+COL_ACL_RIGHTS    = Column(name="rights",    data_type="dict")
+
+ALL_ACL_COL = [COL_ID,
+               COL_ACL_TYPE,
+               COL_ACL_KEY,
+               COL_ACL_OWNER,
+               COL_ACL_TO_USER,
+               COL_ACL_RIGHTS]
+
+IDX_ACL_KEY = Index(name="idx_acl_key", columns=(COL_ACL_KEY.name,))
+IDX_ACL_OWNER = Index(name="idx_acl_owner", columns=(COL_ACL_OWNER.name,))
+IDX_ACL_TO_USER = Index(name="idx_acl_to_user", columns=(COL_ACL_TO_USER.name,))
+IDX_ACL_TYPE_KEY = Index(name="idx_acl_type_key", columns=(COL_ACL_TYPE.name, COL_ACL_KEY.name))
+
+TABLE_ACL = Table(name=process_config.SOGO_P_TABLE_ACL, columns=ALL_ACL_COL, primary_keys=(COL_ID.name, COL_ACL_TYPE.name, COL_ACL_KEY.name, COL_ACL_TO_USER.name),
+                  indexes=[IDX_ACL_KEY, IDX_ACL_OWNER, IDX_ACL_TO_USER, IDX_ACL_TYPE_KEY])
+
 #############################
 # Table sogo_calendar_shares #
 #############################
@@ -955,6 +997,7 @@ ALL_TABLES = [TABLE_SETTINGS,
               TABLE_CONTACT_LIST_MEMBER,
               TABLE_FILE_STORAGE,
               TABLE_DRAFT_STATE,
+              TABLE_ACL,
               TABLE_CALENDAR_SHARE,
               TABLE_CALENDAR_INVITE,
               TABLE_CONTACT_SHARE,

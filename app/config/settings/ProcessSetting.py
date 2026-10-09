@@ -246,6 +246,7 @@ class ProcessSetting(FlaskConfig):
     SOGO_P_TABLE_EVENTS:    str = "sogo6_calendar_events"
     SOGO_P_TABLE_REMINDERS:  str = "sogo6_calendar_reminders"
     SOGO_P_TABLE_TMP_DRAFTS:  str = "sogo6_tmp_draft"
+    SOGO_P_TABLE_ACL:          str = "sogo6_acl"
     SOGO_P_TABLE_ADDRESSBOOKS:         str = "sogo6_contacts_addressbooks"
     SOGO_P_TABLE_CONTACTS:             str = "sogo6_contacts_contacts"
     SOGO_P_TABLE_CONTACT_LISTS:        str = "sogo6_contacts_lists"

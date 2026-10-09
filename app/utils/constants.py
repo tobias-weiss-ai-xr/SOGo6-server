@@ -167,6 +167,11 @@ FILTER_ACTION_FLAG     = "addflag"
 FILTER_ACTION_NOTIFY   = "notify"
 FILTER_ACTION_STOP     = "stop"
 
+# ACL / Sharing
+# Pseudo-user UID used for "anyone in my domain" shares.
+# Matches the same constant on the client side.
+ANYONE_TO_USER: str = "<default>"
+
 #LDAP
 LDAP_SCOPE_BASE = "BASE"
 LDAP_SCOPE_ONE  = "ONE"
