@@ -25,6 +25,10 @@ class CalendarAclEngine:
     Centralizes all ACL logic: permission resolution, action checks, and event sanitization.
     Owner gets full access. Non-owners are looked up in the share repository (if available)
     or denied.
+
+    TODO: Migrate to unified ACL system (app.factory.share.ShareCalendar + RepositoryAcl).
+    The new system uses sogo6_acl table and ShareCalendar.to_calendar_permissions() can bridge
+    rights to CalendarPermissions format for this class's check_permission method.
     """
 
     def __init__(self, share_repo: RepositoryCalendarShare | None = None) -> None:
