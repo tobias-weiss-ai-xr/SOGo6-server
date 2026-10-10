@@ -18,6 +18,9 @@ class ContactAclEngine:
     Centralizes contact ACL logic: access-level resolution and action checks.
     Owner gets MODIFY on their own books. Non-owners are looked up in the share
     repository (if available) or denied.
+
+    TODO: Migrate to unified ACL system (app.factory.share.ShareContact + RepositoryAcl).
+    The new system uses sogo6_acl table and can replace RepositoryContactShare.
     """
 
     def __init__(self, share_repo: RepositoryContactShare | None = None) -> None:
