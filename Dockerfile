@@ -65,11 +65,10 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /build/app /app/app
 
 # Create log directory and non-root user
-RUN mkdir -p /var/log/sogo && \
+RUN mkdir -p /var/log/sogo /var/lib/sogo6 && \
     addgroup --system --gid 1001 sogo && \
     adduser --system --uid 1001 --ingroup sogo --home /app sogo && \
-    chown -R sogo:sogo /app && \
-    chown -R sogo:sogo /var/log/sogo
+    chown -R sogo:sogo /app /var/log/sogo /var/lib/sogo6
 
 USER sogo
 
