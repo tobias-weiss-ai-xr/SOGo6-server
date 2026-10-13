@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
         psycopg[binary] mysql-connector-python==8.0.24 python-ldap redis \
         cryptography pyjwt pydantic pydantic-settings \
         sievelib yarl debugpy pysaml2 \
+    && pip install --no-cache-dir --upgrade msgpack>=1.2.1 urllib3>=2.8.0 setuptools>=78.1.1 \
     && rm -rf /root/.cache/pip
 
 # Copy source
