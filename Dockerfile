@@ -78,7 +78,10 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://127.0.0.1:5000/api/user/v1/health || exit 1
 
-# Run with gunicorn in production
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", \
+# Run with gunicorn in production.
+# gthread (not sync): /api/sse streams block a thread, not a whole worker —
+# sync workers get WORKER TIMEOUT-killed by every SSE client.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "4", \
+     "--worker-class", "gthread", "--timeout", "120", \
      "--access-logfile", "-", "--error-logfile", "-", \
      "app.run:app"]

@@ -6,6 +6,10 @@ https://docs.gunicorn.org/en/stable/settings.html#
 import os
 
 workers = int(os.environ.get("GUNICORN_WORKERS", "4"))
+# gthread: /api/sse streams must occupy a thread, not a worker process
+# (sync workers get WORKER TIMEOUT-killed by every SSE client).
+worker_class = "gthread"
+threads = int(os.environ.get("GUNICORN_THREADS", "4"))
 bind = os.environ.get("GUNICORN_BIND", "0.0.0.0:5000")
 loglevel = os.environ.get("GUNICORN_LOGLEVEL", "warning")
 
