@@ -267,19 +267,22 @@ class TestSharePermissionErrors:
 
 class TestLevelStringMappings:
     def test_level_to_str(self):
-        assert LEVEL_TO_STR[CalendarShareLevel.NONE] == "none"
-        assert LEVEL_TO_STR[CalendarShareLevel.VIEW_DATETIME] == "view-date-time"
-        assert LEVEL_TO_STR[CalendarShareLevel.VIEW_ALL] == "view-all"
-        assert LEVEL_TO_STR[CalendarShareLevel.RESPOND] == "respond-to"
-        assert LEVEL_TO_STR[CalendarShareLevel.MODIFY] == "modify"
+        assert CALENDAR_LEVEL_TO_STR[CalendarShareLevel.NONE] == "none"
+        assert CALENDAR_LEVEL_TO_STR[CalendarShareLevel.VIEW_DATETIME] == "view-date-time"
+        assert CALENDAR_LEVEL_TO_STR[CalendarShareLevel.VIEW_ALL] == "view-all"
+        assert CALENDAR_LEVEL_TO_STR[CalendarShareLevel.RESPOND] == "respond-to"
+        assert CALENDAR_LEVEL_TO_STR[CalendarShareLevel.MODIFY] == "modify"
 
     def test_str_to_level(self):
-        assert STR_TO_LEVEL["none"] == CalendarShareLevel.NONE
-        assert STR_TO_LEVEL["view-date-time"] == CalendarShareLevel.VIEW_DATETIME
-        assert STR_TO_LEVEL["view-all"] == CalendarShareLevel.VIEW_ALL
-        assert STR_TO_LEVEL["respond-to"] == CalendarShareLevel.RESPOND
-        assert STR_TO_LEVEL["modify"] == CalendarShareLevel.MODIFY
+        assert CALENDAR_STR_TO_LEVEL["none"] == CalendarShareLevel.NONE
+        assert CALENDAR_STR_TO_LEVEL["view-date-time"] == CalendarShareLevel.VIEW_DATETIME
+        assert CALENDAR_STR_TO_LEVEL["view-all"] == CalendarShareLevel.VIEW_ALL
+        assert CALENDAR_STR_TO_LEVEL["respond-to"] == CalendarShareLevel.RESPOND
+        assert CALENDAR_STR_TO_LEVEL["modify"] == CalendarShareLevel.MODIFY
 
     def test_round_trip(self):
-        for level in CalendarShareLevel:
-            assert STR_TO_LEVEL[LEVEL_TO_STR[level]] == level
+        # MODIFY_IF_ORG is intentionally unmapped: never exposed via the sharing API
+        # (only reachable through the CalendarAclEngine), so round-trip the API levels.
+        for level in CALENDAR_LEVEL_TO_STR:
+            assert CALENDAR_STR_TO_LEVEL[CALENDAR_LEVEL_TO_STR[level]] == level
+        assert CalendarShareLevel.MODIFY_IF_ORG not in CALENDAR_LEVEL_TO_STR
