@@ -11,6 +11,19 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 
 
+@pytest.fixture(autouse=True)
+def _restore_shared_redis():
+    """These tests swap the SHARED sogo_cache() singleton's redis client for a
+    MagicMock. Without restoring it, every later test that touches Redis
+    (student groups, quotas, webhooks, api tokens...) silently talks to the
+    dead mock and fails. Save + restore around each test."""
+    from app.service.smime.SMimeKeyManager import SMimeKeyManager
+
+    original = SMimeKeyManager().cache.redis
+    yield
+    SMimeKeyManager().cache.redis = original
+
+
 def _create_test_cert(days_valid=365):
     """Create a test X.509 certificate for testing"""
     key = generate_private_key(public_exponent=65537, key_size=2048)
