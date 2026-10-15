@@ -8,6 +8,7 @@ from app.module.calendar.CalendarConst import (
     MAX_IMPORT_ICS_BYTES, MAX_TASK_FETCH_DAYS, PUBLIC_SUBSCRIPTION_REFRESH, SHARE_TOKEN_LENGTH,
     DEFAULT_CALENDAR_NAME
 )
+from app.factory.share import CALENDAR_LEVEL_TO_STR, RepositoryAcl, ShareCalendar
 from app.module.calendar.serializer.CalEventSerializerIcal import CalEventSerializerIcal
 from app.module.calendar.serializer.CalEventsSerializerIcal import CalEventsSerializerIcal
 from app.module.calendar.serializer.CalCalendarSerializerIcal import CalCalendarSerializerIcal
@@ -25,6 +26,7 @@ from app.module.calendar.model.enums.CalendarPermissionAction import CalendarPer
 from app.module.calendar.model.CalOrganizer import CalOrganizer
 from app.module.calendar.model.enums.AttendeeStatus import AttendeeStatus
 from app.module.calendar.model.enums.CalendarSourceType import CalendarSourceType
+from app.module.calendar.model.enums.CalendarShareLevel import CalendarShareLevel
 from app.module.calendar.model.enums.ComponentType import ComponentType
 from app.module.calendar.model.enums.CalUserType import CalUserType
 from app.module.calendar.model.CalAttendee import CalAttendee
@@ -86,9 +88,18 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
         self._cache: ClientRedis | None = cache
         self._agent: ClientAgent | None = agent
         self._share_repo: RepositoryCalendarShare = RepositoryCalendarShare(self._db)
+        # Unified sogo6_acl store (migration in progress): shares are dual-written to
+        # the legacy table and to sogo6_acl; the ACL engine resolves shared access
+        # through ShareCalendar first (see CalendarAclEngine._lookup_share). ShareCalendar
+        # owns its own RepositoryAcl over the same connection; the explicit handle is
+        # kept for direct sogo6_acl access.
+        self._repository_acl: RepositoryAcl = RepositoryAcl(self._db)
+        self._share_calendar: ShareCalendar = ShareCalendar(self._db)
         self._sources: CalendarSources = CalendarSources(self._db, self._share_repo)
         self._imip: ImipProcessor = ImipProcessor(self._sources)
-        self._acl: CalendarAclEngine = CalendarAclEngine(self._share_repo)
+        self._acl: CalendarAclEngine = CalendarAclEngine(
+            self._share_repo, share_calendar=self._share_calendar,
+        )
 
     def __del__(self) -> None:
         if hasattr(self, "_db"):
@@ -207,11 +218,47 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
     # Sharing
     #
     def list_shares(self, calendar_key: str) -> list[CalendarShare]:
-        """Return all share entries for a calendar."""
-        return self._share_repo.find_by_calendar_key(calendar_key)
+        """Return all share entries for a calendar, merged across both share stores.
+
+        Best-effort dual-read: legacy sogo_calendar_shares entries are authoritative;
+        sogo6_acl entries (ShareCalendar.get_permissions) for users without a legacy
+        row are appended so grants made through the unified store are not hidden. A
+        failing sogo6_acl read is logged and degrades to the legacy list only.
+        """
+        shares: list[CalendarShare] = self._share_repo.find_by_calendar_key(calendar_key)
+        seen: set[str] = {share.user_uid for share in shares}
+        try:
+            acl_entries = self._share_calendar.get_permissions(calendar_key)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger_calendar.exception(
+                "sogo6_acl read failed for list_shares calendar=%s; returning legacy shares only",
+                calendar_key,
+            )
+            return shares
+        for entry in acl_entries:
+            if entry.to_user in seen:
+                continue
+            seen.add(entry.to_user)
+            permissions: CalendarPermissions = ShareCalendar.to_calendar_permissions(entry.rights)
+            shares.append(CalendarShare(
+                user_uid=entry.to_user,
+                calendar_key=calendar_key,
+                public_level=permissions.public_level,
+                confidential_level=permissions.confidential_level,
+                private_level=permissions.private_level,
+                can_create=permissions.can_create,
+                can_delete=permissions.can_delete,
+            ))
+        return shares
 
     def add_share(self, calendar_key: str, share: CalendarShare) -> CalendarShare:
-        """Add a share entry for a user on a calendar."""
+        """Add a share entry for a user on a calendar.
+
+        Best-effort dual-write: the share is mirrored into the unified sogo6_acl store
+        via ShareCalendar before the legacy insert; a sogo6_acl failure is caught,
+        logged, and must not prevent the legacy write, so the endpoint keeps working
+        when sogo6_acl is unavailable.
+        """
         # Check that the share doesn't already exist
         existing = self._share_repo.find_by_calendar_and_user(calendar_key, share.user_uid)
         if existing is not None:
@@ -220,11 +267,69 @@ class ModuleCalendar:  # pylint: disable=too-many-public-methods
             # S000653: a duplicate SHARE is not a duplicate calendar — clients
             # must be able to distinguish "share exists" from "calendar exists".
             raise RequestException(error=err.ERROR_CALENDAR_SHARE_DUPLICATE)
+        self._mirror_share_to_acl(calendar_key, share)
         return self._share_repo.insert(share)
 
     def remove_share(self, calendar_key: str, user_uid: str) -> None:
-        """Remove a share entry for a user on a calendar."""
+        """Remove a share entry for a user on a calendar.
+
+        Best-effort dual-write: the sogo6_acl entry is revoked first; a failure is
+        caught and logged so the legacy delete (with its NOT_FOUND semantics) still
+        runs and the endpoint keeps working.
+        """
+        try:
+            self._share_calendar.remove_permissions(for_user=user_uid, on_key=calendar_key)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger_calendar.exception(
+                "sogo6_acl dual-write failed for remove_share calendar=%s user=%s; "
+                "proceeding with legacy delete",
+                calendar_key, user_uid,
+            )
         self._share_repo.delete(calendar_key, user_uid)
+
+    def _mirror_share_to_acl(self, calendar_key: str, share: CalendarShare) -> None:
+        """Mirror one share into the unified sogo6_acl store. Best-effort: never raises.
+
+        Any failure (sogo6_acl unavailable, unshareable combination, ...) is caught
+        and logged - the legacy sogo_calendar_shares write remains the source of truth.
+        """
+        try:
+            self._share_calendar.add_permissions(
+                for_user=share.user_uid,
+                on_key=calendar_key,
+                owner=self._resolve_calendar_owner(calendar_key),
+                rights=self._share_rights_blob(share),
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger_calendar.exception(
+                "sogo6_acl dual-write failed for add_share calendar=%s user=%s; "
+                "proceeding with legacy insert",
+                calendar_key, share.user_uid,
+            )
+
+    def _resolve_calendar_owner(self, calendar_key: str) -> str:
+        """Return the owner uid of a calendar by key (unscoped), empty string when unknown."""
+        calendar: CalCalendar | None = RepositoryCalendar(self._db).find_by_key_unscoped(calendar_key)
+        return calendar.user_uid if calendar is not None else ""
+
+    @staticmethod
+    def _share_rights_blob(share: CalendarShare) -> dict:
+        """Build the sogo6_acl rights blob for a share (CalendarShareRightsSchema shape).
+
+        MODIFY_IF_ORG has no sogo6_acl representation (never settable through the
+        sharing API, see ShareCalendar.LEVEL_TO_STR); it is defensively downgraded to
+        "respond-to" so the unified store never grants more than the legacy one.
+        """
+        def level_str(level: CalendarShareLevel) -> str:
+            return CALENDAR_LEVEL_TO_STR.get(level, CALENDAR_LEVEL_TO_STR[CalendarShareLevel.RESPOND])
+
+        return {
+            "public": level_str(share.public_level),
+            "confidential": level_str(share.confidential_level),
+            "private": level_str(share.private_level),
+            "can_create_objects": bool(share.can_create),
+            "can_erase_objects": bool(share.can_delete),
+        }
 
     #
     # Resource booking - conflict detection
