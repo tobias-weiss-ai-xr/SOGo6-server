@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from app.factory.share import (
+    CONTACT_FULL_MODIFY_RIGHTS, RIGHT_CREATE, RIGHT_EDIT, RIGHT_ERASE, RIGHT_VIEW, RepositoryAcl, ShareContact,
+)
 from app.manager.storage.ClientStorage import ClientStorage
 from app.manager.storage.StorageSource import StorageSource
 from app.module.contact.ContactConst import (
@@ -17,6 +20,7 @@ from app.module.contact.model.ContactShare import ContactShare
 from app.module.contact.model.ContactImportResult import ContactImportResult
 from app.module.contact.model.enums.CardSourceType import CardSourceType
 from app.module.contact.model.enums.ContactShareLevel import ContactShareLevel
+from app.module.contact.repository.RepositoryAddressBook import RepositoryAddressBook
 from app.module.contact.repository.RepositoryContactShare import RepositoryContactShare
 from app.module.contact.source.ContactSources import ContactSources
 from app.utils import errors as err
@@ -62,8 +66,17 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
         self._cache: ClientRedis | None = cache
         self._agent: ClientAgent | None = agent
         self._share_repo: RepositoryContactShare = RepositoryContactShare(self._db)
+        # Unified sogo6_acl store (migration in progress): shares are dual-written to
+        # the legacy table and to sogo6_acl; the ACL engine resolves shared access
+        # through ShareContact first (see ContactAclEngine._lookup_share). ShareContact
+        # owns its own RepositoryAcl over the same connection; the explicit handle is
+        # kept for direct sogo6_acl access.
+        self._repository_acl: RepositoryAcl = RepositoryAcl(self._db)
+        self._share_contact: ShareContact = ShareContact(self._db)
         self._sources: ContactSources = ContactSources(self._db, self._share_repo)
-        self._acl: ContactAclEngine = ContactAclEngine(self._share_repo)
+        self._acl: ContactAclEngine = ContactAclEngine(
+            self._share_repo, share_contact=self._share_contact,
+        )
         self._file: ClientStorage = import_and_instantiate_manager(
             module_path="app.manager.storage",
             module_and_class_name=f"ClientStorage{process_settings.SOGO_P_STORAGE_TYPE.capitalize()}",
@@ -160,22 +173,129 @@ class ModuleContact:  # pylint: disable=too-many-public-methods
     # Sharing
     #
     def list_shares(self, addressbook_key: str) -> list[ContactShare]:
-        """Return all share entries for an address book."""
-        return self._share_repo.find_by_addressbook_key(addressbook_key)
+        """Return all share entries for an address book, merged across both share stores.
+
+        Best-effort dual-read: legacy sogo6_contacts_shares entries are authoritative;
+        sogo6_acl entries (ShareContact.get_permissions) for users without a legacy row
+        are appended so grants made through the unified store are not hidden. A failing
+        sogo6_acl read is logged and degrades to the legacy list only.
+        """
+        shares: list[ContactShare] = self._share_repo.find_by_addressbook_key(addressbook_key)
+        share_contact: ShareContact | None = getattr(self, "_share_contact", None)
+        if share_contact is None:  # partially constructed instance (tests): legacy-only
+            return shares
+        seen: set[str] = {share.user_uid for share in shares}
+        try:
+            acl_entries = share_contact.get_permissions(addressbook_key)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger_contact.exception(
+                "sogo6_acl read failed for list_shares addressbook=%s; returning legacy shares only",
+                addressbook_key,
+            )
+            return shares
+        for entry in acl_entries:
+            if entry.to_user in seen:
+                continue
+            seen.add(entry.to_user)
+            shares.append(ContactShare(
+                user_uid=entry.to_user,
+                addressbook_key=addressbook_key,
+                share_level=self._level_from_rights(entry.rights),
+            ))
+        return shares
 
     def add_share(self, addressbook_key: str, share: ContactShare) -> ContactShare:
-        """Add a share entry for a user on an address book."""
+        """Add a share entry for a user on an address book.
+
+        Best-effort dual-write: the share is mirrored into the unified sogo6_acl store
+        via ShareContact before the legacy insert; a sogo6_acl failure is caught,
+        logged, and must not prevent the legacy write, so the endpoint keeps working
+        when sogo6_acl is unavailable.
+        """
         existing = self._share_repo.find_by_addressbook_and_user(addressbook_key, share.user_uid)
         if existing is not None:
             from app.utils import errors as err
             from app.utils.exceptions import RequestException
             # a duplicate SHARE, not a duplicate address book
             raise RequestException(error=err.ERROR_CONTACT_SHARE_DUPLICATE)
+        self._mirror_share_to_acl(addressbook_key, share)
         return self._share_repo.insert(share)
 
     def remove_share(self, addressbook_key: str, user_uid: str) -> None:
-        """Remove a share entry for a user on an address book."""
+        """Remove a share entry for a user on an address book.
+
+        Best-effort dual-write: the sogo6_acl entry is revoked first; a failure is
+        caught and logged so the legacy delete (with its NOT_FOUND semantics) still
+        runs and the endpoint keeps working.
+        """
+        share_contact: ShareContact | None = getattr(self, "_share_contact", None)
+        if share_contact is not None:
+            try:
+                share_contact.remove_permissions(for_user=user_uid, on_key=addressbook_key)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger_contact.exception(
+                    "sogo6_acl dual-write failed for remove_share addressbook=%s user=%s; "
+                    "proceeding with legacy delete",
+                    addressbook_key, user_uid,
+                )
         self._share_repo.delete(addressbook_key, user_uid)
+
+    def _mirror_share_to_acl(self, addressbook_key: str, share: ContactShare) -> None:
+        """Mirror one share into the unified sogo6_acl store. Best-effort: never raises.
+
+        Any failure (sogo6_acl unavailable, sharing with the book's owner, ...) is
+        caught and logged - the legacy sogo6_contacts_shares write remains the source
+        of truth.
+        """
+        share_contact: ShareContact | None = getattr(self, "_share_contact", None)
+        if share_contact is None:  # partially constructed instance (tests): legacy-only
+            return
+        try:
+            share_contact.add_permissions(
+                for_user=share.user_uid,
+                on_key=addressbook_key,
+                owner=self._resolve_addressbook_owner(addressbook_key),
+                rights=self._share_rights_blob(share),
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger_contact.exception(
+                "sogo6_acl dual-write failed for add_share addressbook=%s user=%s; "
+                "proceeding with legacy insert",
+                addressbook_key, share.user_uid,
+            )
+
+    def _resolve_addressbook_owner(self, addressbook_key: str) -> str:
+        """Return the owner uid of an address book by key (unscoped), empty string when unknown."""
+        book: CardAddressBook | None = RepositoryAddressBook(self._db).find_by_key_unscoped(addressbook_key)
+        return book.user_uid if book is not None else ""
+
+    @staticmethod
+    def _share_rights_blob(share: ContactShare) -> dict:
+        """Build the sogo6_acl rights blob for a share (ContactShareRightsSchema shape).
+
+        MODIFY grants every right (CONTACT_FULL_MODIFY_RIGHTS); VIEW (or an unset level)
+        grants read-only access (view right only).
+        """
+        if share.share_level is not None and share.share_level >= ContactShareLevel.MODIFY:
+            return dict(CONTACT_FULL_MODIFY_RIGHTS)
+        return {
+            RIGHT_VIEW: True,
+            RIGHT_CREATE: False,
+            RIGHT_EDIT: False,
+            RIGHT_ERASE: False,
+        }
+
+    @staticmethod
+    def _level_from_rights(rights: dict) -> ContactShareLevel:
+        """Map a sogo6_acl rights blob back to a share level (mirror of _share_rights_blob).
+
+        Holding the edit right means MODIFY; anything else maps to VIEW, the lowest
+        legacy level. Only shapes sogo6_acl-only entries in list_shares - a legacy row,
+        when present, stays authoritative for that user.
+        """
+        if rights.get(RIGHT_EDIT):
+            return ContactShareLevel.MODIFY
+        return ContactShareLevel.VIEW
 
     #
     # Contacts
