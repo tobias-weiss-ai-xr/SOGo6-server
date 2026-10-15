@@ -19,6 +19,7 @@ from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_calendar
 
 if TYPE_CHECKING:
+    from app.factory.share import ShareCalendar
     from app.manager.db.ClientSQL import ClientSQL
     from app.module.calendar.source.CalendarSource import CalendarSource
 
@@ -36,10 +37,12 @@ class CalendarSources:
         self,
         db: ClientSQL,
         share_repo: RepositoryCalendarShare | None = None,
+        share_calendar: ShareCalendar | None = None,
     ) -> None:
         self._db = db
         self._repo_calendar = RepositoryCalendar(db)
         self._share_repo = share_repo
+        self._share_calendar = share_calendar
 
     def get(self, calendar: CalCalendar) -> CalendarSource:
         """Return the appropriate CalendarSource for the given calendar.
@@ -74,15 +77,37 @@ class CalendarSources:
         """
         owned: list[CalCalendar] = self._repo_calendar.find_all(user_uid)
         seen_keys: set[str | None] = {cal.key for cal in owned}
-        if self._share_repo is not None:
-            shared_keys: list[str] = self._share_repo.find_calendar_keys_for_user(user_uid)
-            for key in shared_keys:
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    cal = self._repo_calendar.find_by_key_unscoped(key)
-                    if cal is not None:
-                        owned.append(cal)
+        for key in self._shared_calendar_keys(user_uid):
+            if key not in seen_keys:
+                seen_keys.add(key)
+                cal = self._repo_calendar.find_by_key_unscoped(key)
+                if cal is not None:
+                    owned.append(cal)
         return [self.get(cal) for cal in owned]
+
+    def _shared_calendar_keys(self, user_uid: str) -> list[str]:
+        """Return the de-duplicated calendar keys shared WITH user_uid, across both share stores.
+
+        Unified path first: when an optional ShareCalendar (sogo6_acl) is injected, include
+        every key it reports for the user (ShareCalendar.get_keys_shared_with). UNION that
+        with the legacy RepositoryCalendarShare result (find_calendar_keys_for_user) - the
+        legacy store is still required as the fallback while migration to sogo6_acl is in
+        progress. The get_all flow itself stays unchanged: callers receive one source per
+        unique calendar key.
+        """
+        keys: list[str] = []
+        seen: set[str] = set()
+        if self._share_calendar is not None:
+            for entry in self._share_calendar.get_keys_shared_with(user_uid):
+                if entry.key not in seen:
+                    seen.add(entry.key)
+                    keys.append(entry.key)
+        if self._share_repo is not None:
+            for key in self._share_repo.find_calendar_keys_for_user(user_uid):
+                if key not in seen:
+                    seen.add(key)
+                    keys.append(key)
+        return keys
 
     def get_default(self, user_uid: str) -> CalendarSource | None:
         """Return the default writable calendar source for user_uid, or None if the user has no local calendar."""
