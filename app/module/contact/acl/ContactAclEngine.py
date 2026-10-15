@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from app.factory.share import RIGHT_EDIT, RIGHT_VIEW
 from app.module.contact.model.enums.ContactShareLevel import ContactShareLevel
 from app.utils import errors as err
 from app.utils.exceptions import RequestException
 
 if TYPE_CHECKING:
     from app.auth.User import User
+    from app.factory.share import ShareContact
     from app.module.contact.model.CardAddressBook import CardAddressBook
     from app.module.contact.repository.RepositoryContactShare import RepositoryContactShare
 
@@ -19,13 +21,25 @@ class ContactAclEngine:
     Owner gets MODIFY on their own books. Non-owners are looked up in the share
     repository (if available) or denied.
 
-    TODO: Migrate to unified ACL system (app.factory.share.ShareContact + RepositoryAcl).
-    The new system uses sogo6_acl table and can replace RepositoryContactShare.
+    Migration to the unified ACL system is in progress: when an optional ShareContact
+    (app.factory.share, backed by sogo6_acl) is injected, non-owner shares resolve
+    through it first, mapping the stored rights blob via ShareContact.has_right()
+    (edit right -> MODIFY, view right -> VIEW); address books with no sogo6_acl
+    entry yet fall back to the legacy RepositoryContactShare lookup.
     """
 
-    def __init__(self, share_repo: RepositoryContactShare | None = None) -> None:
-        """Optionally inject a share repository for resolving shared-user permissions."""
+    def __init__(
+        self,
+        share_repo: RepositoryContactShare | None = None,
+        share_contact: ShareContact | None = None,
+    ) -> None:
+        """Optionally inject a share repository and/or ShareContact for resolving shared-user permissions."""
         self._share_repo = share_repo
+        self._share_contact = share_contact
+
+    def set_share_contact(self, share_contact: ShareContact | None) -> None:
+        """Inject or clear the optional ShareContact (unified sogo6_acl-backed engine)."""
+        self._share_contact = share_contact
 
     def get_share_level(self, addressbook: CardAddressBook, user: User) -> ContactShareLevel | None:
         """Resolve the acting user's access level on an address book, or None when denied.
@@ -38,7 +52,25 @@ class ContactAclEngine:
         return self._lookup_share(addressbook, user)
 
     def _lookup_share(self, addressbook: CardAddressBook, user: User) -> ContactShareLevel | None:
-        """Look up a share entry for the acting user on this address book."""
+        """Look up a share entry for the acting user on this address book.
+
+        Unified path first: when a ShareContact is injected, resolve the user's sogo6_acl
+        entry via ShareContact.has_right() (the owner already defaulted to MODIFY in
+        get_share_level and never reaches here): holding the edit right maps to MODIFY,
+        otherwise the view right maps to VIEW. When ShareContact reports no qualifying
+        entry (address book not in sogo6_acl yet) or none was injected, fall back to the
+        legacy RepositoryContactShare lookup, which returns the stored share level or
+        None when denied.
+        """
+        if self._share_contact is not None:
+            if self._share_contact.has_right(
+                user.uid, addressbook.user_uid, addressbook.require_key, RIGHT_EDIT,
+            ):
+                return ContactShareLevel.MODIFY
+            if self._share_contact.has_right(
+                user.uid, addressbook.user_uid, addressbook.require_key, RIGHT_VIEW,
+            ):
+                return ContactShareLevel.VIEW
         if self._share_repo is None:
             return None
         share = self._share_repo.find_by_addressbook_and_user(
