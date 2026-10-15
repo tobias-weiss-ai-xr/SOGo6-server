@@ -11,6 +11,7 @@ from app.utils import errors as err
 from app.utils.exceptions import BugException, RequestException
 
 if TYPE_CHECKING:
+    from app.factory.share import ShareCalendar
     from app.module.calendar.model.CalCalendar import CalCalendar
     from app.module.calendar.model.CalEvent import CalEvent
     from app.module.calendar.model.CalendarUser import CalendarUser
@@ -26,14 +27,25 @@ class CalendarAclEngine:
     Owner gets full access. Non-owners are looked up in the share repository (if available)
     or denied.
 
-    TODO: Migrate to unified ACL system (app.factory.share.ShareCalendar + RepositoryAcl).
-    The new system uses sogo6_acl table and ShareCalendar.to_calendar_permissions() can bridge
-    rights to CalendarPermissions format for this class's check_permission method.
+    Migration to the unified ACL system is in progress: when an optional ShareCalendar
+    (app.factory.share, backed by sogo6_acl) is injected, non-owner shares resolve through
+    it first, bridging the stored rights blob via ShareCalendar.to_calendar_permissions();
+    resources with no sogo6_acl entry yet fall back to the legacy RepositoryCalendarShare
+    lookup.
     """
 
-    def __init__(self, share_repo: RepositoryCalendarShare | None = None) -> None:
-        """Optionally inject a share repository for resolving shared-user permissions."""
+    def __init__(
+        self,
+        share_repo: RepositoryCalendarShare | None = None,
+        share_calendar: ShareCalendar | None = None,
+    ) -> None:
+        """Optionally inject a share repository and/or ShareCalendar for resolving shared-user permissions."""
         self._share_repo = share_repo
+        self._share_calendar = share_calendar
+
+    def set_share_calendar(self, share_calendar: ShareCalendar | None) -> None:
+        """Inject or clear the optional ShareCalendar (unified sogo6_acl-backed engine)."""
+        self._share_calendar = share_calendar
 
     def get_permissions(self, calendar: CalCalendar, calendar_user: CalendarUser) -> CalendarPermissions:
         """Resolve the permissions for a user on a specific calendar.
@@ -62,8 +74,16 @@ class CalendarAclEngine:
     def _lookup_share(self, calendar: CalCalendar, calendar_user: CalendarUser) -> CalendarPermissions:
         """Look up a share entry for the acting user on this calendar.
 
-        Returns CalendarPermissions built from the share if found, otherwise denied.
+        Unified path first: when a ShareCalendar is injected, resolve the user's sogo6_acl
+        entry and bridge its rights blob via ShareCalendar.to_calendar_permissions(). When the
+        ShareCalendar returns no entry (resource not in sogo6_acl yet) or none was injected,
+        fall back to the legacy RepositoryCalendarShare lookup. Returns CalendarPermissions
+        built from whichever share is found, otherwise denied.
         """
+        if self._share_calendar is not None:
+            entry = self._share_calendar.get_entry(calendar_user.user.uid, calendar.require_key)
+            if entry is not None:
+                return self._share_calendar.to_calendar_permissions(entry.rights)
         if self._share_repo is None:
             return CalendarPermissions.denied()
         share = self._share_repo.find_by_calendar_and_user(
