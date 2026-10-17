@@ -15,6 +15,27 @@ import pytest
 # turns every later setdefault into a no-op.
 os.environ.setdefault("SOGO_P_REDIS_URL", "redis://sogo6-redis:6379/0")
 
+# ``ProcessSetting`` declares SOGO_P_VOUCHER_SECRET and SOGO_AES_ENC_KEY as
+# required fields with no default, and ``ProcessSetting()`` is instantiated at
+# module import time (app/config/settings/ProcessSetting.py). Without them,
+# importing the app raises a pydantic ValidationError and pytest aborts during
+# conftest collection (exit code 4, ZERO tests collected) — which also makes
+# the coverage gate report a bogus ~1% total and fail. Pre-seeding obviously
+# dummy, test-only values here keeps the suite hermetic: no real secrets are
+# required to run the tests, and a real environment variable still overrides
+# them because conftest uses setdefault (raw environment takes precedence).
+# Values are 32 chars to satisfy the documented key sizes (Fernet 32-char
+# string / AES-256 32-byte key) in case a test exercises the crypto directly.
+os.environ.setdefault("SOGO_P_VOUCHER_SECRET", "test-only-voucher-secret-32chars")
+os.environ.setdefault("SOGO_AES_ENC_KEY", "test-only-aes256-key-32-bytes!!!")
+
+# ``init_sogo()`` also calls ``_check_admin_password_hardening()`` (CRA Art. 15)
+# at import time and refuses to start when SOGO_P_ADMIN_PWD is empty or the
+# literal default 'admin'. The check only requires a non-empty non-'admin'
+# value, so a clearly dummy test value clears it without weakening any real
+# deployment (real env still wins via setdefault).
+os.environ.setdefault("SOGO_P_ADMIN_PWD", "test-only-admin-pwd-not-a-real-secret")
+
 try:
     from app.service import sogo_cache
     HAS_APP = True

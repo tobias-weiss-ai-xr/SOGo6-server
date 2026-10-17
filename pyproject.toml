@@ -105,9 +105,12 @@ show_missing = true
 skip_covered = true
 skip_empty = true
 sort = "Miss"
-# Round-17 baseline (unit suite): 66% total / 66k statements. The gate script
-# asserts this floor so future test additions cannot silently regress coverage.
-fail_under = 66
+# Round-18 baseline (hermetic suite, live Redis): 79% total / 40k statements
+# (measured 2026-10-17 with tests/conftest.py pre-seeding the required
+# settings, so the suite collects on a bare checkout). The gate script
+# asserts this floor so future test additions cannot silently regress
+# coverage. Ratchet upward only.
+fail_under = 79
 
 exclude_lines = [
     "pragma: no cover",
