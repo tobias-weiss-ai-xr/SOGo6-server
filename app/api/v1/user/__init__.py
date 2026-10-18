@@ -9,6 +9,7 @@ from flask_smorest import Api, Blueprint
 from .ApiResourceBooking import blp as resource_booking_blueprint
 from .ApiSharedMailboxes import blp as shared_mailboxes_blueprint
 from .ApiUserProfile import blp as user_profile_blueprint
+from .ApiNotes import blp as notes_blueprint
 from .ApiUserPreferences import blp as user_preferences_blueprint
 from .ApiUserCustomization import blp as user_customization_blueprint
 from .ApiGlobalSearch import blp as global_search_blueprint
@@ -55,4 +56,5 @@ user_profile_apis: list[Blueprint] = [
     spam_filter_api,
     smart_calendar_api,
     transcripts_api,
+    notes_blueprint,
 ]
