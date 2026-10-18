@@ -25,16 +25,16 @@ class ModuleUserNotes:
     COL_USER_UID = "user_uid"
     COL_TITLE = "title"
     COL_CONTENT = "content"
-    COL_CREATED_AT = "created_at"
-    COL_UPDATED_AT = "updated_at"
+    COL_CREATED = "created_at"
+    COL_UPDATED = "updated_at"
 
     ALL_COLS = (
         COL_ID,
         COL_USER_UID,
         COL_TITLE,
         COL_CONTENT,
-        COL_CREATED_AT,
-        COL_UPDATED_AT,
+        COL_CREATED,
+        COL_UPDATED,
     )
 
     def __init__(self, db: ClientSQL) -> None:
@@ -197,7 +197,7 @@ class ModuleUserNotes:
         # Update the note
         updated_rows = self._db.update_in_table(
             table_name=self.TABLE_NAME,
-            column_tuple=(self.COL_TITLE, self.COL_CONTENT, self.COL_UPDATED_AT),
+            column_tuple=(self.COL_TITLE, self.COL_CONTENT, self.COL_UPDATED),
             values_list=[title, content, now],
             condition=EqualCondition(self.COL_ID, note_id),
         )
