@@ -105,6 +105,9 @@ def check_ldap() -> dict:
         import ldap  # type: ignore[import-untyped]
 
         ldap_uri = _proc_setting("SOGO_LDAP_URI", "ldap://localhost:389")
+        if not os.environ.get("SOGO_LDAP_URI"):
+            result["detail"] = "LDAP disabled (SOGO_LDAP_URI empty)"
+            return result
         conn = ldap.initialize(ldap_uri)
         conn.simple_bind_s("", "")
         conn.unbind_s()
