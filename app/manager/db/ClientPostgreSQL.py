@@ -231,7 +231,7 @@ class ClientPostgreSQL(ClientSQL):
     Class to connect, read and write into a sql database
     """
 
-    def __init__(self, db_user: str, db_pwd: str, db_host: str, db_port: int,  db_ssl: bool, db_enc: str):
+    def __init__(self, db_user: str, db_pwd: str, db_host: str, db_port: int,  db_ssl: bool, db_enc: str, db_name: str = None):
         """
         Init the PostgreSQL client.
         It shouldn't raise any Exception as SOGo will instantiate the object but not necessarily use it right on spot
