@@ -18,8 +18,8 @@ env:
   REGISTRY: ghcr.io
   # Full path mirrors the opendesk-nix layout so cluster refs are a clean host-swap:
   #   172.25.24.36:5001/sogo6-server:latest
-  #   -> ghcr.io/tobias-weiss-ai-xr/umr/opendesk-edu/opendesk-nix/sogo6-server:latest
-  IMAGE_NAME: tobias-weiss-ai-xr/umr/opendesk-edu/opendesk-nix/sogo6-server
+  #   -> ghcr.io/tobias-weiss-ai-xr/openedusuite/sogo6-server:latest
+  IMAGE_NAME: tobias-weiss-ai-xr/openedusuite/sogo6-server
 
 jobs:
   build:
