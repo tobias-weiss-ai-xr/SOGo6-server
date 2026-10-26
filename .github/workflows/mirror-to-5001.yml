@@ -1,8 +1,6 @@
 name: mirror-to-5001
-# Ephemeral-assisted mirror: copies the GHCR image to the HRZ internal
-# registry 172.25.24.36:5001 using the self-hosted runner's own GHCR
-# credentials (GHCR_TOKEN), because the gh CLI PAT on the operator box
-# lacks read:packages. Mirrors sogo6-server and sogo6-ui.
+# Mirrors a GHCR image to the HRZ internal registry using the self-hosted
+# runner's own GHCR credentials (GHCR_TOKEN). Covers sogo6-server and sogo6-ui.
 on:
   workflow_dispatch:
     inputs:
@@ -33,11 +31,14 @@ jobs:
           VER: ${{ inputs.version }}
         run: |
           set -eux
-          mkdir -p /tmp/pp && echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /tmp/pp/policy.json
           docker run --rm --network host -e HOME=/root \
-            -v /tmp/pp:/root/.config/containers:ro \
             -e GH_USER -e GH_TOKEN -e IMG -e VER -e SRC_PREFIX -e DEST_PREFIX \
-            quay.io/skopeo/stable:latest copy --dest-tls-verify=false \
-            --src-creds "${GH_USER}:${GH_TOKEN}" \
-            "docker://${SRC_PREFIX}/${IMG}:${VER}" \
-            "docker://${DEST_PREFIX}/${IMG}:${VER}"
+            --entrypoint sh quay.io/skopeo/stable:latest -c '
+              rm -rf /root/.config/containers/policy.json
+              mkdir -p /root/.config/containers
+              printf "{\"default\":[{\"type\":\"insecureAcceptAnything\"}]}" > /root/.config/containers/policy.json
+              exec skopeo copy --dest-tls-verify=false \
+                --src-creds "${GH_USER}:${GH_TOKEN}" \
+                "docker://${SRC_PREFIX}/${IMG}:${VER}" \
+                "docker://${DEST_PREFIX}/${IMG}:${VER}"
+            '
