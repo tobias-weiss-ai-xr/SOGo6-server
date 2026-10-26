@@ -23,6 +23,13 @@ jobs:
   mirror:
     runs-on: [self-hosted, linux, x64, docker]
     steps:
+      - name: Report runner identity
+        run: |
+          echo "RUNNER_NAME=${{ runner.name }}"
+          echo "RUNTIME=$RUNNER_NAME"
+          command -v ip && ip -4 -o addr show scope global | awk '{print "IP:"$4" "$2}'
+          hostname -I 2>/dev/null | tr " " "\n" | sed "s/^/IP:/"
+          curl -s --max-time 10 ifconfig.me && echo "PUBIP" || true
       - name: Mirror
         env:
           GH_USER: ${{ github.actor }}
