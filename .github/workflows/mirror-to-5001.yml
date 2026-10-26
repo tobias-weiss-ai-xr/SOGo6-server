@@ -35,7 +35,7 @@ jobs:
           set -eux
           mkdir -p /tmp/pp && echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /tmp/pp/policy.json
           docker run --rm --network host -e HOME=/root \
-            -v /tmp/pp/policy.json:/root/.config/containers/policy.json:ro \
+            -v /tmp/pp:/root/.config/containers:ro \
             -e GH_USER -e GH_TOKEN -e IMG -e VER -e SRC_PREFIX -e DEST_PREFIX \
             quay.io/skopeo/stable:latest copy --dest-tls-verify=false \
             --src-creds "${GH_USER}:${GH_TOKEN}" \
