@@ -66,6 +66,16 @@ COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /build/app /app/app
 
+# Strip pip from the runtime image: pip ships its own vendored deps pinned in
+# pip/_vendor/vendor.txt (msgpack 1.1.2, urllib3 2.7.0, setuptools 70.3.0) which
+# vulnerability scanners report as installed packages (false positives; the real
+# top-level packages are the pinned fixed versions). The app runs under gunicorn/
+# celery and never invokes pip at runtime.
+RUN rm -rf \
+        /usr/local/lib/python3.14/site-packages/pip \
+        /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
+        /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
+
 # Create log directory and non-root user
 RUN mkdir -p /var/log/sogo /var/lib/sogo6 && \
     addgroup --system --gid 1001 sogo && \
