@@ -50,12 +50,15 @@ class TestNotesApi:
             g.system_settings = mock.MagicMock()
             g.user_domain_settings = {}
             g.user = self.factory.create_user()
-            g._user_notes_module = ModuleUserNotes(self.db)
+            g._user_notes_module = self.module
 
         app.register_blueprint(blp)
         self.client = app.test_client()
         
-        # Create module instance
+        # Create module instance FIRST so the handler's g._user_notes_module and
+        # the patched self.module are the SAME object: ApiNotes._get_notes_module()
+        # returns g._user_notes_module, so patching a different instance (as the
+        # original file did) had no effect -> "Note note-123 not found" 4xx.
         self.module = ModuleUserNotes(self.db)
         
         yield
@@ -75,7 +78,7 @@ class TestNotesApi:
                 "updated_at": "2025-01-01T00:00:00",
             }
             
-            resp = self.client.post("/notes", json={
+            resp = self.client.post("/notes/", json={
                 "title": "Test Note",
                 "content": "This is a test note",
             })
@@ -112,7 +115,7 @@ class TestNotesApi:
                 },
             ]
             
-            resp = self.client.get("/notes")
+            resp = self.client.get("/notes/")
             
             assert resp.status_code == 200
             data = resp.get_json()
