@@ -23,6 +23,22 @@ MAP_KEY_PATH = {
     "postgresql": "app.manager.db"
 }
 
+# Auth-path user-source backends. Postgresql uses the dedicated user-source
+# client (same relational DB, small users table — no LDAP); the shared MAP
+# above, also used by the address book, intentionally stays untouched so the
+# SQL *directory* search keeps its current (documented) stub behaviour.
+MAP_KEY_AUTH_CLASS = {
+    "ldap": "ClientLdap",
+    "mysql": "ClientMySQL",
+    "postgresql": "ClientPostgreSQLUserSource",
+}
+
+MAP_KEY_AUTH_PATH = {
+    "ldap": "app.manager.ldap",
+    "mysql": "app.manager.db",
+    "postgresql": "app.manager.user_source",
+}
+
 class ModuleUserSource:
     """
     Module to handle UserSources. Plural because they may be several users sources.
@@ -65,8 +81,8 @@ class ModuleUserSource:
         """
         us_config = source_settings.get_user_source_settings(source_settings.US_TYPE)
         client_us: ClientUserSource = import_and_instantiate_manager(
-            module_path=MAP_KEY_PATH[source_settings.US_TYPE],
-            module_and_class_name=MAP_KEY_CLASS[source_settings.US_TYPE],
+            module_path=MAP_KEY_AUTH_PATH[source_settings.US_TYPE],
+            module_and_class_name=MAP_KEY_AUTH_CLASS[source_settings.US_TYPE],
             module_args=us_config,
         )
         client_us.connect()

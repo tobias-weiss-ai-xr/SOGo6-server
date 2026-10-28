@@ -443,7 +443,7 @@ class UserSourceSettingsObj(SettingsObj):
             # error".
             if not self.US_SQL_USER_URL:
                 db_dict = process_config.get_db_settings()
-                return {
+                ret = {
                     "db_user": db_dict["db_user"],
                     "db_pwd":  db_dict["db_pwd"],
                     "db_host": db_dict["db_host"],
@@ -451,24 +451,37 @@ class UserSourceSettingsObj(SettingsObj):
                     "db_ssl":  db_dict["db_ssl"],
                     "db_enc":  db_dict["db_enc"],
                 }
+            else:
+                parsed_url = parse_url_str(self.US_SQL_USER_URL)
+                encodage = "utf8"
 
-            parsed_url = parse_url_str(self.US_SQL_USER_URL)
-            encodage = "utf8"
-            
-            if type_us == "mysql":
-                encodage = parsed_url["params"].get("charset", "utf8")
-            elif type_us == "postgresql":
-                encodage = parsed_url["params"].get("client_encoding", "utf8")
+                if type_us == "mysql":
+                    encodage = parsed_url["params"].get("charset", "utf8")
+                elif type_us == "postgresql":
+                    encodage = parsed_url["params"].get("client_encoding", "utf8")
 
+                ret = {
+                    "db_user": parsed_url["username"],
+                    "db_pwd":  parsed_url["password"],
+                    "db_host": parsed_url["hostname"],
+                    "db_port": parsed_url["port"],
+                    "db_ssl":  "", #TODO get ssl from url string
+                    "db_enc":  encodage
+                }
 
-            return {
-                "db_user": parsed_url["username"],
-                "db_pwd":  parsed_url["password"],
-                "db_host": parsed_url["hostname"],
-                "db_port": parsed_url["port"],
-                "db_ssl":  "", #TODO get ssl from url string
-                "db_enc":  encodage
-            }
+            # The users-table mapping for the SQL user source (single DB, one
+            # small users table — no LDAP). Consumed by
+            # ClientPostgreSQLUserSource / ClientSQLUserSource.
+            ret["table"] = "users"
+            ret["uid_field"] = self.US_UID or "uid"
+            ret["cn_field"] = self.US_LDAP_CN or "cn"
+            ret["mail_fields"] = self.US_MAIL or ["mail"]
+            ret["domain_field"] = self.US_SQL_DOMAIN_FIELD or ""
+            ret["password_field"] = "password"
+            ret["pwd_algo"] = self.US_PWD_ALGO or ""
+            ret["prepend_pwd_scheme"] = bool(self.US_SQL_PREPEND_PWD_SCHEME)
+            ret["extra_filter"] = self.US_SQL_USER_FILTER or ""
+            return ret
         else:
             raise AggravatedException(err.ERROR_CONFIG_WRONG_US_SERVER.m, err.ERROR_CONFIG_WRONG_US_SERVER)
 

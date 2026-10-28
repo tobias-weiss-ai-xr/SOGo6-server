@@ -201,3 +201,42 @@ class TestCheckLogin:
         assert module.check_login(user) is False
         assert getattr(user, "authenticated", False) is False
         assert calls["n"] == 0
+
+
+class TestAuthMapDispatch:
+    """The auth path must instantiate the dedicated PostgreSQL user-source
+    client for US_TYPE=postgresql (single relational DB, no LDAP) while
+    leaving the shared MAP/addressbook wiring untouched."""
+
+    def test_auth_maps_route_postgresql_to_user_source_client(self):
+        from app.module.auth.ModuleUserSource import (
+            MAP_KEY_AUTH_CLASS, MAP_KEY_AUTH_PATH,
+        )
+        assert MAP_KEY_AUTH_CLASS["postgresql"] == "ClientPostgreSQLUserSource"
+        assert MAP_KEY_AUTH_PATH["postgresql"] == "app.manager.user_source"
+        assert MAP_KEY_AUTH_CLASS["ldap"] == "ClientLdap"
+        assert MAP_KEY_AUTH_PATH["ldap"] == "app.manager.ldap"
+
+    def test_make_us_check_login_uses_auth_map_for_postgresql(self, monkeypatch):
+        captured = {}
+
+        def fake_import(**kwargs):
+            captured.update(kwargs)
+            fake = SimpleNamespace(connect=lambda: None)
+            fake.check_login = lambda u, p, d: (False, {}, {})
+            return fake
+
+        monkeypatch.setattr(
+            "app.module.auth.ModuleUserSource.import_and_instantiate_manager",
+            fake_import,
+        )
+        settings = dict(LDAP_SETTINGS)
+        settings.update(US_TYPE="postgresql", US_UID="ldap-1")
+        module = _module_with(settings)
+        user = make_user(uid="ada", source_id="ldap-1", password="pw", domain="opensme.home")
+
+        module._make_us_check_login(module.all_user_sources["ldap-1"], user)
+
+        assert captured["module_path"] == "app.manager.user_source"
+        assert captured["module_and_class_name"] == "ClientPostgreSQLUserSource"
+        assert captured["module_args"]["table"] == "users"

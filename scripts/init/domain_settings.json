@@ -1,51 +1,29 @@
 {
   "settings": {
     "USER_SOURCE": {
-      "ldap_ex": {
-        "US_UID": "ldap_ex",
-        "US_KIND": "description",
+      "users_table": {
+        "US_UID": "users_table",
+        "US_NAME": "Single relational DB users table",
+        "US_TYPE": "postgresql",
+        "US_CAN_AUTH": true,
         "US_MAIL": [
           "mail"
         ],
-        "US_NAME": "french_ldap",
-        "US_TYPE": "ldap",
-        "US_LDAP_CN": "cn",
-        "US_LDAP_ID": "uid",
-        "US_CAN_AUTH": true,
-        "US_LDAP_UID": "uid",
-        "US_LDAP_PORT": 390,
-        "US_LDAP_SCOPE": "SUB",
+        "US_IS_ADDRESSBOOK": false,
+        "US_HAS_RESOURCE": false,
+        "US_PWD_ALGO": "bcrypt",
+        "US_SQL_PREPEND_PWD_SCHEME": true,
+        "US_SQL_DOMAIN_FIELD": "domain",
         "US_PWD_POLICY": false,
-        "US_AUTO_SEARCH": false,
-        "US_PWD_LEN_MAX": 0,
         "US_PWD_LEN_MIN": 3,
-        "US_HAS_RESOURCE": true,
-        "US_LDAP_BASE_DN": "ou=users,${SOGO_LDAP_BASE_DN}",
-        "US_LDAP_BIND_DN": "${SOGO_LDAP_BIND_DN}",
-        "US_LDAP_HOSTNAME": "openldap",
-        "US_IS_ADDRESSBOOK": true,
-        "US_PWD_DIGITS_MIN": 0,
-        "US_LDAP_ATTR_FIELD": [
-          "*"
-        ],
-        "US_LDAP_ENCRYPTION": "None",
-        "US_LDAP_PWD_POLICY": false,
-        "US_PWD_SPECIAL_MIN": 0,
-        "US_AUTO_QUERY_LIMIT": 0,
-        "US_LDAP_BIND_DN_PWD": "password",
-        "US_LDAP_GROUP_CLASS": [
-          "group",
-          "groupOfNames",
-          "groupOfUniqueNames",
-          "posixGroup"
-        ],
-        "US_LDAP_BIND_AS_USER": false,
-        "US_PWD_LOWERCASE_MIN": 0,
+        "US_PWD_LEN_MAX": 0,
         "US_PWD_UPPERCASE_MIN": 0,
-        "US_LDAP_QUERY_TIMEOUT": 0,
+        "US_PWD_LOWERCASE_MIN": 0,
+        "US_PWD_DIGITS_MIN": 0,
+        "US_PWD_SPECIAL_MIN": 0,
         "US_PWD_SPECIAL_ALLOWED": "%$&*(){}[]!?\\/@#.,:;+=<>-_",
-        "US_LDAP_PWD_UPDATE_SAMBA": false,
-        "US_RESOURCE_MULTIBOOKING": "departmentNumber"
+        "US_AUTO_SEARCH": false,
+        "US_AUTO_QUERY_LIMIT": 0
       }
     },
     "AUTH_SETTINGS": {
