@@ -65,6 +65,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /build/app /app/app
+# Ship the bootstrap init JSONs (system + default-domain settings) into the
+# runtime image so a fresh install auto-initializes on first boot via
+# check_basic_config()/init_sogo — without them every deployment parks in the
+# S000001 "Sogo Has Not Been Configured Yet" state and the webmail login page
+# reports "Unable to reach the server". The default-domain file carries a
+# PostgreSQL users-table user source (no LDAP); ${VAR} placeholders are
+# expanded from the environment at init time.
+COPY --from=builder /build/scripts/init /app/scripts/init
+
+# Default bootstrap paths (overridable per deployment): point init_sogo at
+# the shipped JSONs so first boot writes system + default-domain settings.
+ENV SOGO_INIT_SYSTEM_SETTINGS_PATH=/app/scripts/init/system_settings.json \
+    SOGO_INIT_DOMAIN_SETTINGS_PATH=/app/scripts/init/domain_settings.json
 
 # Strip pip from the runtime image: pip ships its own vendored deps pinned in
 # pip/_vendor/vendor.txt (msgpack 1.1.2, urllib3 2.7.0, setuptools 70.3.0) which
