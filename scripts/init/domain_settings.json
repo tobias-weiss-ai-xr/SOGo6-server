@@ -2,7 +2,7 @@
   "settings": {
     "USER_SOURCE": {
       "users_table": {
-        "US_UID": "users_table",
+        "US_UID": "uid",
         "US_NAME": "Single relational DB users table",
         "US_TYPE": "postgresql",
         "US_CAN_AUTH": true,
