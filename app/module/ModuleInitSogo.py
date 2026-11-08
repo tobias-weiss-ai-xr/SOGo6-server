@@ -2,11 +2,23 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from os import getpid
+import time
 
 from app.utils.logger.logger import logger
 from app.utils.module.importManager import import_and_instantiate_manager
 from app.config.db.tables import ALL_TABLES
 from app.manager.cache.ClientRedis import ClientRedis
+from app.utils.exceptions import AggravatedException
+
+# Redis lives in the same netns as this server (compose network_mode:
+# service:sogo6-server) and only exists/answers once the parent container is
+# fully up. On a cold stack start gunicorn boots before the sibling redis
+# joins the netns, so ping fails on the first attempt. Retry for a bounded
+# window (every 2s, up to REDIS_BOOT_RETRY_SECONDS) instead of letting
+# gunicorn die with HaltServer — a died worker then leaves redis/postgres
+# pinned to a dead netns which you cannot recover without recreating them.
+REDIS_BOOT_RETRY_SECONDS: int = 60
+REDIS_BOOT_RETRY_STEP: float = 2.0
 
 if TYPE_CHECKING:
     from app.config.settings.ProcessSetting import ProcessSetting
@@ -38,8 +50,20 @@ class ModuleInitSogo:
         redis_conf = self.process_settings.get_redis_settings()
         cache_client = ClientRedis(**redis_conf)
 
-        # Test connectivity
-        cache_client.ping()
+        # Test connectivity — with boot retry (see module docstring for why)
+        deadline = time.monotonic() + REDIS_BOOT_RETRY_SECONDS
+        while True:
+            try:
+                cache_client.ping()
+                break
+            except AggravatedException as exc:
+                if time.monotonic() >= deadline:
+                    logger.error("Redis still unreachable after %ds — giving up: %s",
+                                 REDIS_BOOT_RETRY_SECONDS, exc)
+                    raise
+                logger.warning("Redis not reachable yet (%s) — retrying in %.1fs",
+                               exc, REDIS_BOOT_RETRY_STEP)
+                time.sleep(REDIS_BOOT_RETRY_STEP)
 
         key = f"init:{getpid()}"
         # Test writting, reading and deleting

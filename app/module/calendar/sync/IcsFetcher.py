@@ -131,42 +131,62 @@ class IcsFetcher:
         """
         pinned_ip: str = IcsFetcher._validate_url(url)
         logger_calendar.debug("Fetching calendar from %s", url)
+        # GET errors that signal "this URL is a CalDAV collection, use CalDAV
+        # verbs" — Radicale answers 403 to GET on a collection. A hard 404
+        # still fails: there is genuinely nothing there.
+        _GET_SIGNALS_CALDAV: tuple[int, ...] = (401, 403, 405)
+        get_error: str | None = None
         try:
             # First try: direct GET (works for plain ICS feeds)
             result: str = IcsFetcher._http_get(url, pinned_ip, username, password)
             if IcsFetcher._looks_like_icalendar(result):
                 return result
+        except RequestException:
+            raise
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _GET_SIGNALS_CALDAV:
+                logger_calendar.error("HTTP %s fetching calendar from %s: %s",
+                                      exc.code, url, IcsFetcher._sanitize(str(exc.reason)))
+                raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
+            logger_calendar.info("GET %s answered HTTP %s — trying CalDAV verbs", url, exc.code)
+            get_error = IcsFetcher._sanitize(str(exc.reason))
+        except urllib.error.URLError as exc:
+            logger_calendar.error("Failed to fetch calendar from %s: %s",
+                                  url, IcsFetcher._sanitize(str(exc)))
+            raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
 
-            # Second try: CalDAV PROPFIND to discover calendar URL
-            logger_calendar.debug(
-                "Direct GET did not return iCalendar, trying CalDAV PROPFIND for %s", url
-            )
+        # Second try: CalDAV PROPFIND discovery + REPORT calendar-query
+        logger_calendar.debug(
+            "Direct GET did not return iCalendar (via %s), trying CalDAV mirror for %s",
+            "GET" if get_error is None else f"HTTP {get_error}", url,
+        )
+        mirrored: str | None = IcsFetcher._fetch_caldav(url, pinned_ip, username, password)
+        if mirrored is not None:
+            return mirrored
+
+        # Third try: legacy path — GET the discovered VEVENT-capable href.
+        # Only used when REPORT is not supported (405) or discovery produced a
+        # distinct href that answers with plain iCalendar.
+        try:
             calendar_url: str | None = IcsFetcher._discover_calendar_url(
                 url, pinned_ip, username, password,
             )
-            if calendar_url:
+            if calendar_url and calendar_url != url:
                 result = IcsFetcher._http_get(
                     calendar_url, pinned_ip, username, password,
                 )
                 if IcsFetcher._looks_like_icalendar(result):
                     return result
-
-            # If neither succeeded, the content is not valid ICS
-            raise RequestException(error=ERROR_CALENDAR_ICS_PARSE_FAILED)
-
-        except RequestException:
-            raise
         except urllib.error.HTTPError as exc:
-            logger_calendar.error("HTTP %s fetching calendar from %s: %s",
+            logger_calendar.error("HTTP %s fetching calendar href %s: %s",
                                   exc.code, url, IcsFetcher._sanitize(str(exc.reason)))
             raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
-        except urllib.error.URLError as exc:
-            logger_calendar.error("Failed to fetch calendar from %s: %s",
-                                  url, IcsFetcher._sanitize(str(exc)))
-            raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
-        except Exception as exc:
-            logger_calendar.exception("Unexpected error fetching calendar from %s", url)
-            raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
+
+        # If nothing produced iCalendar, the content is not valid ICS.
+        if get_error is not None:
+            raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED,
+                                   message=f"GET to {url} was rejected: {get_error}")
+        raise RequestException(error=ERROR_CALENDAR_ICS_PARSE_FAILED)
 
     @staticmethod
     def _http_get(url: str, pinned_ip: str, username: str | None = None,
@@ -335,6 +355,165 @@ class IcsFetcher:
             resolved.append(cal)
 
         return resolved
+
+    @staticmethod
+    def _fetch_caldav(url: str, pinned_ip: str, username: str | None = None,
+                      password: str | None = None) -> str | None:
+        """Fetch an ICS mirror of a CalDAV calendar via REPORT calendar-query.
+
+        Used when a direct GET of the collection URL is rejected (HTTP 401/403,
+        or 405 on REPORT means the legacy GET-of-discovered-href path instead).
+        After PROPFIND discovers the VEVENT-capable calendar href, issues a
+        REPORT calendar-query (Depth 1, getetag + calendar-data, VEVENT filter)
+        and stitches every returned event resource into a single VCALENDAR.
+
+        :return: Stitched VCALENDAR text, or None when CalDAV verbs are not usable.
+        """
+        # Prefer REPORT on the collection URL itself: Radicale answers GET with
+        # 403 but serves REPORT calendar-query directly on the collection (the
+        # PROPFIND on such a URL returns the *principal* href, which is a
+        # different resource). Only fall back to PROPFIND discovery when DIRECT
+        # REPORT is refused (405 / hard error).
+        direct = IcsFetcher._try_report_mirror(url, pinned_ip, username, password)
+        if direct is not None:
+            return direct
+
+        try:
+            calendar_url = IcsFetcher._discover_calendar_url(url, pinned_ip, username, password)
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            logger_calendar.error("CalDAV mirror: PROPFIND discovery failed for %s: %s",
+                                  url, IcsFetcher._sanitize(str(exc)))
+            return None
+        if not calendar_url or calendar_url == url:
+            return None
+        return IcsFetcher._try_report_mirror(calendar_url, pinned_ip, username, password)
+
+    @staticmethod
+    def _try_report_mirror(url: str, pinned_ip: str, username: str | None = None,
+                           password: str | None = None) -> str | None:
+        """Issue REPORT calendar-query at url and stitch the mirror, or None."""
+        body = IcsFetcher._build_calendar_query_xml()
+        logger_calendar.info("CalDAV mirror: REPORT calendar-query on %s", url)
+        try:
+            raw = IcsFetcher._http_report(url, pinned_ip, body, username, password)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 405:
+                logger_calendar.debug("REPORT not supported at %s (HTTP 405)", url)
+                return None
+            logger_calendar.error("CalDAV mirror: REPORT on %s failed with HTTP %s: %s",
+                                  url, exc.code, IcsFetcher._sanitize(str(exc.reason)))
+            return None
+        except urllib.error.URLError as exc:
+            logger_calendar.error("CalDAV mirror: REPORT on %s failed: %s",
+                                  url, IcsFetcher._sanitize(str(exc)))
+            return None
+
+        try:
+            event_blocks = IcsFetcher._parse_calendar_query_response(raw)
+        except Exception as exc:
+            logger_calendar.error("CalDAV mirror: cannot parse REPORT response from %s: %s",
+                                  url, IcsFetcher._sanitize(str(exc)))
+            return None
+
+        # Stitch every event resource into a single VCALENDAR. Mirrored events
+        # may arrive as bare VEVENT blocks or as full VCALENDAR envelopes.
+        components: list[str] = []
+        for block in event_blocks:
+            if "BEGIN:VCALENDAR" in block and "END:VCALENDAR" in block:
+                inner = block.split("BEGIN:VCALENDAR", 1)[1].split("END:VCALENDAR", 1)[0]
+                components.extend(IcsFetcher._split_vevent_blocks(inner))
+            else:
+                components.extend(IcsFetcher._split_vevent_blocks(block))
+
+        # A valid empty VCALENDAR keeps the subscription healthy (delete_missing
+        # semantics) instead of flip-flopping between error and empty.
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//sogo6//caldav-mirror//EN",
+            "CALSCALE:GREGORIAN",
+        ]
+        for comp in components:
+            if comp:
+                lines.append(comp.rstrip())
+        lines.append("END:VCALENDAR")
+        ics = "\r\n".join(lines) + "\r\n"
+        return ics
+
+    @staticmethod
+    def _build_calendar_query_xml() -> str:
+        """Build the REPORT calendar-query body for all supported components."""
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            '  <d:prop>'
+            '    <d:getetag/>'
+            '    <c:calendar-data/>'
+            '  </d:prop>'
+            '  <c:filter>'
+            '    <c:comp-filter name="VCALENDAR">'
+            '      <c:comp-filter name="VEVENT"/>'
+            '    </c:comp-filter>'
+            '  </c:filter>'
+            '</c:calendar-query>'
+        )
+
+    @staticmethod
+    def _split_vevent_blocks(text: str) -> list[str]:
+        """Split calendar text into whole VEVENT blocks (or whole blocks when
+        no VEVENT marker is present). Tolerant of bare VEVENTs."""
+        parts: list[str] = []
+        for chunk in text.split("BEGIN:VEVENT"):
+            if "END:VEVENT" in chunk:
+                parts.append("BEGIN:VEVENT" + chunk.split("END:VEVENT", 1)[0] + "END:VEVENT")
+        return [p for p in parts if p.strip()]
+
+    @staticmethod
+    def _parse_calendar_query_response(raw: str) -> list[str]:
+        """Extract event resource payloads from a multistatus REPORT response.
+
+        Each <response> may wrap the payload in <calendar-data> CDATA or regular
+        element text. Returns a list of raw blocks (VEVENT body or whole
+        VCALENDAR). The response is parsed structurally, not via the stdlib XML
+        parser, to stay dependency-free like _parse_propfind_response.
+        """
+        # Normalise common multistatus serialisations.
+        # 1) calendar-data wrapped in CDATA
+        import re as _re
+        payloads: list[str] = []
+        for m in _re.finditer(r"(?is)<c:calendar-data[^>]*>(.*?)</c:calendar-data>", raw):
+            payloads.append(m.group(1).strip())
+        if payloads:
+            return [p for p in payloads if p]
+
+        # 2) plain-text VEVENT blocks in the multistatus body
+        vevents: list[str] = []
+        for m in _re.finditer(r"(?s)BEGIN:VEVENT.*?END:VEVENT", raw):
+            vevents.append(m.group(0))
+        return vevents
+
+    @staticmethod
+    def _http_report(url: str, pinned_ip: str, body: str,
+                     username: str | None = None, password: str | None = None) -> str:
+        """Issue a CalDAV REPORT request with SSRF protection."""
+        request = urllib.request.Request(url, data=body.encode("utf-8"), method="REPORT")
+        request.add_header("Content-Type", "application/xml; charset=utf-8")
+        request.add_header("Depth", "1")
+        if username and password:
+            credentials = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+            request.add_header("Authorization", f"Basic {credentials}")
+
+        opener = urllib.request.build_opener(
+            _PinnedHTTPSHandler(pinned_ip, context=ssl.create_default_context()),
+            _ValidatingRedirectHandler(max_redirects=MAX_ICS_REDIRECTS),
+        )
+        with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            raw: bytes = response.read(MAX_ICS_BYTES + 1)
+            if len(raw) > MAX_ICS_BYTES:
+                logger_calendar.error("CalDAV REPORT from %s exceeds size limit (%d bytes)",
+                                      url, MAX_ICS_BYTES)
+                raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED)
+            return raw.decode("utf-8", errors="replace")
 
     @staticmethod
     def _looks_like_icalendar(text: str) -> bool:
