@@ -411,19 +411,22 @@ class ApiCalendarShareDetail(MethodView):
 
 @blp.route("/external-calendars")
 class ApiExternalCalendarList(MethodView):
-    """API to list and create external ICS calendar subscriptions."""
+    """API to list and create external calendar subscriptions (ICS + CalDAV)."""
 
     @blp.response(200, ExternalCalendarListResponseSchema)
     def get(self) -> ResponseReturnValue:
-        """List all external calendar subscriptions for the current user."""
+        """List ALL external calendar subscriptions (ICS and CalDAV) for the current user."""
         logger_api.debug("GET /external-calendars user=%s", g.user.uid)
         interface: InterfaceApiCalendarCalendar = g.inter
-        return interface.get_all_calendars(source_type="ics")
+        # source_type=None → no filter: return plain-ICS AND CalDAV subscriptions.
+        # (Historical hardcode source_type="ics" silently hid CalDAV rows like the
+        #  calrs booking mirror from this endpoint.)
+        return interface.get_all_calendars(source_type=None)
 
     @blp.arguments(ExternalCalendarCreateSchema)
     @blp.response(201, ExternalCalendarResponseSchema)
     def post(self, body: dict) -> ResponseReturnValue:
-        """Create a new external ICS calendar subscription."""
+        """Create a new external calendar subscription (ICS or CalDAV)."""
         logger_api.debug("POST /external-calendars user=%s url=%s", g.user.uid, body.get("url"))
         interface: InterfaceApiCalendarCalendar = g.inter
         return interface.create_external_calendar(body)
