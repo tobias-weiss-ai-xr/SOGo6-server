@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import http.client
 import ipaddress
+import os
 import socket
 import ssl
 import urllib.error
@@ -14,6 +15,28 @@ from app.module.calendar.CalendarConst import FETCH_TIMEOUT_SECONDS, MAX_ICS_BYT
 from app.utils.errors import ERROR_CALENDAR_ICS_FETCH_FAILED, ERROR_CALENDAR_ICS_PARSE_FAILED
 from app.utils.exceptions import RequestException
 from app.utils.logger.logger import logger_calendar
+
+
+def _trusted_ics_hosts() -> set[str]:
+    """Hostnames exempted from the private-IP SSRF rejection.
+
+    The openEduSuite booking mirror is reached through the platform's own edge
+    (`calendar.openedusuite.org`), which the cluster's CoreDNS rewrites to the
+    reliable HAProxy ClusterIP. Inside the cluster that address is RFC 1918, so
+    the generic SSRF guard would refuse it — but the host is not attacker
+    controllable: it is the operator-curated edge of the SAME deployment the
+    fetcher runs in. `SOGO_P_ICS_TRUSTED_HOSTS` (comma-separated) lists exactly
+    those trusted edge hostnames. Everything else keeps the strict rejection.
+
+    The URL must STILL be https, is STILL resolved and pinned (anti
+    DNS-rebinding), and only the is_private/is_link_local class is waived for
+    trusted hosts — loopback and link-local remain forbidden everywhere.
+    """
+    return {
+        h.strip().lower()
+        for h in os.environ.get("SOGO_P_ICS_TRUSTED_HOSTS", "").split(",")
+        if h.strip()
+    }
 
 
 class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -540,7 +563,10 @@ class IcsFetcher:
         no business being subscribed to in 2026). The hostname must resolve to a public IP:
         private, loopback, link-local, reserved and multicast ranges are all rejected (covers
         RFC 1918, ::1, 169.254.x.x, etc.). All resolved addresses must be public; otherwise
-        the URL is rejected.
+        the URL is rejected. Hostnames listed in the `SOGO_P_ICS_TRUSTED_HOSTS` env var
+        (comma-separated, exact match, case-insensitive) are the operator-curated platform
+        edge and may resolve to private addresses — loopback and link-local are still
+        rejected even for them (see _trusted_ics_hosts).
 
         :return: The first resolved public IP, used to pin the subsequent connection.
         """
@@ -564,13 +590,24 @@ class IcsFetcher:
             raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED) from exc
 
         pinned_ip: str | None = None
+        trusted = _trusted_ics_hosts()
+        is_trusted_host = hostname.lower() in trusted
         for info in resolved:
             ip_str: str = cast(str, info[4][0]).split("%")[0]
             try:
                 addr = ipaddress.ip_address(ip_str)
             except ValueError:
                 continue
-            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+            blocked_by_address = (
+                addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast
+            )
+            # private (RFC 1918 etc.) is waived ONLY for trusted platform-edge hosts;
+            # loopback/link-local/reserved/multicast are never allowed.
+            if is_trusted_host:
+                if blocked_by_address:
+                    logger_calendar.error("Rejected trusted ICS host resolving to forbidden address: %s", ip_str)
+                    raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED)
+            elif addr.is_private or blocked_by_address:
                 logger_calendar.error("Rejected ICS URL resolving to non-public address: %s", ip_str)
                 raise RequestException(error=ERROR_CALENDAR_ICS_FETCH_FAILED)
             if pinned_ip is None:

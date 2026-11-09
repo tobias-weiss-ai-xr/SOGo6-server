@@ -34,6 +34,32 @@ def test_validate_rejects_empty_hostname():
         IcsFetcher._validate_url("https:///cal.ics")
 
 
+def test_validate_rejects_private_host_not_trusted():
+    """A host resolving to a private IP is rejected unless explicitly trusted."""
+    with patch("socket.getaddrinfo", return_value=[(socket.AF_INET, 1, 6, "", ("172.17.219.45", 0))]):
+        with patch.dict("os.environ", {}, clear=False):
+            with pytest.raises(RequestException):
+                IcsFetcher._validate_url("https://calendar.example.openedusuite.org/dav/booking/main/")
+
+
+def test_validate_allows_trusted_private_host():
+    """A host in SOGO_P_ICS_TRUSTED_HOSTS may resolve to a private IP and is pinned to it."""
+    private = (socket.AF_INET, 1, 6, "", ("172.17.219.45", 0))
+    with patch("socket.getaddrinfo", return_value=[private]):
+        with patch.dict("os.environ", {"SOGO_P_ICS_TRUSTED_HOSTS": "calendar.openedusuite.org,other.example"}, clear=False):
+            pinned = IcsFetcher._validate_url("https://calendar.openedusuite.org/dav/booking/main/")
+    assert pinned == "172.17.219.45"
+
+
+def test_validate_rejects_loopback_even_when_trusted():
+    """Loopback stays forbidden even for a trusted host."""
+    loopback = (socket.AF_INET, 1, 6, "", ("127.0.0.1", 0))
+    with patch("socket.getaddrinfo", return_value=[loopback]):
+        with patch.dict("os.environ", {"SOGO_P_ICS_TRUSTED_HOSTS": "calendar.openedusuite.org"}, clear=False):
+            with pytest.raises(RequestException):
+                IcsFetcher._validate_url("https://calendar.openedusuite.org/dav/")
+
+
 # --- CalDAV REPORT mirror (external calendars) ---
 
 MULTISTATUS_TWO_EVENTS = (
