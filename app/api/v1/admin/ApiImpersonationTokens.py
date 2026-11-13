@@ -22,7 +22,7 @@ from app.api.v1.user.ApiApiTokens import (
 from app.auth.Admin import AdminAnonymous
 from app.interface.admin.InterfaceApiAdminUser import InterfaceApiAdminUser
 from app.utils import errors as err
-from app.utils.api.ApiBaseResponse import create_api_base_response
+from app.utils.api.ApiBaseResponse import ApiBaseResponse, create_api_base_response
 
 blp = Blueprint(
     "Impersonation Tokens",
@@ -68,8 +68,20 @@ class ImpersonationTokenItemSchema(Schema):
     last_used_at = fields.Integer(allow_none=True)
 
 
-class ImpersonationTokenListResponseSchema(Schema):
+class ImpersonationTokenListDataSchema(Schema):
     tokens = fields.List(fields.Nested(ImpersonationTokenItemSchema()))
+
+
+class ImpersonationTokenListResponseSchema(ApiBaseResponse):
+    """Envelope-wrapped token list (matches create + user-token convention).
+
+    The ``data` field carries ``{tokens: [...]}``; serializing through this
+    schema keeps ``error_code``/``error_msg``/``data`` in the body instead of
+    truncating the envelope to ``{}`` (the bare-``tokens`` shape previously
+    declared here silently dropped every field).
+    """
+
+    data = fields.Nested(ImpersonationTokenListDataSchema())
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
