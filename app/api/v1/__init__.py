@@ -11,6 +11,7 @@ from .user import user_profile_apis, webauthn_blp, webauthn_blp_admin
 from .calendar import calendar_apis
 from .jobs import job_apis
 from .contact import contact_apis
+from .agent import agent_apis
 from .health import health_apis
 from .securitytxt import securitytxt_apis
 from .mail.ApiAttachments import blp as attachments_blueprint
@@ -23,6 +24,7 @@ v1_basic_apis += mail_apis
 v1_basic_apis += calendar_apis
 v1_basic_apis += job_apis
 v1_basic_apis += contact_apis
+v1_basic_apis += agent_apis
 v1_basic_apis += health_apis
 v1_basic_apis += securitytxt_apis
 v1_basic_apis.append(attachments_blueprint)

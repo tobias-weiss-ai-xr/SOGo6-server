@@ -220,9 +220,11 @@ class InterfaceAuthUser:
         # trust anchor). Re-validating an empty password against a user source
         # here would always fail (and can never succeed on SSO-only domains that
         # have no user source configured at all), turning every protected API
-        # call into 401. Skip the source check for SSO sessions and just fill
-        # the user profile.
-        if user.auth_method in ("oidc", "saml2"):
+        # call into 401. The same holds for agent API tokens ("api_token"):
+        # the token's encrypted user_session blob is the trust anchor, and
+        # impersonation tokens carry a structural user without password at all.
+        # Skip the source check for these sessions and just fill the profile.
+        if user.auth_method in ("oidc", "saml2", "api_token"):
             try:
                 self.module_user_profile.get_user_profile(user)
             except RequestException:

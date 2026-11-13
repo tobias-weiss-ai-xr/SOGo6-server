@@ -27,6 +27,7 @@ from .ApiHelpdesk import blp as helpdesk_api
 from .ApiCrmLight import blp as crm_light_api
 from .ApiWorkflowBuilder import blp as workflow_builder_api
 from .ApiQuickActions import blp as quick_actions_api
+from .ApiImpersonationTokens import blp as impersonation_tokens_api
 
 # Tier 6 — Vertical Markets
 from .ApiScimProvisioning import blp as scim_provisioning_api
@@ -44,6 +45,7 @@ from .ApiMobileApp import blp as mobile_app_api
 from .ApiSaml2Admin import blp as saml2_admin_api
 
 admin_apis : list[Blueprint] = [
+    impersonation_tokens_api,
     audit_log_api,
     domain_branding_api,
     file_sharing_api,

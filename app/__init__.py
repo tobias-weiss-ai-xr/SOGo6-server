@@ -26,7 +26,7 @@ from app.config.init_config import init_get_system_and_default_domain_settings, 
 import app.utils.errors as err
 from app.utils.api.ApiBaseResponse import create_api_base_response, ApiBaseResponse
 from app.utils import constants as cs
-from app.utils.logger.logger import logger, logger_api
+from app.utils.logger.logger import logger, logger_api, logger_auth
 from app.utils.logger.json_logger import enable_json_logging
 from app.utils.api.prometheus import init_prometheus
 from app.utils.exceptions import AggravatedException, RequestException
@@ -442,7 +442,42 @@ def register_before_request(base_blueprint: Blueprint, kind: str, sogo_state: in
 
         if auth_header:
             if auth_header.type == 'bearer':
-                if kind == cs.API_BASIC:
+                token_value: str = auth_header.token or ""
+                if token_value.startswith("sogo_") or token_value.startswith("sogoimp_"):
+                    # Agent API token (per-user "sogo_" or admin-issued "sogoimp_"
+                    # impersonation token) — resolved before any voucher parsing.
+                    if kind == cs.API_BASIC:
+                        from app.api.v1.user.ApiApiTokens import verify_api_token
+                        result = verify_api_token(token_value, process_setting=process_config)
+                        if result is None:
+                            return create_api_base_response(error=err.ERROR_API_TOKEN_INVALID)
+                        _token_uid, _token_data = result
+                        _token_user = _token_data.get("_user")
+                        if _token_user is None or getattr(_token_user, "anonymous", True):
+                            # Impersonation tokens carry no user_session: resolve
+                            # the target user structurally (uid/domain); mail
+                            # operations that need the IMAP password will fail
+                            # with a clear error for such tokens.
+                            from app.utils.strings import get_domain_from_mail
+                            _token_user = User(_token_uid, domain=get_domain_from_mail(_token_uid))
+                        user = _token_user
+                        user.authenticated = True
+                        # Headless credential: the token's user_session blob is
+                        # the trust anchor (same as SSO) — skip user-source
+                        # re-validation in check_user_and_fill_info.
+                        user.auth_method = "api_token"
+                        g.token_scopes = _token_data.get("scopes", [])
+                        g.token_issuer = _token_data.get("issuer_uid")
+                        if g.token_issuer:
+                            from app.api.v1.user.ApiApiTokens import log_impersonation_use
+                            log_impersonation_use(
+                                g.token_issuer, _token_uid, request.endpoint,
+                                request_id=getattr(g, "request_id", None),
+                            )
+                    else:
+                        # Admin tier does not accept sogo_/sogoimp_ tokens
+                        return create_api_base_response(error=err.ERROR_API_TOKEN_INVALID)
+                elif kind == cs.API_BASIC:
                     try:
                         user = VoucherUserService(process_config).generate_user_from_voucher(auth_header.token)
                     except RequestException:
